@@ -344,7 +344,7 @@ async function bootLocal() {
     concurrency: 3,
     onReady: (sym) => { S.snaps[sym] = engine.snapshot(sym); renderScanner(); renderStrip(); },
     onTick: (sym) => { S.lastTick = Date.now(); if (!rT) rT = setTimeout(() => { rT = 0; for (const s of S.symbols) S.snaps[s.symbol] = engine.snapshot(s.symbol); renderLive(); }, 700); },
-    onError: (sym, e) => console.warn('feed', sym, e.message),
+    onError: (sym, e) => { (S.feedErr = S.feedErr || {})[sym] = e.message || 'error'; renderScanner(); },
   });
 }
 function makeFeeds(onStatus) { return { deriv: new M.DerivFeed({ onStatus: onStatus || (() => {}) }), mt5: S.serverBase ? serverCandles(S.serverBase) : null }; }
@@ -467,7 +467,7 @@ function renderCards() {
   $('#mkSeg').innerHTML = Object.entries(MARKETS).map(([k, v]) => `<button data-k="${k}" class="${S.f.market === k ? 'on' : ''}">${v}<span class="c">${counts[k]}</span></button>`).join('');
   const openIds = new Set($$('.why.on').map((w) => w.closest('.card').dataset.id));
   $('#cards').innerHTML = list.length ? list.slice(0, 120).map(cardHTML).join('') :
-    `<div class="empty" style="grid-column:1/-1">${S.f.view === 'active' ? (S.status === 'live' ? 'No open setups right now. The engine is scanning ' + S.symbols.length + ' markets and only publishes setups that pass every filter, so quiet stretches are normal.' : 'Connecting to the live feed…') : 'No closed signals yet.'}</div>`;
+    `<div class="empty" style="grid-column:1/-1">${S.f.view === 'active' ? (S.status === 'live' ? 'No open setups right now. The engine is scanning ' + (S.mode === 'local' ? S.symbols.filter((x) => x.source !== 'mt5').length : Object.keys(S.snaps).length) + ' markets and only publishes setups that pass every filter, so quiet stretches are normal.' : 'Connecting to the live feed…') : 'No closed signals yet.'}</div>`;
   openIds.forEach((id) => { const c = $(`.card[data-id="${id}"] .why`); if (c) c.classList.add('on'); });
   $('#kpis').innerHTML = kpiHTML(M.stats(S.signals), true);
 }
@@ -520,13 +520,16 @@ $('#alertBtn').addEventListener('click', async () => {
 // ---------- scanner ----------
 function biasCell(v) { return `<span class="b ${v}">${v === 'UP' ? '▲ UP' : v === 'DOWN' ? '▼ DOWN' : '• FLAT'}</span>`; }
 function renderScanner() {
-  const rows = S.symbols.map((m) => S.snaps[m.symbol] || { symbol: m.symbol, name: m.name, loading: true, mt5: m.source === 'mt5' && S.mode === 'local' });
-  $('#scanBody').innerHTML = rows.map((x) => x.loading || !x.trend || x.ready === false ? `<tr><td>${esc(x.name)}</td><td colspan="8" style="color:var(--dim)">${x.mt5 ? 'Weltrade pair via MT5 bridge: runs on the Moxie server' : 'loading history…'}</td></tr>` :
+  const hideMt5 = S.mode === 'local';
+  const rows = S.symbols.filter((m) => !(hideMt5 && m.source === 'mt5')).map((m) => S.snaps[m.symbol] || { symbol: m.symbol, name: m.name, loading: true, err: S.feedErr && S.feedErr[m.symbol] });
+  const mt5n = hideMt5 ? S.symbols.filter((m) => m.source === 'mt5').length : 0;
+  $('#scanBody').innerHTML = rows.map((x) => x.loading || !x.trend || x.ready === false ? `<tr><td>${esc(x.name)}</td><td colspan="8" style="color:var(--dim)">${x.err ? (/clos/i.test(x.err) ? 'market closed: retrying every minute' : 'feed hiccup: retrying every minute') : 'loading history…'}</td></tr>` :
     `<tr class="click" data-sym="${esc(x.symbol)}"><td><b>${esc(x.name)}</b><div class="meta" style="font-family:var(--mono);font-size:10px;color:var(--dim)">${esc(x.symbol)}</div></td>
      <td class="n">${fmt(x.price, x.dec)}</td><td>${biasCell(x.trend.H4)}</td><td>${biasCell(x.trend.H2)}</td><td>${biasCell(x.trend.H1)}</td><td>${biasCell(x.trend.M15)}</td>
      <td class="n" style="color:${x.er < S.cfg.chopMin ? 'var(--warn)' : 'var(--text)'}">${(x.er * 100).toFixed(0)}%</td>
      <td style="font-family:var(--mono);font-size:12px">${x.or && x.or.hi != null ? `${fmt(x.or.lo, x.dec)} – ${fmt(x.or.hi, x.dec)} <span class="b ${x.or.state === 'above' ? 'UP' : x.or.state === 'below' ? 'DOWN' : ''}">${x.or.state}</span>` : '—'}</td>
-     <td style="font-size:12.5px;color:${x.open ? 'var(--gold)' : 'var(--muted)'}">${esc(x.look)}</td></tr>`).join('');
+     <td style="font-size:12.5px;color:${x.open ? 'var(--gold)' : 'var(--muted)'}">${esc(x.look)}</td></tr>`).join('') +
+    (mt5n ? `<tr><td colspan="9" style="color:var(--dim);font-size:12.5px">+ ${mt5n} Weltrade SyntX pairs (FlipX, FiboX, QuadX, FX Vol…) are scanned by the Moxie server through your MT5 bridge. Connect a server in Settings to see them here.</td></tr>` : '');
 }
 $('#scanBody').addEventListener('click', (e) => { const tr = e.target.closest('tr[data-sym]'); if (tr) { show('chart'); openChart(tr.dataset.sym); } });
 
