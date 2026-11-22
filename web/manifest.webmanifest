@@ -1,0 +1,14 @@
+{
+  "name": "Trades with Moxie",
+  "short_name": "Moxie Trades",
+  "description": "Live ORB+ signal terminal: graded, explained and tracked to TP or SL",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0a0b10",
+  "theme_color": "#0a0b10",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

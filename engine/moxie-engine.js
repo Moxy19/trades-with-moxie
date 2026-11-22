@@ -1,0 +1,738 @@
+/*!
+ * Trades with Moxie — ORB+ Engine v1.0
+ * Multi-timeframe Opening Range Breakout engine with live trade capture.
+ * Runs identically in the browser (window.MoxieEngine) and in Node (require).
+ *
+ * Pipeline per symbol:
+ *   1m ticks  ->  aggregate into 2m / 15m / 1H / 2H / 4H  ->  closed-bar indicators (no repaint)
+ *   every closed 2m bar -> ORB+ setups (Break, Retest) -> multi-TF filters & score -> signal
+ *   every tick -> track open signals (pending fill, SL, TP1 -> BE, TP2, expiry, time exit)
+ */
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) module.exports = factory();
+  else root.MoxieEngine = factory();
+})(typeof self !== 'undefined' ? self : this, function () {
+  'use strict';
+
+  const G = { M1: 60, M2: 120, M15: 900, H1: 3600, H2: 7200, H4: 14400 };
+  const TF_LIST = [G.M1, G.M2, G.M15, G.H1, G.H2, G.H4];
+  const TF_NAME = { 60: '1m', 120: '2m', 900: '15m', 3600: '1H', 7200: '2H', 14400: '4H' };
+  const EMA_LENS = [9, 21, 50, 200];
+
+  const DEFAULTS = {
+    orBlock: 3600,          // session block in seconds (3600 = new opening range every hour)
+    orMinutes: 15,          // opening range length
+    bufferFrac: 0.15,       // breakout must clear the edge by this fraction of range height (tuned on 7d real data)
+    trendMode: 'adaptive',  // 'strict' = only with 1H trend; 'adaptive' = also counter-1H scalps when 1H is weak
+    minScore: 62,           // publish threshold (B grade)
+    minScalpScore: 72,      // counter-1H scalps need more confluence
+    chopMin: 0,             // optional 15m efficiency floor (0..1). Off by default: in walk-forward tests it removed more winners than losers
+    maxRiskAtr: 1.8,        // stop distance cap in 15m ATRs
+    minRiskAtr: 0.35,       // stop distance floor in 15m ATRs (avoid noise stops)
+    minRoomR: 1.0,          // need at least 1R to nearest 1H obstacle
+    pendingExpiryMin: 30,   // unfilled limit orders expire
+    maxHoldMin: 360,        // time exit after 6h
+    partialAtTp1: 0.5,      // fraction closed at TP1 (rest runs to TP2 with SL at entry)
+    lossGuard: true,        // block same-direction re-entry after SL until structure resets
+    retest: false,          // ORB retest continuation setups (off: they lost money in real-data tests)
+    entryMode: 'auto',      // 'auto' = limit back at the edge when the trigger candle over-extends; 'market' = always market; 'skip' = skip over-extended breaks
+    r1Min: 1.0, r1Max: 1.5, // TP1 bounds in R (measured move = range height; tuned: losers often reached 0.5-0.9R first)
+    r2Min: 1.8, r2Max: 3,   // TP2 bounds in R (2x range height)
+    signalsEnabledFrom: 0,  // epoch; used by backtests to warm up
+  };
+
+  // ---------- helpers ----------
+  const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+  const last = (a, k = 1) => a[a.length - k];
+  const num = (x) => (typeof x === 'string' ? parseFloat(x) : x);
+  const uid = () => Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-4);
+  function decimalsOf(pip) {
+    if (pip == null) return 2;
+    if (pip >= 1 && Number.isInteger(pip)) return pip; // ticks_history gives decimals count
+    const s = String(pip);
+    if (s.includes('e-')) return parseInt(s.split('e-')[1], 10);
+    const i = s.indexOf('.');
+    return i < 0 ? 0 : s.length - i - 1;
+  }
+  function fmt(p, d) { return p == null || isNaN(p) ? '—' : Number(p).toFixed(d == null ? 2 : d); }
+  function toBar(c) {
+    return { t: num(c.open_time != null ? c.open_time : c.epoch), o: num(c.open), h: num(c.high), l: num(c.low), c: num(c.close) };
+  }
+
+  // ---------- Series: closed bars + incremental indicators ----------
+  class Series {
+    constructor(g, max = 3000) {
+      this.g = g; this.max = max; this.bars = []; this.forming = null;
+      this.ema = {}; EMA_LENS.forEach((n) => (this.ema[n] = []));
+      this.atr = [];
+    }
+    pushClosed(b) {
+      const prev = last(this.bars);
+      this.bars.push(b);
+      for (const n of EMA_LENS) {
+        const arr = this.ema[n]; const p = last(arr);
+        arr.push(p == null ? b.c : p + (2 / (n + 1)) * (b.c - p));
+      }
+      const tr = prev ? Math.max(b.h - b.l, Math.abs(b.h - prev.c), Math.abs(b.l - prev.c)) : b.h - b.l;
+      const pa = last(this.atr);
+      this.atr.push(pa == null ? tr : (pa * 13 + tr) / 14);
+      if (this.bars.length > this.max) {
+        const cut = this.bars.length - Math.floor(this.max * 0.8);
+        this.bars.splice(0, cut); this.atr.splice(0, cut);
+        for (const n of EMA_LENS) this.ema[n].splice(0, cut);
+      }
+    }
+    // Feed a (possibly partial) 1m bar. Returns the bar that just closed, if any.
+    update(b) {
+      const bucket = Math.floor(b.t / this.g) * this.g;
+      const f = this.forming;
+      if (!f) { this.forming = { t: bucket, o: b.o, h: b.h, l: b.l, c: b.c }; return null; }
+      if (bucket > f.t) {
+        this.pushClosed(f);
+        this.forming = { t: bucket, o: b.o, h: b.h, l: b.l, c: b.c };
+        return f;
+      }
+      if (bucket === f.t) {
+        if (this.g === 60) { f.h = Math.max(f.h, b.h); f.l = Math.min(f.l, b.l); f.c = b.c; }
+        else { f.h = Math.max(f.h, b.h); f.l = Math.min(f.l, b.l); f.c = b.c; }
+      }
+      return null;
+    }
+    seed(candles, treatLastAsForming = true) {
+      const bars = candles.map(toBar).sort((a, b) => a.t - b.t);
+      const closed = treatLastAsForming ? bars.slice(0, -1) : bars;
+      for (const b of closed) this.pushClosed(b);
+      this.forming = treatLastAsForming && bars.length ? { ...last(bars) } : null;
+    }
+    get n() { return this.bars.length; }
+    e(n, k = 1) { return last(this.ema[n], k); }
+    get atrv() { return last(this.atr); }
+    get close() { return this.forming ? this.forming.c : (last(this.bars) || {}).c; }
+  }
+
+  // fractal pivots on closed bars (left=right=2)
+  function pivots(s, lookback = 150, w = 2) {
+    const b = s.bars, n = b.length, highs = [], lows = [];
+    for (let i = Math.max(w, n - lookback); i < n - w; i++) {
+      let hi = true, lo = true;
+      for (let k = 1; k <= w; k++) {
+        if (b[i].h <= b[i - k].h || b[i].h < b[i + k].h) hi = false;
+        if (b[i].l >= b[i - k].l || b[i].l > b[i + k].l) lo = false;
+      }
+      if (hi) highs.push({ i, t: b[i].t, p: b[i].h });
+      if (lo) lows.push({ i, t: b[i].t, p: b[i].l });
+    }
+    return { highs, lows };
+  }
+
+  // Trend read for one timeframe (closed bars only)
+  function trendOf(s) {
+    const out = { dir: 'FLAT', score: 0, strength: 0, parts: {} };
+    if (!s || s.n < 30) return out;
+    const c = last(s.bars).c, e21 = s.e(21), e50 = s.e(50), e200 = s.e(200);
+    const slope = e50 - (s.ema[50][s.n - 6] != null ? s.ema[50][s.n - 6] : e50);
+    let sc = 0;
+    if (s.n >= 200) { sc += e50 > e200 ? 1 : -1; out.parts.stack = e50 > e200 ? 'EMA50>200' : 'EMA50<200'; }
+    sc += c > e50 ? 1 : -1;
+    sc += slope > 0 ? 1 : -1;
+    const pv = pivots(s, 120);
+    if (pv.highs.length >= 2 && pv.lows.length >= 2) {
+      const hh = last(pv.highs).p > last(pv.highs, 2).p, hl = last(pv.lows).p > last(pv.lows, 2).p;
+      if (hh && hl) { sc += 1; out.parts.structure = 'HH/HL'; }
+      else if (!hh && !hl) { sc -= 1; out.parts.structure = 'LH/LL'; }
+      else out.parts.structure = 'mixed';
+    }
+    out.score = sc;
+    out.dir = sc >= 2 ? 'UP' : sc <= -2 ? 'DOWN' : 'FLAT';
+    out.strength = Math.min(1, Math.abs(sc) / 4);
+    out.above21 = c > e21; out.e21over50 = e21 > e50; out.close = c; out.e21 = e21; out.e50 = e50;
+    return out;
+  }
+
+  // Kaufman efficiency ratio over n closed bars: 1 = clean trend, 0 = pure chop
+  function efficiency(s, n = 16) {
+    if (!s || s.n < n + 1) return 0.5;
+    const b = s.bars, end = b.length - 1;
+    const change = Math.abs(b[end].c - b[end - n].c);
+    let path = 0; for (let i = end - n + 1; i <= end; i++) path += Math.abs(b[i].c - b[i - 1].c);
+    return path === 0 ? 0 : change / path;
+  }
+
+  const dirSign = (d) => (d === 'BUY' ? 1 : -1);
+  const want = (d) => (d === 'BUY' ? 'UP' : 'DOWN');
+  const against = (d) => (d === 'BUY' ? 'DOWN' : 'UP');
+
+  // ---------- Engine ----------
+  class Engine {
+    constructor(cfg = {}, hooks = {}) {
+      this.cfg = Object.assign({}, DEFAULTS, cfg);
+      this.hooks = hooks; // onSignal(sig), onUpdate(sig, prevStatus), onReject(info)
+      this.sym = {};      // symbol state
+      this.signals = [];  // all signals (open + closed)
+      this.mode = 'live'; // 'live' (exact tick order) | 'backtest' (bar extremes, pessimistic)
+    }
+    setConfig(c) { Object.assign(this.cfg, c); }
+
+    addSymbol(symbol, meta = {}) {
+      if (this.sym[symbol]) return this.sym[symbol];
+      const st = {
+        symbol, name: meta.name || symbol, market: meta.market || 'synthetic', source: meta.source || 'deriv', dec: decimalsOf(meta.pip != null ? meta.pip : meta.decimals),
+        series: {}, block: null, price: null, lastT: 0, guard: { BUY: null, SELL: null }, ready: false,
+      };
+      for (const g of TF_LIST) st.series[g] = new Series(g, g === 60 ? 3000 : 2500);
+      this.sym[symbol] = st; return st;
+    }
+
+    // seed history for one timeframe. For g=60 also rebuilds the current opening range.
+    seed(symbol, g, candles, opts = {}) {
+      const st = this.sym[symbol]; if (!st || !candles || !candles.length) return;
+      if (opts.decimals != null) st.dec = decimalsOf(opts.decimals);
+      const s = st.series[g];
+      s.seed(candles, opts.forming !== false);
+      if (g === 60) {
+        for (const b of s.bars) this._orUpdate(st, b, true);
+        if (s.forming) { st.price = s.forming.c; st.lastT = s.forming.t; }
+      }
+    }
+    // after all timeframes seeded: mark breakouts that already happened in the current block
+    finishSeed(symbol) {
+      const st = this.sym[symbol]; if (!st) return;
+      const b = st.block, s2 = st.series[G.M2];
+      if (b && b.done) {
+        const buf = (b.hi - b.lo) * this.cfg.bufferFrac;
+        for (const x of s2.bars) {
+          if (x.t + G.M2 <= b.orEnd || x.t < b.start) continue;
+          if (x.c > b.hi + buf) b.brokeUp = b.retestUp = true;
+          if (x.c < b.lo - buf) b.brokeDn = b.retestDn = true;
+        }
+      }
+      st.ready = true;
+      // replay closed 1m history through open signals restored from storage
+      for (const sig of this.openSignals(symbol)) {
+        for (const x of st.series[60].bars) if (x.t >= (sig.lastT || sig.createdAt)) this._track(sig, st, x.h, x.l, x.t + 60, x.c, true);
+      }
+    }
+
+    restoreSignals(list) {
+      for (const s of list || []) if (!this.signals.find((x) => x.id === s.id)) this.signals.push(s);
+      this.signals.sort((a, b) => a.createdAt - b.createdAt);
+    }
+    openSignals(symbol) {
+      return this.signals.filter((s) => (!symbol || s.symbol === symbol) && ['PENDING', 'ACTIVE', 'TP1_HIT'].includes(s.status));
+    }
+
+    // Live: feed every 1m ohlc update (Deriv 'ohlc' message or candle). Backtest: feed each closed 1m bar.
+    onBar(symbol, raw) {
+      const st = this.sym[symbol]; if (!st) return;
+      const bar = raw.t != null ? raw : toBar(raw);
+      if (!isFinite(bar.c)) return;
+      const s1 = st.series[60];
+      const prevForming = s1.forming;
+      // 1) aggregate into every timeframe, collecting closures
+      const closed = {};
+      for (const g of TF_LIST) { const c = st.series[g].update(bar); if (c) closed[g] = c; }
+      if (closed[60]) this._orUpdate(st, closed[60], false);
+      st.price = bar.c; st.lastT = bar.t;
+      // 2) strategy on closed 2m bar
+      if (closed[G.M2] && st.ready) this._evaluate(st, closed[G.M2]);
+      // 3) track open signals with the newest data
+      const isNewMinute = !prevForming || bar.t > prevForming.t;
+      let hi = bar.c, lo = bar.c;
+      if (this.mode === 'backtest') { hi = bar.h; lo = bar.l; }
+      const now = this.mode === 'backtest' ? bar.t + 60 : Math.max(bar.t, Math.floor(Date.now() / 1000));
+      for (const sig of this.openSignals(symbol)) {
+        if (sig.createdAt > now) continue;
+        this._track(sig, st, hi, lo, now, bar.c, isNewMinute);
+      }
+    }
+
+    // ---------- opening range ----------
+    _orUpdate(st, b1, seeding) {
+      const cfg = this.cfg;
+      const start = Math.floor(b1.t / cfg.orBlock) * cfg.orBlock;
+      if (!st.block || st.block.start !== start) {
+        st.block = { start, end: start + cfg.orBlock, orEnd: start + cfg.orMinutes * 60, hi: null, lo: null, done: false,
+          brokeUp: false, brokeDn: false, retestUp: false, retestDn: false };
+        // new block resets the loss guard only if structure changed (handled in guard check)
+      }
+      const b = st.block;
+      if (b1.t < b.orEnd) {
+        b.hi = b.hi == null ? b1.h : Math.max(b.hi, b1.h);
+        b.lo = b.lo == null ? b1.l : Math.min(b.lo, b1.l);
+      }
+      if (b1.t + 60 >= b.orEnd && b.hi != null) b.done = true;
+    }
+
+    // ---------- setups ----------
+    _evaluate(st, bar2) {
+      const cfg = this.cfg, b = st.block;
+      const T = bar2.t + G.M2;
+      if (!b || !b.done || T <= b.orEnd || T > b.end) return;
+      if (T < cfg.signalsEnabledFrom) return;
+      const h = b.hi - b.lo; if (!(h > 0)) return;
+      const buf = h * cfg.bufferFrac, mid = (b.hi + b.lo) / 2;
+      const cands = [];
+      if (!b.brokeUp && bar2.c > b.hi + buf) { b.brokeUp = true; cands.push({ dir: 'BUY', setup: 'ORB Break' }); }
+      if (!b.brokeDn && bar2.c < b.lo - buf) { b.brokeDn = true; cands.push({ dir: 'SELL', setup: 'ORB Break' }); }
+      if (cfg.retest) {
+        if (b.brokeUp && !b.retestUp && !cands.length && bar2.l <= b.hi + 0.25 * h && bar2.l > mid && bar2.c > b.hi && bar2.c > bar2.o) {
+          b.retestUp = true; cands.push({ dir: 'BUY', setup: 'ORB Retest' });
+        }
+        if (b.brokeDn && !b.retestDn && !cands.length && bar2.h >= b.lo - 0.25 * h && bar2.h < mid && bar2.c < b.lo && bar2.c < bar2.o) {
+          b.retestDn = true; cands.push({ dir: 'SELL', setup: 'ORB Retest' });
+        }
+      }
+      for (const c of cands) this._consider(st, c, bar2, T, h, mid);
+    }
+
+    _consider(st, cand, bar2, T, h, mid) {
+      const cfg = this.cfg, b = st.block, dir = cand.dir, sgn = dirSign(dir);
+      const S = st.series;
+      const reject = (why) => { this.hooks.onReject && this.hooks.onReject({ symbol: st.symbol, dir, setup: cand.setup, t: T, why }); return null; };
+      if (this.openSignals(st.symbol).length) return reject('Trade already open on this pair');
+
+      const tH4 = trendOf(S[G.H4]), tH2 = trendOf(S[G.H2]), tH1 = trendOf(S[G.H1]), t15 = trendOf(S[G.M15]);
+      const atr15 = S[G.M15].atrv || h;
+      const er15 = efficiency(S[G.M15], 16);
+      const m1 = S[G.M1];
+      const mom1 = m1.n > 21 && (sgn > 0 ? last(m1.bars).c > m1.e(9) && m1.e(9) > m1.e(21) : last(m1.bars).c < m1.e(9) && m1.e(9) < m1.e(21));
+
+      // --- the 1H rule (strict or adaptive) ---
+      let kind = 'TREND';
+      if (tH1.dir === want(dir)) kind = 'TREND';
+      else if (cfg.trendMode === 'strict') return reject('Against / without 1H trend (strict mode)');
+      else {
+        // adaptive: counter-1H scalp only if 1H is weak, 15m strongly with us, 1m momentum, 4H not against
+        const h1Strong = tH1.dir === against(dir) && Math.abs(tH1.score) >= 3;
+        if (h1Strong) return reject('Strong 1H trend against — blocked');
+        if (t15.dir !== want(dir)) return reject('Counter-1H scalp needs 15m aligned');
+        if (!mom1) return reject('Counter-1H scalp needs 1m momentum');
+        if (tH4.dir === against(dir)) return reject('Counter-1H scalp with 4H against — blocked');
+        kind = 'SCALP';
+      }
+      // --- 15m must not be against (check 15m and 1H always) ---
+      const m15ok = t15.dir === want(dir) || (t15.dir === 'FLAT' && (sgn > 0 ? t15.above21 : !t15.above21));
+      if (!m15ok) return reject('15m not aligned');
+      // --- higher-TF veto: 2H and 4H both against ---
+      if (tH4.dir === against(dir) && tH2.dir === against(dir)) return reject('2H and 4H both against');
+      // --- chop filter ---
+      if (er15 < cfg.chopMin) return reject('15m is ranging (efficiency ' + er15.toFixed(2) + ')');
+      // --- loss guard: no same-direction re-entry after SL until a fresh opening range AND 15m swing confirms ---
+      const g = st.guard[dir];
+      if (cfg.lossGuard && g) {
+        const pv = pivots(S[G.M15], 60);
+        const fresh = sgn > 0 ? pv.lows.some((p) => p.t > g.t && p.p > g.level) : pv.highs.some((p) => p.t > g.t && p.p < g.level);
+        if (b.start <= g.block || !fresh) return reject('Loss guard: waiting for structure reset after SL');
+        st.guard[dir] = null;
+      }
+
+      // --- entry ---
+      const edge = sgn > 0 ? b.hi : b.lo;
+      const dist = Math.abs(bar2.c - edge);
+      let entryType = 'MARKET', entry = bar2.c;
+      if (cand.setup === 'ORB Break' && dist > 0.4 * h) {
+        if (cfg.entryMode === 'skip') return reject('Breakout candle over-extended from the range');
+        if (cfg.entryMode === 'auto') { entryType = 'LIMIT'; entry = edge + sgn * 0.15 * h; }
+      }
+      // --- stop: beyond range midpoint or the recent 2m swing, whichever protects better ---
+      const s2 = S[G.M2].bars.slice(-3);
+      const swing = sgn > 0 ? Math.min(...s2.map((x) => x.l)) : Math.max(...s2.map((x) => x.h));
+      let sl = sgn > 0 ? Math.min(mid, swing) : Math.max(mid, swing);
+      sl -= sgn * 0.05 * atr15;
+      let risk = Math.abs(entry - sl);
+      if (risk > cfg.maxRiskAtr * atr15) {
+        // try the tighter of the two references before giving up
+        const alt = (sgn > 0 ? Math.max(mid, swing) : Math.min(mid, swing)) - sgn * 0.05 * atr15;
+        if (Math.abs(entry - alt) <= cfg.maxRiskAtr * atr15 && sgn * (entry - alt) > 0) { sl = alt; risk = Math.abs(entry - sl); }
+        else return reject('Stop would be too wide (' + (risk / atr15).toFixed(1) + '× ATR)');
+      }
+      if (risk < cfg.minRiskAtr * atr15) { risk = cfg.minRiskAtr * atr15; sl = entry - sgn * risk; }
+
+      // --- room to the nearest 1H obstacle ---
+      const pvH1 = pivots(S[G.H1], 200);
+      const obs = sgn > 0 ? pvH1.highs.map((p) => p.p).filter((p) => p > entry) : pvH1.lows.map((p) => p.p).filter((p) => p < entry);
+      const nearest = obs.length ? (sgn > 0 ? Math.min(...obs) : Math.max(...obs)) : null;
+      const roomR = nearest == null ? 99 : Math.abs(nearest - entry) / risk;
+      if (roomR < cfg.minRoomR) return reject('No room: 1H level ' + roomR.toFixed(2) + 'R away');
+
+      // --- targets ---
+      let r1 = clamp(h / risk, cfg.r1Min, kind === 'SCALP' ? Math.min(cfg.r1Max, cfg.r1Min + 0.2) : cfg.r1Max);
+      let r2 = kind === 'SCALP' ? clamp(1.6 * h / risk, r1 + 0.3, Math.max(r1 + 0.3, cfg.r2Min)) : clamp((2 * h) / risk, Math.max(cfg.r2Min, r1 + 0.8), cfg.r2Max);
+      if (nearest != null && roomR < r1) r1 = Math.max(1.0, roomR * 0.95);
+      if (nearest != null && roomR < r2 && roomR > r1 + 0.3) r2 = roomR * 0.97;
+      const tp1 = entry + sgn * r1 * risk, tp2 = entry + sgn * r2 * risk;
+
+      // --- score (0..100) ---
+      const reasons = [];
+      let score = 0;
+      const add = (pts, ok, label, detail) => { score += pts; reasons.push({ ok, pts, label, detail }); };
+      if (kind === 'TREND') add(15 + Math.round(10 * tH1.strength), true, '1H trend ' + tH1.dir, tH1.parts.structure ? tH1.parts.structure + ', ' + (tH1.parts.stack || '') : tH1.parts.stack || '');
+      else add(6, true, '1H weak/flat — scalp only', '1H score ' + tH1.score);
+      add(tH4.dir === want(dir) ? 15 : tH4.dir === 'FLAT' ? 7 : 0, tH4.dir !== against(dir), '4H ' + tH4.dir, '');
+      add(tH2.dir === want(dir) ? 10 : tH2.dir === 'FLAT' ? 5 : 0, tH2.dir !== against(dir), '2H ' + tH2.dir, '');
+      add(t15.dir === want(dir) ? 15 : 8, true, '15m ' + (t15.dir === want(dir) ? 'aligned' : 'neutral, right side of EMA21'), '');
+      add(mom1 ? 10 : 0, mom1, '1m momentum', mom1 ? 'EMA9 > EMA21 in trade direction' : 'not confirmed');
+      const body = Math.abs(bar2.c - bar2.o), rng = bar2.h - bar2.l || 1e-9;
+      const closePos = sgn > 0 ? (bar2.c - bar2.l) / rng : (bar2.h - bar2.c) / rng;
+      add((body / rng >= 0.5 ? 5 : 0) + (closePos >= 0.7 ? 5 : 0), body / rng >= 0.5, '2m trigger candle', Math.round((body / rng) * 100) + '% body, closed ' + Math.round(closePos * 100) + '% toward ' + (sgn > 0 ? 'high' : 'low'));
+      const hq = h / atr15;
+      add(hq >= 0.6 && hq <= 2.5 ? 10 : hq >= 0.4 && hq <= 3.5 ? 5 : 0, hq >= 0.4 && hq <= 3.5, 'Range quality', (hq).toFixed(2) + '× 15m ATR');
+      add(roomR >= 2 ? 5 : 0, roomR >= 2, 'Room to 1H structure', roomR >= 99 ? 'open sky' : roomR.toFixed(1) + 'R');
+      reasons.push({ ok: true, pts: 0, label: '15m trend quality', detail: 'efficiency ' + er15.toFixed(2) });
+      score = Math.min(100, score);
+      const minS = kind === 'SCALP' ? cfg.minScalpScore : cfg.minScore;
+      if (score < minS) return reject('Score ' + score + ' below ' + minS);
+      const grade = score >= 85 ? 'A+' : score >= 74 ? 'A' : 'B';
+
+      const sig = {
+        id: uid(), symbol: st.symbol, name: st.name, market: st.market, source: st.source, dec: st.dec,
+        setup: cand.setup, kind, dir, tf: '2m', entryType, entry, sl, slLive: sl, tp1, tp2, risk, r1, r2,
+        score, grade, reasons,
+        bias: { H4: tH4.dir, H2: tH2.dir, H1: tH1.dir, M15: t15.dir, M1: mom1 ? want(dir) : 'FLAT' },
+        or: { hi: b.hi, lo: b.lo, start: b.start, end: b.end, orEnd: b.orEnd },
+        status: entryType === 'LIMIT' ? 'PENDING' : 'ACTIVE',
+        createdAt: T, filledAt: entryType === 'LIMIT' ? null : T, tp1At: null, closedAt: null, lastT: T,
+        result: null, mfeR: 0, maeR: 0, price: bar2.c, exit: null,
+      };
+      sig.text = this.narrative(sig, { atr15, er15, h, roomR, nearest });
+      this.signals.push(sig);
+      this.hooks.onSignal && this.hooks.onSignal(sig);
+      return sig;
+    }
+
+    // ---------- live trade capture ----------
+    _close(sig, st, status, exitPrice, t) {
+      const prev = sig.status, sgn = dirSign(sig.dir);
+      const rNow = (sgn * (exitPrice - sig.entry)) / sig.risk;
+      const p = this.cfg.partialAtTp1;
+      let R = 0;
+      if (status === 'SL_HIT') R = -1;
+      else if (status === 'TP2_HIT') R = p * sig.r1 + (1 - p) * sig.r2;
+      else if (status === 'BE_HIT') R = p * sig.r1;
+      else if (status === 'TIME_EXIT') R = sig.tp1At ? p * sig.r1 + (1 - p) * rNow : rNow;
+      else R = 0; // EXPIRED / CANCELLED never filled
+      sig.status = status; sig.closedAt = t; sig.exit = exitPrice; sig.result = Math.round(R * 100) / 100; sig.lastT = t;
+      if (status === 'SL_HIT') {
+        // arm the loss guard for this direction
+        st.guard[sig.dir] = { t, block: st.block ? st.block.start : 0, level: sig.dir === 'BUY' ? Math.min(sig.sl, sig.entry) : Math.max(sig.sl, sig.entry) };
+      }
+      this.hooks.onUpdate && this.hooks.onUpdate(sig, prev);
+    }
+
+    _track(sig, st, hi, lo, t, price, _newMin) {
+      const sgn = dirSign(sig.dir), cfg = this.cfg;
+      const fav = sgn > 0 ? hi : lo, adv = sgn > 0 ? lo : hi;
+      const prev = sig.status;
+      sig.price = price; sig.lastT = t;
+      if (sig.status === 'PENDING') {
+        if (t - sig.createdAt > cfg.pendingExpiryMin * 60) return this._close(sig, st, 'EXPIRED', price, t);
+        const filled = sgn > 0 ? adv <= sig.entry : adv >= sig.entry;
+        if (!filled) {
+          if (sgn > 0 ? fav >= sig.tp1 : fav <= sig.tp1) return this._close(sig, st, 'CANCELLED', price, t); // ran away without us
+          return;
+        }
+        sig.status = 'ACTIVE'; sig.filledAt = t;
+        this.hooks.onUpdate && this.hooks.onUpdate(sig, prev);
+      }
+      // excursions
+      sig.mfeR = Math.max(sig.mfeR, (sgn * (fav - sig.entry)) / sig.risk);
+      sig.maeR = Math.min(sig.maeR, (sgn * (adv - sig.entry)) / sig.risk);
+      if (sig.status === 'ACTIVE') {
+        const slHit = sgn > 0 ? adv <= sig.sl : adv >= sig.sl;
+        const tp1Hit = sgn > 0 ? fav >= sig.tp1 : fav <= sig.tp1;
+        if (slHit) return this._close(sig, st, 'SL_HIT', sig.sl, t); // pessimistic if both in one bar
+        if (tp1Hit) {
+          sig.status = 'TP1_HIT'; sig.tp1At = t; sig.slLive = sig.entry;
+          this.hooks.onUpdate && this.hooks.onUpdate(sig, 'ACTIVE');
+          if (sgn > 0 ? fav >= sig.tp2 : fav <= sig.tp2) return this._close(sig, st, 'TP2_HIT', sig.tp2, t);
+          if (this.mode === 'backtest') return; // BE can't be ordered inside the same bar; check next bar
+        }
+      }
+      if (sig.status === 'TP1_HIT') {
+        if (sgn > 0 ? fav >= sig.tp2 : fav <= sig.tp2) return this._close(sig, st, 'TP2_HIT', sig.tp2, t);
+        if (sgn > 0 ? adv <= sig.entry : adv >= sig.entry) return this._close(sig, st, 'BE_HIT', sig.entry, t);
+      }
+      if ((sig.status === 'ACTIVE' || sig.status === 'TP1_HIT') && sig.filledAt && t - sig.filledAt > cfg.maxHoldMin * 60) {
+        return this._close(sig, st, 'TIME_EXIT', price, t);
+      }
+    }
+
+    // ---------- reading ----------
+    snapshot(symbol) {
+      const st = this.sym[symbol]; if (!st) return null;
+      const S = st.series, b = st.block;
+      const tr = { H4: trendOf(S[G.H4]).dir, H2: trendOf(S[G.H2]).dir, H1: trendOf(S[G.H1]).dir, M15: trendOf(S[G.M15]).dir };
+      const er = efficiency(S[G.M15], 16);
+      let orState = 'forming';
+      if (b && b.done) orState = st.price > b.hi ? 'above' : st.price < b.lo ? 'below' : 'inside';
+      const open = this.openSignals(symbol)[0] || null;
+      let look = 'Waiting';
+      if (open) look = 'In trade';
+      else if (tr.H1 === 'FLAT' && this.cfg.trendMode === 'strict') look = 'No 1H trend';
+      else if (er < this.cfg.chopMin) look = 'Ranging — standing aside';
+      else if (tr.H1 === 'UP' && tr.M15 !== 'DOWN') look = b && b.brokeUp ? 'Bull break done — watching retest' : 'Watching for BUY break';
+      else if (tr.H1 === 'DOWN' && tr.M15 !== 'UP') look = b && b.brokeDn ? 'Bear break done — watching retest' : 'Watching for SELL break';
+      else look = 'Timeframes disagree';
+      return { symbol, name: st.name, market: st.market, dec: st.dec, price: st.price, t: st.lastT, trend: tr, er,
+        or: b ? { hi: b.hi, lo: b.lo, done: b.done, start: b.start, end: b.end, state: orState } : null,
+        open: open ? open.id : null, look, ready: st.ready };
+    }
+
+    narrative(sig, x) {
+      const d = sig.dec, side = sig.dir === 'BUY' ? 'above' : 'below', edge = sig.dir === 'BUY' ? sig.or.hi : sig.or.lo;
+      const lines = [];
+      lines.push(`${sig.dir} ${sig.name} — ${sig.setup}${sig.kind === 'SCALP' ? ' (counter-1H scalp)' : ''}, grade ${sig.grade} (${sig.score}/100).`);
+      if (sig.kind === 'TREND') lines.push(`The 1H trend is ${sig.bias.H1.toLowerCase()}, and the 4H reads ${sig.bias.H4.toLowerCase()} while the 2H reads ${sig.bias.H2.toLowerCase()}. The 15m is ${sig.bias.M15 === 'FLAT' ? 'neutral but on the right side of its EMA21' : 'aligned'}.`);
+      else lines.push(`The 1H trend is weak (${sig.bias.H1.toLowerCase()}), so this is taken as a short scalp. The 15m and 1m momentum are carrying it, and targets are kept tight.`);
+      lines.push(`Price closed ${side} the opening range ${sig.dir === 'BUY' ? 'high' : 'low'} at ${fmt(edge, d)} (range ${fmt(sig.or.lo, d)}–${fmt(sig.or.hi, d)}).`);
+      lines.push(sig.entryType === 'LIMIT'
+        ? `The candle ran too far from the edge, so the entry is a limit back at ${fmt(sig.entry, d)}. If it isn't filled within ${this.cfg.pendingExpiryMin} min, the setup is cancelled.`
+        : `The entry is at market, ${fmt(sig.entry, d)}.`);
+      lines.push(`The SL at ${fmt(sig.sl, d)} sits beyond the range midpoint and the recent 2m swing. Risk is ${(sig.risk / x.atr15).toFixed(2)}× the 15m ATR.`);
+      lines.push(`TP1 ${fmt(sig.tp1, d)} (${sig.r1.toFixed(2)}R) and TP2 ${fmt(sig.tp2, d)} (${sig.r2.toFixed(2)}R). ${x.nearest != null ? `The next 1H structure is ${x.roomR.toFixed(1)}R away at ${fmt(x.nearest, d)}.` : 'There is no 1H structure in the way.'}`);
+      lines.push(`Management: close ${Math.round(this.cfg.partialAtTp1 * 100)}% at TP1 and move the SL to entry, then let the rest run to TP2.`);
+      return lines.join(' ');
+    }
+  }
+
+  // ---------- stats ----------
+  function stats(list) {
+    const closed = list.filter((s) => s.result != null && !['EXPIRED', 'CANCELLED'].includes(s.status));
+    const wins = closed.filter((s) => s.tp1At || s.status === 'TP2_HIT' || s.status === 'BE_HIT' || (s.status === 'TIME_EXIT' && s.result > 0));
+    const sumR = closed.reduce((a, s) => a + s.result, 0);
+    const gross = closed.filter((s) => s.result > 0).reduce((a, s) => a + s.result, 0);
+    const loss = -closed.filter((s) => s.result < 0).reduce((a, s) => a + s.result, 0);
+    let eq = 0, peak = 0, dd = 0; const curve = [];
+    for (const s of [...closed].sort((a, b) => a.closedAt - b.closedAt)) { eq += s.result; peak = Math.max(peak, eq); dd = Math.max(dd, peak - eq); curve.push({ t: s.closedAt, v: Math.round(eq * 100) / 100 }); }
+    const count = (st) => closed.filter((s) => s.status === st).length;
+    const group = (key) => {
+      const o = {};
+      for (const s of closed) { const k = key(s); o[k] = o[k] || { n: 0, w: 0, R: 0 }; o[k].n++; o[k].R += s.result; if (s.tp1At || s.result > 0) o[k].w++; }
+      for (const k in o) o[k].R = Math.round(o[k].R * 100) / 100;
+      return o;
+    };
+    return {
+      total: list.length, closed: closed.length, open: list.filter((s) => ['PENDING', 'ACTIVE', 'TP1_HIT'].includes(s.status)).length,
+      expired: list.filter((s) => s.status === 'EXPIRED' || s.status === 'CANCELLED').length,
+      wins: wins.length, winRate: closed.length ? wins.length / closed.length : 0,
+      sl: count('SL_HIT'), tp2: count('TP2_HIT'), be: count('BE_HIT'), timeExit: count('TIME_EXIT'),
+      totalR: Math.round(sumR * 100) / 100, avgR: closed.length ? sumR / closed.length : 0,
+      profitFactor: loss ? gross / loss : gross ? Infinity : 0, maxDD: Math.round(dd * 100) / 100, curve,
+      byGrade: group((s) => s.grade), bySymbol: group((s) => s.name), byKind: group((s) => s.kind), bySetup: group((s) => s.setup),
+    };
+  }
+
+  // ---------- Deriv public feed (browser + Node 22) ----------
+  class DerivFeed {
+    constructor(opts = {}) {
+      this.url = opts.url || 'wss://api.derivws.com/trading/v1/options/ws/public';
+      this.onStatus = opts.onStatus || (() => {});
+      this.WS = opts.WebSocket || (typeof WebSocket !== 'undefined' ? WebSocket : null);
+      this.req = 1; this.pending = {}; this.subs = {}; this.ws = null; this.alive = false; this.queue = [];
+    }
+    connect() {
+      return new Promise((resolve, reject) => {
+        if (!this.WS) return reject(new Error('No WebSocket available'));
+        this.onStatus('connecting');
+        const ws = new this.WS(this.url); this.ws = ws;
+        let opened = false;
+        ws.onopen = () => {
+          opened = true; this.alive = true; this.onStatus('live');
+          this.ping = setInterval(() => this._send({ ping: 1 }), 25000);
+          const q = this.queue; this.queue = []; q.forEach((m) => this._send(m));
+          // re-subscribe after reconnect
+          for (const key in this.subs) { const s = this.subs[key]; this._subscribe(s); }
+          resolve();
+        };
+        ws.onmessage = (e) => this._onMessage(e.data);
+        ws.onerror = () => { if (!opened) reject(new Error('WebSocket error')); };
+        ws.onclose = () => {
+          this.alive = false; clearInterval(this.ping); this.onStatus('reconnecting');
+          for (const id in this.pending) { this.pending[id].reject(new Error('closed')); delete this.pending[id]; }
+          setTimeout(() => this.connect().catch(() => {}), 3000);
+        };
+      });
+    }
+    _send(m) { if (this.ws && this.alive && this.ws.readyState === 1) this.ws.send(JSON.stringify(m)); else this.queue.push(m); }
+    _onMessage(raw) {
+      let d; try { d = JSON.parse(raw); } catch (e) { return; }
+      if (d.msg_type === 'ohlc' && d.ohlc) {
+        const key = d.ohlc.symbol + ':' + d.ohlc.granularity; const s = this.subs[key];
+        if (s) s.cb(d.ohlc);
+        return;
+      }
+      const id = d.req_id; if (id && this.pending[id]) {
+        const p = this.pending[id]; delete this.pending[id];
+        if (d.error) p.reject(Object.assign(new Error(d.error.message || d.error.code), { code: d.error.code })); else p.resolve(d);
+      }
+    }
+    call(m, timeout = 20000) {
+      return new Promise((resolve, reject) => {
+        const id = this.req++; m.req_id = id; this.pending[id] = { resolve, reject };
+        setTimeout(() => { if (this.pending[id]) { delete this.pending[id]; reject(new Error('timeout')); } }, timeout);
+        this._send(m);
+      });
+    }
+    activeSymbols() { return this.call({ active_symbols: 'brief' }).then((d) => d.active_symbols); }
+    candles(symbol, g, count = 2000, end = 'latest') {
+      return this.call({ ticks_history: symbol, style: 'candles', granularity: g, count, end, adjust_start_time: 1 }).then((d) => ({ candles: d.candles || [], pip: d.pip_size }));
+    }
+    async candlesBack(symbol, g, total) {
+      let out = [], end = 'latest', pip;
+      while (out.length < total) {
+        const r = await this.candles(symbol, g, Math.min(2000, total - out.length), end);
+        pip = r.pip; if (!r.candles.length) break;
+        out = r.candles.concat(out);
+        const first = r.candles[0].epoch; end = String(first - 1);
+        if (r.candles.length < 2) break;
+      }
+      // de-dup
+      const seen = new Set(); out = out.filter((c) => (seen.has(c.epoch) ? false : seen.add(c.epoch)));
+      return { candles: out, pip };
+    }
+    subscribeCandles(symbol, g, cb, count = 2000) {
+      const s = { symbol, g, cb, count, first: null };
+      this.subs[symbol + ':' + g] = s;
+      return this._subscribe(s);
+    }
+    _subscribe(s) {
+      return this.call({ ticks_history: s.symbol, style: 'candles', granularity: s.g, count: s.count, end: 'latest', subscribe: 1, adjust_start_time: 1 })
+        .then((d) => { s.first = d; return d; });
+    }
+  }
+
+  function aggCandles(c, g) {
+    const out = []; let cur = null;
+    for (const x of c) {
+      const t = Math.floor(x.epoch / g) * g;
+      if (!cur || cur.epoch !== t) { if (cur) out.push(cur); cur = { epoch: t, open: x.open, high: x.high, low: x.low, close: x.close }; }
+      else { cur.high = Math.max(cur.high, x.high); cur.low = Math.min(cur.low, x.low); cur.close = x.close; }
+    }
+    if (cur) out.push(cur); return out;
+  }
+
+  // ---------- MT5 bridge feed (Weltrade or any MT5 broker) ----------
+  // Your own MT5 terminal runs the TradesWithMoxieBridge EA, which POSTs closed + forming bars to the server.
+  // This feed serves those bars to the engine exactly like the Deriv feed does.
+  class BridgeFeed {
+    constructor() { this.data = {}; this.subs = {}; this.waiters = []; }
+    // payload: { symbol, digits, m1:[[t,o,h,l,c],...], m15:[...], h1:[...] } (any subset)
+    ingest(p) {
+      const sym = p.symbol; if (!sym) return 0;
+      const d = this.data[sym] || (this.data[sym] = { 60: new Map(), 900: new Map(), 3600: new Map(), digits: p.digits });
+      if (p.digits != null) d.digits = p.digits;
+      let n = 0;
+      for (const [k, g] of [['m1', 60], ['m15', 900], ['h1', 3600]]) {
+        for (const r of p[k] || []) { if (!Array.isArray(r) || r.length < 5) continue; d[g].set(+r[0], { epoch: +r[0], open: +r[1], high: +r[2], low: +r[3], close: +r[4] }); n++; }
+        if (d[g].size > 6000) { const keys = [...d[g].keys()].sort((a, b) => a - b); for (const k2 of keys.slice(0, d[g].size - 5000)) d[g].delete(k2); }
+      }
+      d.updated = Date.now();
+      const s = this.subs[sym];
+      if (s && p.m1 && p.m1.length) {
+        const last = [...p.m1].sort((a, b) => a[0] - b[0]).slice(-2);
+        for (const r of last) s.cb({ symbol: sym, granularity: 60, open_time: +r[0], epoch: +r[0], open: +r[1], high: +r[2], low: +r[3], close: +r[4] });
+      }
+      this.waiters = this.waiters.filter((w) => !w());
+      return n;
+    }
+    _series(sym, g) { const d = this.data[sym]; return d ? [...d[g].values()].sort((a, b) => a.epoch - b.epoch) : []; }
+    _ready(sym) { const d = this.data[sym]; return d && d[60].size >= 300 && d[900].size >= 100 && d[3600].size >= 100; }
+    _wait(sym, ms = 600000) {
+      if (this._ready(sym)) return Promise.resolve();
+      return new Promise((res, rej) => { const t = setTimeout(() => rej(new Error('no MT5 bridge data yet for ' + sym)), ms); this.waiters.push(() => { if (this._ready(sym)) { clearTimeout(t); res(); return true; } return false; }); });
+    }
+    async connect() {}
+    async candles(sym, g, count = 2000, end = 'latest') {
+      await this._wait(sym);
+      const base = g === 120 ? 60 : g === 7200 || g === 14400 ? 3600 : g;
+      let c = this._series(sym, base);
+      if (end !== 'latest') c = c.filter((x) => x.epoch <= +end);
+      if (base !== g) c = aggCandles(c, g);
+      return { candles: c.slice(-count), pip: (this.data[sym] || {}).digits };
+    }
+    async candlesBack(sym, g, total) { return this.candles(sym, g, total); }
+    async subscribeCandles(sym, g, cb, count = 2000) {
+      await this._wait(sym); this.subs[sym] = { cb };
+      return { candles: this._series(sym, 60).slice(-count), pip_size: (this.data[sym] || {}).digits, subscription: { id: 'mt5:' + sym } };
+    }
+    status() { const o = {}; for (const k in this.data) o[k] = { m1: this.data[k][60].size, m15: this.data[k][900].size, h1: this.data[k][3600].size, updated: this.data[k].updated }; return o; }
+  }
+
+  // ---------- Live runner: wires feed(s) -> engine for a list of symbols ----------
+  // `feed` can be a single feed or a map { deriv: DerivFeed, weltrade: WeltradeFeed } keyed by symbol meta.source
+  async function startLive(engine, feedOrMap, symbols, opts = {}) {
+    const pick = (meta) => (feedOrMap.candles ? feedOrMap : feedOrMap[meta.source || 'deriv']);
+    const log = opts.log || (() => {});
+    const htf = [G.M2, G.M15, G.H1, G.H2, G.H4];
+    const counts = { 120: 1500, 900: 1500, 3600: 2000, 7200: 1200, 14400: 1000 };
+    const runOne = async (meta) => {
+      const sym = meta.symbol; engine.addSymbol(sym, meta);
+      const feed = pick(meta); if (!feed) { log('no feed for ' + sym); return; }
+      try {
+        for (const g of htf) {
+          const r = await feed.candles(sym, g, counts[g]);
+          engine.seed(sym, g, r.candles, { decimals: r.pip });
+        }
+        let seeded = false;
+        const first = await feed.subscribeCandles(sym, G.M1, (o) => {
+          if (!seeded) return; engine.onBar(sym, o); opts.onTick && opts.onTick(sym);
+        }, 2000);
+        engine.seed(sym, G.M1, first.candles || [], { decimals: first.pip_size });
+        engine.finishSeed(sym); seeded = true;
+        log('ready ' + sym);
+        opts.onReady && opts.onReady(sym);
+      } catch (e) {
+        log('failed ' + sym + ': ' + e.message + ' (retrying in 60s)'); opts.onError && opts.onError(sym, e);
+        setTimeout(() => runOne(meta), 60000); // feeds hiccup (rate limits, closed markets): keep trying
+      }
+    };
+    // limited concurrency so we don't hammer the API
+    const list = symbols.slice(); const workers = [];
+    for (let i = 0; i < (opts.concurrency || 3); i++) workers.push((async () => { while (list.length) await runOne(list.shift()); })());
+    await Promise.all(workers);
+  }
+
+  // ---------- Backtest: replays real 1m history through the identical engine ----------
+  async function backtest(feed, meta, days, cfg = {}, progress = () => {}) {
+    const sym = meta.symbol;
+    progress(sym, 'downloading 1m history');
+    const m1 = await feed.candlesBack(sym, 60, Math.min(days * 1440 + 360, 14000));
+    if (!m1.candles.length) throw new Error('no data for ' + sym);
+    const bars = m1.candles.map(toBar);
+    const startFeed = Math.ceil(bars[0].t / G.H4) * G.H4;
+    const eng = new Engine(Object.assign({}, cfg, { signalsEnabledFrom: startFeed + 3 * 3600 }));
+    eng.mode = 'backtest';
+    eng.addSymbol(sym, Object.assign({}, meta, { decimals: m1.pip }));
+    const st = eng.sym[sym];
+    for (const g of [G.M15, G.H1, G.H2, G.H4]) {
+      progress(sym, 'downloading ' + TF_NAME[g]);
+      const end = String(startFeed - 1);
+      const r = await feed.candles(sym, g, 1500, end);
+      const closed = r.candles.filter((c) => c.epoch + g <= startFeed);
+      st.series[g].seed(closed, false);
+    }
+    st.ready = true;
+    progress(sym, 'replaying ' + bars.length + ' bars');
+    for (const b of bars) { if (b.t < startFeed) continue; eng.onBar(sym, b); }
+    // close anything still open at the end at last price (time exit) for honest accounting
+    const lastBar = last(bars);
+    for (const s of eng.openSignals(sym)) eng._close(s, st, s.status === 'PENDING' ? 'EXPIRED' : 'TIME_EXIT', lastBar.c, lastBar.t + 60);
+    return { signals: eng.signals, from: startFeed, to: lastBar.t, bars: bars.length };
+  }
+
+  const D = (symbol, name, market = 'synthetic') => ({ symbol, name, market, source: 'deriv' });
+  // Weltrade SyntX pairs arrive through your MT5 terminal (source 'mt5'), the same bridge model Aurum uses.
+  const W = (symbol) => ({ symbol, name: symbol.replace(/-/g, ' '), market: 'synthetic', source: 'mt5', broker: 'Weltrade' });
+  const DEFAULT_SYMBOLS = [
+    // Weltrade SyntX focus list
+    W('FlipX-1'), W('FlipX-2'), W('FlipX-3'), W('FlipX-4'), W('FlipX-5'), W('FiboX'), W('QuadX'), W('PlusX-1'),
+    W('FX-Vol-20'), W('FX-Vol-40'), W('FX-Vol-60'), W('FX-Vol-99'), W('SFX-Vol-20'), W('SFX-Vol-40'),
+    W('GainX-400'), W('GainX-600'), W('PainX-400'), W('PainX-600'),
+    // Deriv
+    D('stpRNG', 'Step Index 100'), D('R_25', 'Volatility 25'), D('R_50', 'Volatility 50'), D('R_75', 'Volatility 75'), D('R_100', 'Volatility 100'),
+    D('1HZ25V', 'Volatility 25 (1s)'), D('1HZ75V', 'Volatility 75 (1s)'), D('BOOM1000', 'Boom 1000'), D('CRASH1000', 'Crash 1000'),
+    D('frxXAUUSD', 'Gold (XAUUSD)', 'forex'), D('cryBTCUSD', 'BTCUSD', 'crypto'),
+  ];
+
+  return { Engine, Series, DerivFeed, BridgeFeed, aggCandles, startLive, backtest, stats, trendOf, efficiency, pivots, fmt, toBar, decimalsOf, G, TF_NAME, DEFAULTS, DEFAULT_SYMBOLS, version: '1.0.0' };
+});
