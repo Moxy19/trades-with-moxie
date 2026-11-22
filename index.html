@@ -72,6 +72,7 @@ input:focus,select:focus{border-color:var(--violet)}
 .card .meta{font-family:var(--mono);font-size:10.5px;color:var(--muted);letter-spacing:.6px}
 .chip{font-family:var(--mono);font-size:10px;letter-spacing:.8px;padding:3px 7px;border-radius:6px;border:1px solid var(--line2);color:var(--muted);text-transform:uppercase;white-space:nowrap}
 .chip.scalp{color:var(--warn);border-color:rgba(245,158,11,.4)}
+.card .hd .chip{flex-shrink:0}
 .chip.trend{color:var(--blue);border-color:rgba(96,165,250,.35)}
 .grade{margin-left:auto;font-weight:700;font-size:12px;padding:3px 9px;border-radius:8px;color:#16110a;background:var(--gold)}
 .grade.B{background:#c9ced9}.grade.A{background:#f5c96a}
@@ -299,6 +300,9 @@ label.f input,label.f select{width:100%}
     triggerTf: 120,         // candle that must close beyond the range: 120 = 2m, 300 = 5m
     m5Filter: 'momentum',   // 5m gate (default momentum: best in real-data tests, both halves): 'off' | 'aligned' (5m trend with trade) | 'notAgainst' | 'side' (5m close on right side of EMA21) | 'momentum' (last 5m candle with trade)
     m5Score: true,          // add +5 score when the 5m trend agrees
+    // Per-market profiles from real-data backtests (22 Nov 2026). Keys: a symbol, or a source ('mt5' = Weltrade via MT5 bridge).
+    overrides: { mt5: { m5Filter: 'off', m5Score: false } },     // 5m gate hurt Weltrade SyntX (34% vs 43% win)
+    unproven: ['mt5', 'stpRNG'],  // no backtested edge yet: Weltrade SyntX (7d: 43% win, -7.8R) and Step Index 100 (30d: 12 trades, 17% win)
     entryMode: 'auto',      // 'auto' = limit back at the edge when the trigger candle over-extends; 'market' = always market; 'skip' = skip over-extended breaks
     r1Min: 1.0, r1Max: 1.5, // TP1 bounds in R (measured move = range height; tuned: losers often reached 0.5-0.9R first)
     r2Min: 1.8, r2Max: 3,   // TP2 bounds in R (2x range height)
@@ -551,8 +555,12 @@ label.f input,label.f select{width:100%}
       for (const c of cands) this._consider(st, c, bar2, T, h, mid);
     }
 
+    _cfgFor(st) {
+      const o = this.cfg.overrides || {};
+      return Object.assign({}, this.cfg, o[st.source] || {}, o[st.symbol] || {});
+    }
     _consider(st, cand, bar2, T, h, mid) {
-      const cfg = this.cfg, b = st.block, dir = cand.dir, sgn = dirSign(dir);
+      const cfg = this._cfgFor(st), b = st.block, dir = cand.dir, sgn = dirSign(dir);
       const S = st.series;
       const reject = (why) => { this.hooks.onReject && this.hooks.onReject({ symbol: st.symbol, dir, setup: cand.setup, t: T, why }); return null; };
       if (this.openSignals(st.symbol).length) return reject('Trade already open on this pair');
@@ -662,7 +670,7 @@ label.f input,label.f select{width:100%}
       const sig = {
         id: uid(), symbol: st.symbol, name: st.name, market: st.market, source: st.source, dec: st.dec,
         setup: cand.setup, kind, dir, tf: TF_NAME[cfg.triggerTf === G.M5 ? G.M5 : G.M2], entryType, entry, sl, slLive: sl, tp1, tp2, risk, r1, r2,
-        score, grade, reasons,
+        score, grade, reasons, unproven: (cfg.unproven || []).includes(st.symbol) || (cfg.unproven || []).includes(st.source),
         bias: { H4: tH4.dir, H2: tH2.dir, H1: tH1.dir, M15: t15.dir, M5: t5.dir, M1: mom1 ? want(dir) : 'FLAT' },
         or: { hi: b.hi, lo: b.lo, start: b.start, end: b.end, orEnd: b.orEnd },
         status: entryType === 'LIMIT' ? 'PENDING' : 'ACTIVE',
@@ -765,6 +773,7 @@ label.f input,label.f select{width:100%}
         : `The entry is at market, ${fmt(sig.entry, d)}.`);
       lines.push(`The SL at ${fmt(sig.sl, d)} sits beyond the range midpoint and the recent 2m swing. Risk is ${(sig.risk / x.atr15).toFixed(2)}× the 15m ATR.`);
       lines.push(`TP1 ${fmt(sig.tp1, d)} (${sig.r1.toFixed(2)}R) and TP2 ${fmt(sig.tp2, d)} (${sig.r2.toFixed(2)}R). ${x.nearest != null ? `The next 1H structure is ${x.roomR.toFixed(1)}R away at ${fmt(x.nearest, d)}.` : 'There is no 1H structure in the way.'}`);
+      if (sig.unproven) lines.push('Caution: this market has no proven edge in backtests yet. Watch it, or trade the smallest size only.');
       lines.push(`Management: close ${Math.round(this.cfg.partialAtTp1 * 100)}% at TP1 and move the SL to entry, then let the rest run to TP2.`);
       return lines.join(' ');
     }
@@ -1009,7 +1018,7 @@ label.f input,label.f select{width:100%}
     D('frxXAUUSD', 'Gold (XAUUSD)', 'forex'), D('cryBTCUSD', 'BTCUSD', 'crypto'),
   ];
 
-  return { Engine, Series, DerivFeed, BridgeFeed, aggCandles, startLive, backtest, stats, trendOf, efficiency, pivots, fmt, toBar, decimalsOf, G, TF_NAME, DEFAULTS, DEFAULT_SYMBOLS, version: '1.1.0' };
+  return { Engine, Series, DerivFeed, BridgeFeed, aggCandles, startLive, backtest, stats, trendOf, efficiency, pivots, fmt, toBar, decimalsOf, G, TF_NAME, DEFAULTS, DEFAULT_SYMBOLS, version: '1.2.0' };
 });
 
 </script>
@@ -1183,7 +1192,7 @@ function cardHTML(s) {
   return `<article class="card ${buy ? 'buy' : 'sell'}" data-id="${s.id}">
     <div class="hd"><button class="btn sm" data-act="star" title="Watchlist" style="padding:2px 7px">${watched ? '★' : '☆'}</button>
       <div><div class="sym">${esc(s.name)}</div><div class="meta">${esc(s.symbol)} · ${s.tf} · ${esc(s.setup)}</div></div>
-      <span class="chip ${s.kind === 'SCALP' ? 'scalp' : 'trend'}">${s.kind}</span>
+      <span class="chip ${s.kind === 'SCALP' ? 'scalp' : 'trend'}">${s.kind}</span>${s.unproven ? '<span class="chip scalp" title="No proven edge in backtests yet: watch or trade minimum size">UNPROVEN</span>' : ''}
       <span class="grade ${s.grade.replace('+', '')}">${s.grade}</span></div>
     <div class="dir"><b>${buy ? '↗ BUY' : '↘ SELL'}</b><span class="status st-${s.status}">${STATUS_TXT[s.status] || s.status}</span>
       <div class="live">${open && s.price != null ? `<div class="p">${fmt(s.price, d)}</div><div class="r ${r >= 0 ? 'pos' : 'neg'}">${r == null ? 'awaiting fill' : (r >= 0 ? '+' : '') + r.toFixed(2) + 'R'}</div>` :
@@ -1283,7 +1292,7 @@ function renderScanner() {
      <td class="n">${fmt(x.price, x.dec)}</td><td>${biasCell(x.trend.H4)}</td><td>${biasCell(x.trend.H2)}</td><td>${biasCell(x.trend.H1)}</td><td>${biasCell(x.trend.M15)}</td><td>${biasCell(x.trend.M5 || 'FLAT')}</td>
      <td class="n" style="color:${x.er < S.cfg.chopMin ? 'var(--warn)' : 'var(--text)'}">${(x.er * 100).toFixed(0)}%</td>
      <td style="font-family:var(--mono);font-size:12px">${x.or && x.or.hi != null ? `${fmt(x.or.lo, x.dec)} – ${fmt(x.or.hi, x.dec)} <span class="b ${x.or.state === 'above' ? 'UP' : x.or.state === 'below' ? 'DOWN' : ''}">${x.or.state}</span>` : '—'}</td>
-     <td style="font-size:12.5px;color:${x.open ? 'var(--gold)' : 'var(--muted)'}">${esc(x.look)}</td></tr>`).join('') +
+     <td style="font-size:12.5px;color:${x.open ? 'var(--gold)' : 'var(--muted)'}">${esc(x.look)}${(M.DEFAULTS.unproven || []).includes(x.symbol) ? ' <span class="chip scalp">unproven</span>' : ''}</td></tr>`).join('') +
     (mt5n ? `<tr><td colspan="10" style="color:var(--dim);font-size:12.5px">+ ${mt5n} Weltrade SyntX pairs (FlipX, FiboX, QuadX, FX Vol…) are scanned by the Moxie server through your MT5 bridge. Connect a server in Settings to see them here.</td></tr>` : '');
 }
 $('#scanBody').addEventListener('click', (e) => { const tr = e.target.closest('tr[data-sym]'); if (tr) { show('chart'); openChart(tr.dataset.sym); } });

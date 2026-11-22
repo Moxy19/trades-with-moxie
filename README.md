@@ -40,6 +40,17 @@ Data: 13 Deriv markets (about 7 days) plus Weltrade FlipX-1, FlipX-2 and FlipX-4
 | Trades with Moxie, adaptive 1H rule | 187 | 54.5% | +29.0R | 1.34 |
 | **Trades with Moxie v1.1 with 5m confirmation (default)**, 13 Deriv markets, 7 days to 22 Nov 18:00 | **136** | **60.3%** | **+32.6R** | **1.60** |
 
+**Per market (backtests to 22 Nov 2026):**
+
+| Market | Data | v1.0 (2m only) | v1.1 (with 5m) | Verdict |
+|---|---|---|---|---|
+| 12 Deriv markets | 7 days | 56.1% win, +17.5R | **60.0% win, +23.7R, PF 1.54** | Proven edge, so v1.1 applies |
+| 14 Weltrade SyntX pairs (FlipX 1–5, FiboX, QuadX, PlusX, FX/SFX Vol, GainX, PainX) | 6.8 days | 43.2% win, −7.8R | 33.9% win, −27.9R | **No edge.** Runs on v1.0 rules, flagged UNPROVEN |
+| Step Index 100 | 30 days | 12 trades, 17% win, −7.1R | 11 trades, 18% win, −6.1R | **No edge.** Flagged UNPROVEN |
+| Step Index 200 | 30 days | 34% win, −7.3R | 46% win, +4.1R, positive in both halves | Small edge |
+
+None of 12 variants tried on Weltrade held up across both halves of the week. FlipX-style pairs reverse direction by design, so breakouts there fail more often than they follow through.
+
 **5m confirmation (v1.1):** a breakout only fires if the last closed 5m candle moves with the trade and sits beyond the 5m EMA9, and a 5m trend that agrees adds to the score. Same data, same week, against the 2m-only engine (56.7% win, +25.3R, PF 1.41): the win rate rose in both halves (50%→55% and 62%→65%). Other 5m designs tested worse: a strict 5m-trend filter gave 53.5% and +7.1R, and a 5m breakout trigger gave 48.8% and +11.5R.
 
 - The final engine was positive in **both halves** of the period (it was tuned on the whole period, so this check is partial).

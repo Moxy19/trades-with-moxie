@@ -38,6 +38,9 @@
     triggerTf: 120,         // candle that must close beyond the range: 120 = 2m, 300 = 5m
     m5Filter: 'momentum',   // 5m gate (default momentum: best in real-data tests, both halves): 'off' | 'aligned' (5m trend with trade) | 'notAgainst' | 'side' (5m close on right side of EMA21) | 'momentum' (last 5m candle with trade)
     m5Score: true,          // add +5 score when the 5m trend agrees
+    // Per-market profiles from real-data backtests (22 Nov 2026). Keys: a symbol, or a source ('mt5' = Weltrade via MT5 bridge).
+    overrides: { mt5: { m5Filter: 'off', m5Score: false } },     // 5m gate hurt Weltrade SyntX (34% vs 43% win)
+    unproven: ['mt5', 'stpRNG'],  // no backtested edge yet: Weltrade SyntX (7d: 43% win, -7.8R) and Step Index 100 (30d: 12 trades, 17% win)
     entryMode: 'auto',      // 'auto' = limit back at the edge when the trigger candle over-extends; 'market' = always market; 'skip' = skip over-extended breaks
     r1Min: 1.0, r1Max: 1.5, // TP1 bounds in R (measured move = range height; tuned: losers often reached 0.5-0.9R first)
     r2Min: 1.8, r2Max: 3,   // TP2 bounds in R (2x range height)
@@ -290,8 +293,12 @@
       for (const c of cands) this._consider(st, c, bar2, T, h, mid);
     }
 
+    _cfgFor(st) {
+      const o = this.cfg.overrides || {};
+      return Object.assign({}, this.cfg, o[st.source] || {}, o[st.symbol] || {});
+    }
     _consider(st, cand, bar2, T, h, mid) {
-      const cfg = this.cfg, b = st.block, dir = cand.dir, sgn = dirSign(dir);
+      const cfg = this._cfgFor(st), b = st.block, dir = cand.dir, sgn = dirSign(dir);
       const S = st.series;
       const reject = (why) => { this.hooks.onReject && this.hooks.onReject({ symbol: st.symbol, dir, setup: cand.setup, t: T, why }); return null; };
       if (this.openSignals(st.symbol).length) return reject('Trade already open on this pair');
@@ -401,7 +408,7 @@
       const sig = {
         id: uid(), symbol: st.symbol, name: st.name, market: st.market, source: st.source, dec: st.dec,
         setup: cand.setup, kind, dir, tf: TF_NAME[cfg.triggerTf === G.M5 ? G.M5 : G.M2], entryType, entry, sl, slLive: sl, tp1, tp2, risk, r1, r2,
-        score, grade, reasons,
+        score, grade, reasons, unproven: (cfg.unproven || []).includes(st.symbol) || (cfg.unproven || []).includes(st.source),
         bias: { H4: tH4.dir, H2: tH2.dir, H1: tH1.dir, M15: t15.dir, M5: t5.dir, M1: mom1 ? want(dir) : 'FLAT' },
         or: { hi: b.hi, lo: b.lo, start: b.start, end: b.end, orEnd: b.orEnd },
         status: entryType === 'LIMIT' ? 'PENDING' : 'ACTIVE',
@@ -504,6 +511,7 @@
         : `The entry is at market, ${fmt(sig.entry, d)}.`);
       lines.push(`The SL at ${fmt(sig.sl, d)} sits beyond the range midpoint and the recent 2m swing. Risk is ${(sig.risk / x.atr15).toFixed(2)}× the 15m ATR.`);
       lines.push(`TP1 ${fmt(sig.tp1, d)} (${sig.r1.toFixed(2)}R) and TP2 ${fmt(sig.tp2, d)} (${sig.r2.toFixed(2)}R). ${x.nearest != null ? `The next 1H structure is ${x.roomR.toFixed(1)}R away at ${fmt(x.nearest, d)}.` : 'There is no 1H structure in the way.'}`);
+      if (sig.unproven) lines.push('Caution: this market has no proven edge in backtests yet. Watch it, or trade the smallest size only.');
       lines.push(`Management: close ${Math.round(this.cfg.partialAtTp1 * 100)}% at TP1 and move the SL to entry, then let the rest run to TP2.`);
       return lines.join(' ');
     }
@@ -748,5 +756,5 @@
     D('frxXAUUSD', 'Gold (XAUUSD)', 'forex'), D('cryBTCUSD', 'BTCUSD', 'crypto'),
   ];
 
-  return { Engine, Series, DerivFeed, BridgeFeed, aggCandles, startLive, backtest, stats, trendOf, efficiency, pivots, fmt, toBar, decimalsOf, G, TF_NAME, DEFAULTS, DEFAULT_SYMBOLS, version: '1.1.0' };
+  return { Engine, Series, DerivFeed, BridgeFeed, aggCandles, startLive, backtest, stats, trendOf, efficiency, pivots, fmt, toBar, decimalsOf, G, TF_NAME, DEFAULTS, DEFAULT_SYMBOLS, version: '1.2.0' };
 });
