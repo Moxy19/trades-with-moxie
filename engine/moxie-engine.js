@@ -555,7 +555,7 @@
           this.ping = setInterval(() => this._send({ ping: 1 }), 25000);
           const q = this.queue; this.queue = []; q.forEach((m) => this._send(m));
           // re-subscribe after reconnect
-          for (const key in this.subs) { const s = this.subs[key]; this._subscribe(s); }
+          for (const key in this.subs) { const s = this.subs[key]; this._subscribe(s).catch(() => {}); }
           resolve();
         };
         ws.onmessage = (e) => this._onMessage(e.data);

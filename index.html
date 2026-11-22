@@ -816,7 +816,7 @@ label.f input,label.f select{width:100%}
           this.ping = setInterval(() => this._send({ ping: 1 }), 25000);
           const q = this.queue; this.queue = []; q.forEach((m) => this._send(m));
           // re-subscribe after reconnect
-          for (const key in this.subs) { const s = this.subs[key]; this._subscribe(s); }
+          for (const key in this.subs) { const s = this.subs[key]; this._subscribe(s).catch(() => {}); }
           resolve();
         };
         ws.onmessage = (e) => this._onMessage(e.data);
@@ -1097,7 +1097,7 @@ async function bootLocal() {
   let rT = 0;
   M.startLive(engine, feed, S.symbols.filter((x) => x.source !== 'mt5'), {
     concurrency: 3,
-    onReady: (sym) => { S.snaps[sym] = engine.snapshot(sym); renderScanner(); renderStrip(); },
+    onReady: (sym) => { if (S.feedErr) delete S.feedErr[sym]; S.snaps[sym] = engine.snapshot(sym); renderScanner(); renderStrip(); },
     onTick: (sym) => { S.lastTick = Date.now(); if (!rT) rT = setTimeout(() => { rT = 0; for (const s of S.symbols) S.snaps[s.symbol] = engine.snapshot(s.symbol); renderLive(); }, 700); },
     onError: (sym, e) => { (S.feedErr = S.feedErr || {})[sym] = e.message || 'error'; renderScanner(); },
   });
@@ -1276,7 +1276,7 @@ $('#alertBtn').addEventListener('click', async () => {
 function biasCell(v) { return `<span class="b ${v}">${v === 'UP' ? '▲ UP' : v === 'DOWN' ? '▼ DOWN' : '• FLAT'}</span>`; }
 function renderScanner() {
   const hideMt5 = S.mode === 'local';
-  const rows = S.symbols.filter((m) => !(hideMt5 && m.source === 'mt5')).map((m) => S.snaps[m.symbol] || { symbol: m.symbol, name: m.name, loading: true, err: S.feedErr && S.feedErr[m.symbol] });
+  const rows = S.symbols.filter((m) => !(hideMt5 && m.source === 'mt5')).map((m) => Object.assign({}, S.snaps[m.symbol] || { symbol: m.symbol, name: m.name, loading: true }, { err: S.feedErr && S.feedErr[m.symbol] }));
   const mt5n = hideMt5 ? S.symbols.filter((m) => m.source === 'mt5').length : 0;
   $('#scanBody').innerHTML = rows.map((x) => x.loading || !x.trend || x.ready === false ? `<tr><td>${esc(x.name)}</td><td colspan="9" style="color:var(--dim)">${x.err ? (/clos/i.test(x.err) ? 'market closed: retrying every minute' : 'feed hiccup: retrying every minute') : 'loading history…'}</td></tr>` :
     `<tr class="click" data-sym="${esc(x.symbol)}"><td><b>${esc(x.name)}</b><div class="meta" style="font-family:var(--mono);font-size:10px;color:var(--dim)">${esc(x.symbol)}</div></td>
@@ -1496,6 +1496,7 @@ const start = (location.hash || '').slice(1); if (['signals', 'scanner', 'chart'
 setInterval(renderStrip, 15000);
 boot();
 window.TWM = S; // for debugging in the console
+window.addEventListener('unhandledrejection', (e) => { e.preventDefault(); console.warn('feed:', e.reason && (e.reason.message || e.reason.code || e.reason)); });
 })();
 </script>
 </body>
