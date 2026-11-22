@@ -239,6 +239,7 @@ label.f input,label.f select{width:100%}
           <label class="f">Opening range resets every<select id="sBlock"><option value="3600">1 hour</option><option value="7200">2 hours</option><option value="14400">4 hours</option><option value="86400">Day (00:00 UTC)</option></select></label>
           <label class="f">Opening range length<select id="sOrm"><option value="5">5 minutes</option><option value="10">10 minutes</option><option value="15">15 minutes</option><option value="30">30 minutes</option></select></label>
           <label class="f">Chop filter (15m trend quality floor)<select id="sChop"><option value="0">Off (default: tested best)</option><option value="0.15">Light (0.15)</option><option value="0.22">Normal (0.22)</option><option value="0.3">Strict (0.30)</option></select></label>
+          <label class="f">5m confirmation<select id="sM5"><option value="momentum">Last 5m candle with the trade (default)</option><option value="side">5m close on the right side of EMA21</option><option value="notAgainst">5m trend not against</option><option value="aligned">5m trend aligned (strictest)</option><option value="off">Off</option></select></label>
           <label class="f">Loss guard after SL<select id="sGuard"><option value="1">On: no same-direction re-entry until structure resets</option><option value="0">Off</option></select></label>
         </div>
       </div>
@@ -689,7 +690,7 @@ function chall() { const b = +$('#chBal').value, d = +$('#chDd').value, l = +$('
 function saveCfg() { const c = Object.assign({}, S.cfg); delete c.signalsEnabledFrom; store.set('cfg', c); if (engine) engine.setConfig(S.cfg); renderStrip(); }
 function loadSettingsUI() {
   $('#sMode').value = S.cfg.trendMode; $('#sGrade').value = String(S.cfg.minScore >= 85 ? 85 : S.cfg.minScore >= 74 ? 74 : 62);
-  $('#sBlock').value = String(S.cfg.orBlock); $('#sOrm').value = String(S.cfg.orMinutes); $('#sChop').value = String(S.cfg.chopMin); $('#sGuard').value = S.cfg.lossGuard ? '1' : '0';
+  $('#sBlock').value = String(S.cfg.orBlock); $('#sOrm').value = String(S.cfg.orMinutes); $('#sChop').value = String(S.cfg.chopMin); $('#sGuard').value = S.cfg.lossGuard ? '1' : '0'; $('#sM5').value = S.cfg.m5Filter || 'momentum';
   $('#sServer').value = S.server; $('#sKey').value = S.key;
   $('#connInfo').textContent = S.mode === 'local' ? 'The engine is running in this browser and reading Deriv\'s public live feed. Keep this tab open for live capture, or point it at a Trades with Moxie server so signals run 24/7.' : 'Connected to a Trades with Moxie server. Signals are generated 24/7 even when this page is closed.';
 }
@@ -699,6 +700,7 @@ $('#sBlock').onchange = (e) => { S.cfg.orBlock = +e.target.value; saveCfg(); toa
 $('#sOrm').onchange = (e) => { S.cfg.orMinutes = +e.target.value; saveCfg(); };
 $('#sChop').onchange = (e) => { S.cfg.chopMin = +e.target.value; saveCfg(); };
 $('#sGuard').onchange = (e) => { S.cfg.lossGuard = e.target.value === '1'; saveCfg(); };
+$('#sM5').onchange = (e) => { S.cfg.m5Filter = e.target.value; saveCfg(); };
 $('#sSave').onclick = () => { store.set('server', $('#sServer').value.trim()); store.set('key', $('#sKey').value.trim()); location.reload(); };
 $('#sClear').onclick = () => { if (S.mode !== 'local') return toast('History lives on the server.'); S.signals.splice(0, S.signals.length, ...S.signals.filter((s) => ['PENDING', 'ACTIVE', 'TP1_HIT'].includes(s.status))); save(); render(); toast('Closed signals cleared.'); };
 $('#sExport').onclick = () => copyText(JSON.stringify(S.signals, null, 1));

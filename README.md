@@ -15,6 +15,7 @@ A live signal platform in the style of Aurum Signals, built from scratch around 
 
 1. **Data:** 1m ticks stream from Deriv's public feed and from Weltrade's SyntX feed (bid prices). They are aggregated into 2m, 15m, 1H, 2H and 4H. Indicators use **closed bars only**, so nothing repaints.
 2. **Opening range:** the high and low of the first 15 minutes of every hour.
+   - **5m confirmation:** the last closed 5m candle must move with the trade (beyond the 5m EMA9), and an agreeing 5m trend adds +5 to the score.
 3. **Trigger:** a 2m candle closes beyond the range edge by at least 15% of the range height. Each direction fires once per hour.
 4. **Filters** (a setup must pass all of them):
    - **1H rule:** *strict* means only trades with the 1H trend. *Adaptive* (default) also allows counter-1H **scalps**, but only when the 1H trend is weak, the 15m is aligned, 1m momentum confirms and the 4H isn't against the trade. Scalps get tighter targets and need a higher score.
@@ -36,7 +37,10 @@ Data: 13 Deriv markets (about 7 days) plus Weltrade FlipX-1, FlipX-2 and FlipX-4
 | Aurum Signals, its last 59 closed (21–22 Nov, from its history tab) | 59 | 36% | about −5.7R | below 1 |
 | Trades with Moxie, first draft | 118 | 45% | +3.4R | 1.05 |
 | Trades with Moxie, final, strict 1H rule | 180 | 54% | +24.7R | 1.30 |
-| **Trades with Moxie, final, adaptive 1H rule (default)** | **187** | **54.5%** | **+29.0R** | **1.34** |
+| Trades with Moxie, adaptive 1H rule | 187 | 54.5% | +29.0R | 1.34 |
+| **Trades with Moxie v1.1 with 5m confirmation (default)**, 13 Deriv markets, 7 days to 22 Nov 18:00 | **136** | **60.3%** | **+32.6R** | **1.60** |
+
+**5m confirmation (v1.1):** a breakout only fires if the last closed 5m candle moves with the trade and sits beyond the 5m EMA9, and a 5m trend that agrees adds to the score. Same data, same week, against the 2m-only engine (56.7% win, +25.3R, PF 1.41): the win rate rose in both halves (50%→55% and 62%→65%). Other 5m designs tested worse: a strict 5m-trend filter gave 53.5% and +7.1R, and a 5m breakout trigger gave 48.8% and +11.5R.
 
 - The final engine was positive in **both halves** of the period (it was tuned on the whole period, so this check is partial).
 - The **loss guard** is the biggest single fix over Aurum. With it switched off, the result drops to about +5R.
