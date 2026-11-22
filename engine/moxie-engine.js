@@ -14,9 +14,9 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  const G = { M1: 60, M2: 120, M15: 900, H1: 3600, H2: 7200, H4: 14400 };
-  const TF_LIST = [G.M1, G.M2, G.M15, G.H1, G.H2, G.H4];
-  const TF_NAME = { 60: '1m', 120: '2m', 900: '15m', 3600: '1H', 7200: '2H', 14400: '4H' };
+  const G = { M1: 60, M2: 120, M5: 300, M15: 900, H1: 3600, H2: 7200, H4: 14400 };
+  const TF_LIST = [G.M1, G.M2, G.M5, G.M15, G.H1, G.H2, G.H4];
+  const TF_NAME = { 60: '1m', 120: '2m', 300: '5m', 900: '15m', 3600: '1H', 7200: '2H', 14400: '4H' };
   const EMA_LENS = [9, 21, 50, 200];
 
   const DEFAULTS = {
@@ -35,6 +35,9 @@
     partialAtTp1: 0.5,      // fraction closed at TP1 (rest runs to TP2 with SL at entry)
     lossGuard: true,        // block same-direction re-entry after SL until structure resets
     retest: false,          // ORB retest continuation setups (off: they lost money in real-data tests)
+    triggerTf: 120,         // candle that must close beyond the range: 120 = 2m, 300 = 5m
+    m5Filter: 'off',        // 5m gate: 'off' | 'aligned' (5m trend with trade) | 'notAgainst' | 'side' (5m close on right side of EMA21) | 'momentum' (last 5m candle with trade)
+    m5Score: false,         // add up to +5 score when the 5m trend agrees
     entryMode: 'auto',      // 'auto' = limit back at the edge when the trigger candle over-extends; 'market' = always market; 'skip' = skip over-extended breaks
     r1Min: 1.0, r1Max: 1.5, // TP1 bounds in R (measured move = range height; tuned: losers often reached 0.5-0.9R first)
     r2Min: 1.8, r2Max: 3,   // TP2 bounds in R (2x range height)
@@ -197,11 +200,12 @@
     // after all timeframes seeded: mark breakouts that already happened in the current block
     finishSeed(symbol) {
       const st = this.sym[symbol]; if (!st) return;
-      const b = st.block, s2 = st.series[G.M2];
+      const tg = this.cfg.triggerTf === G.M5 ? G.M5 : G.M2;
+      const b = st.block, s2 = st.series[tg];
       if (b && b.done) {
         const buf = (b.hi - b.lo) * this.cfg.bufferFrac;
         for (const x of s2.bars) {
-          if (x.t + G.M2 <= b.orEnd || x.t < b.start) continue;
+          if (x.t + tg <= b.orEnd || x.t < b.start) continue;
           if (x.c > b.hi + buf) b.brokeUp = b.retestUp = true;
           if (x.c < b.lo - buf) b.brokeDn = b.retestDn = true;
         }
@@ -234,7 +238,8 @@
       if (closed[60]) this._orUpdate(st, closed[60], false);
       st.price = bar.c; st.lastT = bar.t;
       // 2) strategy on closed 2m bar
-      if (closed[G.M2] && st.ready) this._evaluate(st, closed[G.M2]);
+      const trig = this.cfg.triggerTf === G.M5 ? G.M5 : G.M2;
+      if (closed[trig] && st.ready) this._evaluate(st, closed[trig], trig);
       // 3) track open signals with the newest data
       const isNewMinute = !prevForming || bar.t > prevForming.t;
       let hi = bar.c, lo = bar.c;
@@ -264,9 +269,9 @@
     }
 
     // ---------- setups ----------
-    _evaluate(st, bar2) {
+    _evaluate(st, bar2, tg = G.M2) {
       const cfg = this.cfg, b = st.block;
-      const T = bar2.t + G.M2;
+      const T = bar2.t + tg;
       if (!b || !b.done || T <= b.orEnd || T > b.end) return;
       if (T < cfg.signalsEnabledFrom) return;
       const h = b.hi - b.lo; if (!(h > 0)) return;
@@ -296,6 +301,14 @@
       const er15 = efficiency(S[G.M15], 16);
       const m1 = S[G.M1];
       const mom1 = m1.n > 21 && (sgn > 0 ? last(m1.bars).c > m1.e(9) && m1.e(9) > m1.e(21) : last(m1.bars).c < m1.e(9) && m1.e(9) < m1.e(21));
+      // 5m read: trend, side of EMA21, last-candle momentum
+      const s5 = S[G.M5], t5 = trendOf(s5), l5 = last(s5.bars);
+      const side5 = !!l5 && s5.n > 21 && (sgn > 0 ? l5.c > s5.e(21) : l5.c < s5.e(21));
+      const mom5 = !!l5 && s5.n > 9 && (sgn > 0 ? l5.c > l5.o && l5.c > s5.e(9) : l5.c < l5.o && l5.c < s5.e(9));
+      if (cfg.m5Filter === 'aligned' && t5.dir !== want(dir)) return reject('5m trend not aligned');
+      if (cfg.m5Filter === 'notAgainst' && t5.dir === against(dir)) return reject('5m trend against');
+      if (cfg.m5Filter === 'side' && !side5) return reject('5m closed on the wrong side of EMA21');
+      if (cfg.m5Filter === 'momentum' && !mom5) return reject('Last 5m candle not with the trade');
 
       // --- the 1H rule (strict or adaptive) ---
       let kind = 'TREND';
@@ -372,6 +385,7 @@
       add(tH2.dir === want(dir) ? 10 : tH2.dir === 'FLAT' ? 5 : 0, tH2.dir !== against(dir), '2H ' + tH2.dir, '');
       add(t15.dir === want(dir) ? 15 : 8, true, '15m ' + (t15.dir === want(dir) ? 'aligned' : 'neutral, right side of EMA21'), '');
       add(mom1 ? 10 : 0, mom1, '1m momentum', mom1 ? 'EMA9 > EMA21 in trade direction' : 'not confirmed');
+      add(cfg.m5Score && t5.dir === want(dir) ? 5 : 0, t5.dir !== against(dir), '5m ' + t5.dir + (side5 ? ', right side of EMA21' : ''), mom5 ? 'last 5m candle with the trade' : '');
       const body = Math.abs(bar2.c - bar2.o), rng = bar2.h - bar2.l || 1e-9;
       const closePos = sgn > 0 ? (bar2.c - bar2.l) / rng : (bar2.h - bar2.c) / rng;
       add((body / rng >= 0.5 ? 5 : 0) + (closePos >= 0.7 ? 5 : 0), body / rng >= 0.5, '2m trigger candle', Math.round((body / rng) * 100) + '% body, closed ' + Math.round(closePos * 100) + '% toward ' + (sgn > 0 ? 'high' : 'low'));
@@ -386,9 +400,9 @@
 
       const sig = {
         id: uid(), symbol: st.symbol, name: st.name, market: st.market, source: st.source, dec: st.dec,
-        setup: cand.setup, kind, dir, tf: '2m', entryType, entry, sl, slLive: sl, tp1, tp2, risk, r1, r2,
+        setup: cand.setup, kind, dir, tf: TF_NAME[cfg.triggerTf === G.M5 ? G.M5 : G.M2], entryType, entry, sl, slLive: sl, tp1, tp2, risk, r1, r2,
         score, grade, reasons,
-        bias: { H4: tH4.dir, H2: tH2.dir, H1: tH1.dir, M15: t15.dir, M1: mom1 ? want(dir) : 'FLAT' },
+        bias: { H4: tH4.dir, H2: tH2.dir, H1: tH1.dir, M15: t15.dir, M5: t5.dir, M1: mom1 ? want(dir) : 'FLAT' },
         or: { hi: b.hi, lo: b.lo, start: b.start, end: b.end, orEnd: b.orEnd },
         status: entryType === 'LIMIT' ? 'PENDING' : 'ACTIVE',
         createdAt: T, filledAt: entryType === 'LIMIT' ? null : T, tp1At: null, closedAt: null, lastT: T,
@@ -461,7 +475,7 @@
     snapshot(symbol) {
       const st = this.sym[symbol]; if (!st) return null;
       const S = st.series, b = st.block;
-      const tr = { H4: trendOf(S[G.H4]).dir, H2: trendOf(S[G.H2]).dir, H1: trendOf(S[G.H1]).dir, M15: trendOf(S[G.M15]).dir };
+      const tr = { H4: trendOf(S[G.H4]).dir, H2: trendOf(S[G.H2]).dir, H1: trendOf(S[G.H1]).dir, M15: trendOf(S[G.M15]).dir, M5: trendOf(S[G.M5]).dir };
       const er = efficiency(S[G.M15], 16);
       let orState = 'forming';
       if (b && b.done) orState = st.price > b.hi ? 'above' : st.price < b.lo ? 'below' : 'inside';
@@ -644,7 +658,7 @@
     async connect() {}
     async candles(sym, g, count = 2000, end = 'latest') {
       await this._wait(sym);
-      const base = g === 120 ? 60 : g === 7200 || g === 14400 ? 3600 : g;
+      const base = g === 120 || g === 300 ? 60 : g === 7200 || g === 14400 ? 3600 : g;
       let c = this._series(sym, base);
       if (end !== 'latest') c = c.filter((x) => x.epoch <= +end);
       if (base !== g) c = aggCandles(c, g);
@@ -663,8 +677,8 @@
   async function startLive(engine, feedOrMap, symbols, opts = {}) {
     const pick = (meta) => (feedOrMap.candles ? feedOrMap : feedOrMap[meta.source || 'deriv']);
     const log = opts.log || (() => {});
-    const htf = [G.M2, G.M15, G.H1, G.H2, G.H4];
-    const counts = { 120: 1500, 900: 1500, 3600: 2000, 7200: 1200, 14400: 1000 };
+    const htf = [G.M2, G.M5, G.M15, G.H1, G.H2, G.H4];
+    const counts = { 120: 1500, 300: 1500, 900: 1500, 3600: 2000, 7200: 1200, 14400: 1000 };
     const runOne = async (meta) => {
       const sym = meta.symbol; engine.addSymbol(sym, meta);
       const feed = pick(meta); if (!feed) { log('no feed for ' + sym); return; }
@@ -704,7 +718,7 @@
     eng.mode = 'backtest';
     eng.addSymbol(sym, Object.assign({}, meta, { decimals: m1.pip }));
     const st = eng.sym[sym];
-    for (const g of [G.M15, G.H1, G.H2, G.H4]) {
+    for (const g of [G.M5, G.M15, G.H1, G.H2, G.H4]) {
       progress(sym, 'downloading ' + TF_NAME[g]);
       const end = String(startFeed - 1);
       const r = await feed.candles(sym, g, 1500, end);

@@ -149,7 +149,7 @@ label.f input,label.f select{width:100%}
   <section class="view on" id="v-signals">
     <div class="hero">
       <div><h1>Live signals, <span>graded and explained</span></h1>
-      <p>Each setup is an ORB+ breakout checked across 4H, 2H, 1H, 15m, 2m and 1m. Weak setups and choppy markets are filtered out, and every trade is tracked live from entry to its final TP or SL.</p></div>
+      <p>Each setup is an ORB+ breakout checked across 4H, 2H, 1H, 15m, 5m, 2m and 1m. Weak setups and choppy markets are filtered out, and every trade is tracked live from entry to its final TP or SL.</p></div>
     </div>
     <div class="kpis" id="kpis"></div>
     <div class="bar">
@@ -167,7 +167,7 @@ label.f input,label.f select{width:100%}
   <!-- SCANNER -->
   <section class="view" id="v-scanner">
     <div class="hero"><div><h1>Market <span>scanner</span></h1><p>This is what the engine sees right now on every pair: the trend on each timeframe, trend quality, where price sits against the current opening range, and what it is waiting for.</p></div></div>
-    <div class="panel" style="padding:6px 6px 0"><table><thead><tr><th>Market</th><th class="n">Price</th><th>4H</th><th>2H</th><th>1H</th><th>15m</th><th class="n">Trend quality</th><th>Opening range</th><th>Engine read</th></tr></thead><tbody id="scanBody"></tbody></table></div>
+    <div class="panel" style="padding:6px 6px 0"><table><thead><tr><th>Market</th><th class="n">Price</th><th>4H</th><th>2H</th><th>1H</th><th>15m</th><th>5m</th><th class="n">Trend quality</th><th>Opening range</th><th>Engine read</th></tr></thead><tbody id="scanBody"></tbody></table></div>
   </section>
 
   <!-- CHART -->
@@ -440,7 +440,7 @@ function cardHTML(s) {
       <div>Take profit 2 <span class="tag">${s.r2.toFixed(2)}R</span></div><div class="pos">${fmt(s.tp2, d)}</div>
     </div>
     <div class="track" style="--z:${z}%;--p:${p}%;--t1:${pct(s.tp1)}%"><span class="t"></span><span class="m"></span></div>
-    <div class="biasrow">${['H4', 'H2', 'H1', 'M15'].map((k) => `<span class="b ${s.bias[k]}">${k.replace('M15', '15m').replace('H', '') + (k[0] === 'H' ? 'H' : '')} ${s.bias[k] === 'UP' ? '▲' : s.bias[k] === 'DOWN' ? '▼' : '•'}</span>`).join('')}<span class="b">score ${s.score}</span></div>
+    <div class="biasrow">${['H4', 'H2', 'H1', 'M15', 'M5'].filter((k) => s.bias[k]).map((k) => `<span class="b ${s.bias[k]}">${{ H4: '4H', H2: '2H', H1: '1H', M15: '15m', M5: '5m' }[k]} ${s.bias[k] === 'UP' ? '▲' : s.bias[k] === 'DOWN' ? '▼' : '•'}</span>`).join('')}<span class="b">score ${s.score}</span></div>
     <div class="ft"><span>${when} SAST</span><div class="sp">
       <button class="btn sm" data-act="why">Why</button><button class="btn sm" data-act="chart">Chart</button><button class="btn sm" data-act="size">Size</button><button class="btn sm" data-act="copy">Copy</button></div></div>
     <div class="why"><div>${esc(s.text || '')}</div><ul>${(s.reasons || []).map((x) => `<li><span class="${x.ok ? 'k' : 'x'}">${x.ok ? '✓' : '✗'}</span>${esc(x.label)}${x.detail ? ` <span style="color:var(--dim)">— ${esc(x.detail)}</span>` : ''}<span class="pt">${x.pts ? '+' + x.pts : ''}</span></li>`).join('')}</ul>
@@ -523,13 +523,13 @@ function renderScanner() {
   const hideMt5 = S.mode === 'local';
   const rows = S.symbols.filter((m) => !(hideMt5 && m.source === 'mt5')).map((m) => S.snaps[m.symbol] || { symbol: m.symbol, name: m.name, loading: true, err: S.feedErr && S.feedErr[m.symbol] });
   const mt5n = hideMt5 ? S.symbols.filter((m) => m.source === 'mt5').length : 0;
-  $('#scanBody').innerHTML = rows.map((x) => x.loading || !x.trend || x.ready === false ? `<tr><td>${esc(x.name)}</td><td colspan="8" style="color:var(--dim)">${x.err ? (/clos/i.test(x.err) ? 'market closed: retrying every minute' : 'feed hiccup: retrying every minute') : 'loading history…'}</td></tr>` :
+  $('#scanBody').innerHTML = rows.map((x) => x.loading || !x.trend || x.ready === false ? `<tr><td>${esc(x.name)}</td><td colspan="9" style="color:var(--dim)">${x.err ? (/clos/i.test(x.err) ? 'market closed: retrying every minute' : 'feed hiccup: retrying every minute') : 'loading history…'}</td></tr>` :
     `<tr class="click" data-sym="${esc(x.symbol)}"><td><b>${esc(x.name)}</b><div class="meta" style="font-family:var(--mono);font-size:10px;color:var(--dim)">${esc(x.symbol)}</div></td>
-     <td class="n">${fmt(x.price, x.dec)}</td><td>${biasCell(x.trend.H4)}</td><td>${biasCell(x.trend.H2)}</td><td>${biasCell(x.trend.H1)}</td><td>${biasCell(x.trend.M15)}</td>
+     <td class="n">${fmt(x.price, x.dec)}</td><td>${biasCell(x.trend.H4)}</td><td>${biasCell(x.trend.H2)}</td><td>${biasCell(x.trend.H1)}</td><td>${biasCell(x.trend.M15)}</td><td>${biasCell(x.trend.M5 || 'FLAT')}</td>
      <td class="n" style="color:${x.er < S.cfg.chopMin ? 'var(--warn)' : 'var(--text)'}">${(x.er * 100).toFixed(0)}%</td>
      <td style="font-family:var(--mono);font-size:12px">${x.or && x.or.hi != null ? `${fmt(x.or.lo, x.dec)} – ${fmt(x.or.hi, x.dec)} <span class="b ${x.or.state === 'above' ? 'UP' : x.or.state === 'below' ? 'DOWN' : ''}">${x.or.state}</span>` : '—'}</td>
      <td style="font-size:12.5px;color:${x.open ? 'var(--gold)' : 'var(--muted)'}">${esc(x.look)}</td></tr>`).join('') +
-    (mt5n ? `<tr><td colspan="9" style="color:var(--dim);font-size:12.5px">+ ${mt5n} Weltrade SyntX pairs (FlipX, FiboX, QuadX, FX Vol…) are scanned by the Moxie server through your MT5 bridge. Connect a server in Settings to see them here.</td></tr>` : '');
+    (mt5n ? `<tr><td colspan="10" style="color:var(--dim);font-size:12.5px">+ ${mt5n} Weltrade SyntX pairs (FlipX, FiboX, QuadX, FX Vol…) are scanned by the Moxie server through your MT5 bridge. Connect a server in Settings to see them here.</td></tr>` : '');
 }
 $('#scanBody').addEventListener('click', (e) => { const tr = e.target.closest('tr[data-sym]'); if (tr) { show('chart'); openChart(tr.dataset.sym); } });
 
