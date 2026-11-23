@@ -50,7 +50,7 @@
       st.ready = true;
       eng.cfg.signalsEnabledFrom = replayFrom + 3600; // let 1m/2m indicators warm up first
       const bars = m1.map(M.toBar);
-      for (const b of bars.slice(0, -1)) if (b.t >= replayFrom) eng.onBar(sym, b);
+      for (const b of bars) if (b.t >= replayFrom) eng.onBar(sym, b); // last bar is the forming one
       const px = bars[bars.length - 1].c;
       st.price = px;
       const snap = eng.snapshot(sym);
@@ -67,7 +67,7 @@
         (s.result != null ? ` result ${s.result.toFixed(2)}R` : ` now ${(((px - s.entry) * (s.dir === 'BUY' ? 1 : -1)) / s.risk).toFixed(2)}R`));
 
       // Fibonacci swing on closed 15m bars, in the direction of the 1H bias (15m when 1H is flat)
-      const b15 = st.series[M.G.M15].bars.slice(-48);
+      const b15 = st.series[M.G.M15].bars.slice(-(opts.swingBars || 24)); // last 6 hours of closed 15m bars
       const bias = snap.trend.H1 !== 'FLAT' ? snap.trend.H1 : snap.trend.M15;
       if (b15.length >= 20 && bias !== 'FLAT') {
         let hiI = 0, loI = 0;
