@@ -76,7 +76,7 @@
       for (; !res && k < m1.length; k++) {
         const b = m1[k];
         if (b.t - fillT > P.holdH * 3600) { res = 'TIME'; break; }
-        if (d > 0 ? b.l <= sl : b.h >= sl) { res = stage ? 'BE' : 'SL'; break; }
+        if (d > 0 ? b.l <= sl : b.h >= sl) { res = stage >= P.beAt ? 'BE' : 'SL'; break; }
         while (stage < TPs.length && (d > 0 ? b.h >= TPs[stage] : b.l <= TPs[stage])) { stage++; if (stage === P.beAt) sl = entry; }
         if (stage === TPs.length) { res = 'ALL'; break; }
       }
@@ -84,7 +84,8 @@
       let R = 0;
       for (let s = 0; s < stage; s++) R += ((TPs[s] - entry) * d / risk) / n;
       const rem = (n - stage) / n;
-      if (res === 'SL') R -= rem; else if (res === 'BE') R += 0; else R += ((last.c - entry) * d / risk) * rem;
+      if (res === 'SL' || res === 'BE') R += ((sl - entry) * d / risk) * rem; // sl is the entry only once TP2 has moved it
+      else R += ((last.c - entry) * d / risk) * rem;
       out.push({ t: fillT, d, stage, res, R, wait: fillT - T });
       busy = last.t + 60;
     }
@@ -95,7 +96,7 @@
   return {
     symbol: P.symbol, signals, n, fill: signals ? Math.round((100 * n) / signals) : 0, delayMin: signals ? Math.round(delays / signals / 60) : 0,
     waitMin: n ? Math.round(out.reduce((s, x) => s + x.wait, 0) / n / 60) : 0,
-    tp1: pct((x) => x.stage >= 1), tp2: pct((x) => x.stage >= 2), tp3: pct((x) => x.stage >= 3), profit: pct((x) => x.R > 0.001), stop: pct((x) => x.res === 'SL' && x.stage === 0),
+    tp1: pct((x) => x.stage >= 1), tp2: pct((x) => x.stage >= 2), tp3: pct((x) => x.stage >= 3), profit: pct((x) => x.R > 0.001), stop: pct((x) => x.res === 'SL'),
     R: +R.toFixed(1), avg: n ? +(R / n).toFixed(3) : 0, pf: gl ? +(gw / gl).toFixed(2) : 0, h1: h(out.filter((x) => x.t < mid)), h2: h(out.filter((x) => x.t >= mid)),
     days: +((endT - m1[0].t) / 86400).toFixed(1),
   };
