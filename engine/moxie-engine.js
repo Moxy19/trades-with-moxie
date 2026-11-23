@@ -41,13 +41,15 @@
     partialAtTp1: 0.5,      // fraction closed at TP1 (rest runs to TP2 with SL at entry)
     // Management lab, 23 Nov 2026 (v1.5.1 rules, 24 markets): moving the stop to entry at +0.5R lifted ORB+ from +83.8R to
     // +99.8R (both halves better; stop-outs 44% -> 25%). Partial size, TP2 distance and holding time made no real difference.
-    beAtR: 0.5,             // 0 = off. Move the stop to entry (+ beLockR) once a trade has been this many R in profit before TP1
-    // Trailing lab, 23 Nov 2026 (24 markets): locking +0.1R at +0.5R and +0.3R at TP1, then trailing 20 pips (forex & metals)
-    // or 0.75× the 15m ATR (synthetics & crypto) with no fixed TP2: 74% of trades close in profit, +112.5R vs +99.4R
-    // (38% win) for plain breakeven, and both halves of the data are at least as good.
-    beLockR: 0.1,           // R locked in by that early stop move (makes "breakeven" a small win)
+    // Stop-out lab, 24 Nov 2026 (23 markets, ~20 days): locking +0.05R at +0.3R and cutting any trade whose 5m candle closes
+    // 0.6R against it cut full stop-outs from 26% to 9% of trades and lifted wins from 74% to 79%, for the same profit
+    // (+109.9R vs +111.5R; both halves positive). Earlier: trailing lab, 23 Nov 2026 (see README).
+    beAtR: 0.3,             // 0 = off. Move the stop to entry (+ beLockR) once a trade has been this many R in profit before TP1
+    beLockR: 0.05,          // R locked in by that early stop move (makes "breakeven" a small win)
     tp1Lock: 0.3,           // at TP1 the stop moves to entry + this many R
-    trail: { mode: 'pips', pips: 20, atr: 0.75, keepTp2: false }, // after TP1: trail 'pips' behind the best price (forex & metals; others use atr × 15m ATR). keepTp2 false = let the runner go // after TP1: trail the stop 'pips' (forex & metals) or 'atr' (× 15m ATR) behind the best price
+    trail: { mode: 'pips', pips: 20, atr: 0.75, keepTp2: false }, // after TP1: trail 'pips' (forex & metals) or 'atr' (× 15m ATR) behind the best price; keepTp2 false = let the runner go
+    slOfTp: null,           // { ref: 'tp1'|'tp2', k }: stop distance as a fraction of a target's distance (tested: worse for ORB+)
+    softStop: { r: 0.6, tf: 300 }, // before the stop has moved: exit at the close of a 5m candle that closes 0.6R or more against the trade
     lossGuard: true,        // block same-direction re-entry after SL until structure resets
     retest: false,          // ORB retest continuation setups (off: they lost money in real-data tests)
     triggerTf: 120,         // candle that must close beyond the range: 120 = 2m, 300 = 5m
@@ -63,14 +65,16 @@
     r2Min: 1.8, r2Max: 3,   // TP2 bounds in R (2x range height)
     // Royal Ladder: the decoded + refined gold-signal strategy (limit at fresh 15m swing points, 5-TP ladder).
     // Distances are 15m-ATR multiples calibrated on gold (median ATR $7.37: $3 front-run, $12 SL, $4/$8/$13/$18/$28 TPs).
-    ladder: { on: true, markets: ['forex', 'crypto'], symbols: [], units: { frxXAUUSD: 7.37 }, confirm: true, maxAway: 3, w: 5, front: 0.41, sl: 1.63, tps: [0.54, 1.09, 1.76, 2.44, 3.80], beAt: 3, expH: 4, holdH: 24, away: 0.41 },
+    // Stop-out lab, 24 Nov 2026 (12 Ladder pairs, ~20 days): stop at 50% of the TP3 distance (0.88 ATR instead of 1.63) plus a
+    // cut when a 5m candle closes 0.6R against the trade: +41.1R vs +34.7R, full stop-outs 15% -> 10% (9% without gold).
+    ladder: { on: true, markets: ['forex', 'crypto'], symbols: [], units: { frxXAUUSD: 7.37 }, confirm: true, maxAway: 3, w: 5, front: 0.41, sl: 0.88, tps: [0.54, 1.09, 1.76, 2.44, 3.80], beAt: 3, softStop: { r: 0.6, tf: 300 }, expH: 4, holdH: 24, away: 0.41 },
     // beAt 3 (stop to entry after TP3): +35.7R vs +27.8R at TP2 in the management lab, both halves better.
     // 5m entry lab, 23 Nov 2026 (30,000 1m bars, gold/forex/crypto): waiting for a 5m candle to close back in the trade's
     // direction at the level lifted the win rate from 65% to 76% and cut stop-outs from 34% to 24% (+0.16R a trade vs +0.11R).
     // maxAway 3: no limit is posted when price is already more than 3 ATRs from the level (those rarely filled).
     // Ladder lab, 23 Nov 2026 (20,000 1m bars each; gold uses fixed $ distances: 41 days, 48 trades, 85% TP1, +12.5R):
     // losing or flat markets carry the Royalty tag.
-    ladderRoyalty: ['frxEURUSD', 'frxUSDCHF', 'frxEURGBP', 'cryBTCUSD', 'cryETHUSD'],
+    ladderRoyalty: ['frxXAUUSD', 'frxEURUSD', 'frxUSDCHF', 'frxEURGBP', 'cryBTCUSD', 'cryETHUSD'],
     signalsEnabledFrom: 0,  // epoch; used by backtests to warm up
   };
 
@@ -282,6 +286,27 @@
         if (sig.strategy === 'LADDER') this._trackLadder(sig, st, hi, lo, now, bar.c);
         else this._track(sig, st, hi, lo, now, bar.c, isNewMinute);
       }
+      for (const g of [G.M5, G.M15]) if (closed[g]) this._softStops(st, closed[g], g);
+    }
+    // Soft stops: a candle that closes against the trade cuts it at that close instead of waiting for the full stop.
+    _softStops(st, cb, g) {
+      const cfg = this.cfg, L = cfg.ladder || {}, T = cb.t + g;
+      for (const sig of this.openSignals(st.symbol)) {
+        if (!sig.filledAt || sig.filledAt > cb.t) continue;      // only candles that opened after the fill
+        const d = dirSign(sig.dir), rNow = (d * (cb.c - sig.entry)) / sig.risk;
+        if (sig.strategy === 'LADDER') {
+          if (sig.status !== 'ACTIVE' && sig.status !== 'TP1_HIT') continue;
+          if (sig.stage >= (sig.beAt || 99) || (d * (sig.slLive - sig.entry)) >= 0) continue; // stop already at entry or better
+          const ss = L.softStop, lv = L.softLevel;
+          const hitR = ss && ss.tf === g && rNow <= -ss.r;
+          const hitL = lv != null && g === (L.softLevelTf || G.M5) && d * (cb.c - sig.level) < -lv * sig.atr;
+          if (hitR || hitL) this._closeLadder(sig, st, 'SOFT_EXIT', cb.c, T);
+        } else {
+          const ss = cfg.softStop;
+          if (!ss || ss.tf !== g || sig.status !== 'ACTIVE' || sig.beArmed) continue;
+          if (rNow <= -ss.r) this._close(sig, st, 'SOFT_EXIT', cb.c, T);
+        }
+      }
     }
 
     // ---------- opening range ----------
@@ -416,7 +441,11 @@
       let r2 = kind === 'SCALP' ? clamp(1.6 * h / risk, r1 + 0.3, Math.max(r1 + 0.3, cfg.r2Min)) : clamp((2 * h) / risk, Math.max(cfg.r2Min, r1 + 0.8), cfg.r2Max);
       if (nearest != null && roomR < r1) r1 = Math.max(1.0, roomR * 0.95);
       if (nearest != null && roomR < r2 && roomR > r1 + 0.3) r2 = roomR * 0.97;
-      const tp1 = entry + sgn * r1 * risk, tp2 = entry + sgn * r2 * risk;
+      let tp1 = entry + sgn * r1 * risk, tp2 = entry + sgn * r2 * risk;
+      if (cfg.slOfTp) {   // stop distance = k × the distance to TP1 or TP2 (targets stay where they are)
+        const ref = cfg.slOfTp.ref === 'tp1' ? tp1 : tp2, nr = cfg.slOfTp.k * Math.abs(ref - entry);
+        if (nr > 0) { risk = nr; sl = entry - sgn * risk; r1 = Math.abs(tp1 - entry) / risk; r2 = Math.abs(tp2 - entry) / risk; }
+      }
 
       // --- score (0..100) ---
       const reasons = [];
@@ -466,7 +495,7 @@
       if (status === 'SL_HIT') R = -1;
       else if (status === 'TP2_HIT') R = p * sig.r1 + (1 - p) * sig.r2;
       else if (status === 'BE_HIT' || status === 'TRAIL_EXIT') R = p * sig.r1 + (1 - p) * rNow;
-      else if (status === 'BE_EARLY') R = rNow;  // stopped at entry (or the locked level) before TP1
+      else if (status === 'BE_EARLY' || status === 'SOFT_EXIT') R = rNow;  // stopped at entry (or the locked level) before TP1
       else if (status === 'TIME_EXIT') R = sig.tp1At ? p * sig.r1 + (1 - p) * rNow : rNow;
       else R = 0; // EXPIRED / CANCELLED never filled
       sig.status = status; sig.closedAt = t; sig.exit = exitPrice; sig.result = Math.round(R * 100) / 100; sig.lastT = t;
@@ -577,7 +606,7 @@
         const sig = {
           id: uid(), symbol: st.symbol, name: st.name, market: st.market, source: st.source, dec: st.dec,
           strategy: 'LADDER', setup: 'Royal Ladder', kind: bias.H1 === want ? 'TREND' : 'SCALP', dir, tf: '15m', entryType: L.confirm ? 'CONFIRM' : 'LIMIT', confirm: !!L.confirm, touched: null, level: lvl, zone: entry,
-          entry, sl, slLive: sl, tp1: tps[0], tp2: tps[1], tps, rs, risk, r1: rs[0], r2: rs[1], stage: 0, beAt: L.beAt, stepTrail: !!L.stepTrail, stepFrom: L.stepFrom || 1, stepLock: L.stepLock || 0,
+          entry, sl, slLive: sl, tp1: tps[0], tp2: tps[1], tps, rs, risk, r1: rs[0], r2: rs[1], stage: 0, beAt: L.beAt, stepTrail: !!L.stepTrail, stepFrom: L.stepFrom || 1, stepLock: L.stepLock || 0, tp1Stop: L.tp1Stop == null ? null : L.tp1Stop, beLock: L.beLock || 0,
           expiresAt: T + L.expH * 3600, maxHold: L.holdH * 3600, atr,
           score, grade, reasons, unproven: (this.cfg.ladderRoyalty || []).includes(st.symbol),
           bias, or: null, status: 'PENDING', createdAt: T, filledAt: null, tp1At: null, closedAt: null, lastT: T,
@@ -589,7 +618,7 @@
           `A fresh 15m swing ${d > 0 ? 'low' : 'high'} formed at ${fmt(lvl, dd)} and price has moved away from it. The 1H trend is ${bias.H1.toLowerCase()} (never against the trade) and the 15m is on the right side of its EMA50.`,
           L.confirm ? `Entry zone ${fmt(entry, dd)}, just before the level. Wait for price to reach it, then ${dir.toLowerCase()} when a 5m candle closes back ${d > 0 ? 'up' : 'down'} through it. Stop ${fmt(sl, dd)}. The setup is cancelled if price hits the stop first or nothing confirms within ${L.expH} hours.`
             : `Limit ${dir.toLowerCase()} at ${fmt(entry, dd)}, set just before the level so it fills even if price doesn't quite tag it. Stop ${fmt(sl, dd)}. The order is cancelled if it isn't filled within ${L.expH} hours.`,
-          `Five targets: ${tps.map((x, k) => 'TP' + (k + 1) + ' ' + fmt(x, dd)).join(', ')}. Close a fifth at each, and move the stop to entry after TP${L.beAt}.`,
+          `Five targets: ${tps.map((x, k) => 'TP' + (k + 1) + ' ' + fmt(x, dd)).join(', ')}. Close a fifth at each, and move the stop to entry after TP${L.beAt}.${L.softStop ? ` Before that, close the trade if a ${L.softStop.tf / 60}m candle closes ${L.softStop.r}R or more against it.` : ''}`,
           sig.unproven ? 'Royalty: the ladder has no proven edge on this market yet. Watch it, or trade the smallest size only.' : '',
         ].filter(Boolean).join(' ');
         this.signals.push(sig);
@@ -621,7 +650,8 @@
       while (sig.stage < sig.tps.length && (d > 0 ? fav >= sig.tps[sig.stage] : fav <= sig.tps[sig.stage])) {
         sig.stage++;
         if (sig.stage === 1) sig.tp1At = t;
-        if (sig.stage === sig.beAt) sig.slLive = sig.entry;
+        if (sig.stage === 1 && sig.tp1Stop != null) sig.slLive = sig.entry - d * sig.tp1Stop * sig.risk;  // cut the open risk at TP1
+        if (sig.stage === sig.beAt) sig.slLive = sig.entry + d * (sig.beLock || 0) * sig.risk;
         if (sig.stepTrail && sig.stage >= sig.stepFrom) sig.slLive = sig.stage === sig.stepFrom ? sig.entry + d * (sig.stepLock || 0) * sig.risk : sig.tps[sig.stage - sig.stepFrom - 1];
       }
       if (sig.stage === sig.tps.length) return this._closeLadder(sig, st, 'TP5_HIT', sig.tps[sig.tps.length - 1], t);
@@ -690,7 +720,10 @@
       lines.push(`The SL at ${fmt(sig.sl, d)} sits beyond the range midpoint and the recent 2m swing. Risk is ${(sig.risk / x.atr15).toFixed(2)}× the 15m ATR.`);
       lines.push(`TP1 ${fmt(sig.tp1, d)} (${sig.r1.toFixed(2)}R) and TP2 ${fmt(sig.tp2, d)} (${sig.r2.toFixed(2)}R). ${x.nearest != null ? `The next 1H structure is ${x.roomR.toFixed(1)}R away at ${fmt(x.nearest, d)}.` : 'There is no 1H structure in the way.'}`);
       if (sig.unproven) lines.push('Royalty: this market runs the Royalty strategy, which has no proven edge in backtests yet. Watch it, or trade the smallest size only.');
-      lines.push(`Management: close ${Math.round(this.cfg.partialAtTp1 * 100)}% at TP1 and move the SL to entry, then let the rest run to TP2.`);
+      { const c = this.cfg, tr = c.trail || {};
+        const pre = [c.beAtR ? `at +${c.beAtR}R move the SL to entry${c.beLockR ? ' +' + c.beLockR + 'R' : ''}` : '', c.softStop ? `close early if a ${c.softStop.tf / 60}m candle closes ${c.softStop.r}R against you` : ''].filter(Boolean).join('; ');
+        const post = tr.mode && tr.mode !== 'off' ? `trail the rest ${sig.market === 'forex' && tr.mode === 'pips' ? tr.pips + ' pips' : tr.atr + '× the 15m ATR'} behind price${tr.keepTp2 === false ? ' (TP2 is a guide)' : ''}` : 'let the rest run to TP2';
+        lines.push(`Management: ${pre ? 'before TP1, ' + pre + '. ' : ''}Close ${Math.round(c.partialAtTp1 * 100)}% at TP1 and move the SL to entry${c.tp1Lock ? ' +' + c.tp1Lock + 'R' : ''}, then ${post}.`); }
       return lines.join(' ');
     }
   }
@@ -923,9 +956,10 @@
   // Trade-management presets (management lab, 23 Nov 2026)
   const MANAGEMENT = {
     // ORB+ +112.5R (74% win) with a trailing runner; Ladder +34.7R (63% win), stop to entry after TP3
-    profit: { label: 'Max profit', beAtR: 0.5, beLockR: 0.1, tp1Lock: 0.3, trail: { mode: 'pips', pips: 20, atr: 0.75, keepTp2: false }, ladder: { beAt: 3, stepTrail: false } },
+    // v1.8 (stop-out lab, 24 Nov 2026): ORB+ +109.9R, 79% win, 9% full stops; Ladder +41.1R, 10% full stops
+    profit: { label: 'Max profit', beAtR: 0.3, beLockR: 0.05, tp1Lock: 0.3, softStop: { r: 0.6, tf: 300 }, trail: { mode: 'pips', pips: 20, atr: 0.75, keepTp2: false }, ladder: { beAt: 3, stepTrail: false } },
     // ORB+ +101R (74% win) with a fixed TP2; Ladder +13.2R (86% win): stop steps up one TP behind price from TP1, locking +0.1R
-    winrate: { label: 'High win rate', beAtR: 0.5, beLockR: 0.1, tp1Lock: 0.3, trail: { mode: 'off', pips: 20, atr: 0.75, keepTp2: true }, ladder: { beAt: 99, stepTrail: true, stepFrom: 1, stepLock: 0.1 } },
+    winrate: { label: 'High win rate', beAtR: 0.3, beLockR: 0.05, tp1Lock: 0.3, softStop: { r: 0.6, tf: 300 }, trail: { mode: 'off', pips: 20, atr: 0.75, keepTp2: true }, ladder: { sl: 1.63, softStop: null, beAt: 99, stepTrail: true, stepFrom: 1, stepLock: 0.1 } },
   };
   const D = (symbol, name, market = 'synthetic') => ({ symbol, name, market, source: 'deriv' });
   // Weltrade SyntX pairs arrive through your MT5 terminal (source 'mt5'), the same bridge model Aurum uses.
@@ -950,5 +984,5 @@
     W('GainX-400'), W('GainX-600'), W('PainX-400'), W('PainX-600'),
   ];
 
-  return { Engine, Series, DerivFeed, BridgeFeed, aggCandles, startLive, backtest, stats, trendOf, efficiency, pivots, fmt, toBar, decimalsOf, G, TF_NAME, DEFAULTS, DEFAULT_SYMBOLS, WELTRADE_SYMBOLS, MANAGEMENT, version: '1.7.0' };
+  return { Engine, Series, DerivFeed, BridgeFeed, aggCandles, startLive, backtest, stats, trendOf, efficiency, pivots, fmt, toBar, decimalsOf, G, TF_NAME, DEFAULTS, DEFAULT_SYMBOLS, WELTRADE_SYMBOLS, MANAGEMENT, version: '1.8.0' };
 });

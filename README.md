@@ -200,3 +200,25 @@ Lab of 23 Nov 2026, 24 Deriv markets, v1.6 filters, pessimistic fills (stop firs
 
 "Breakeven" is now a small win (+0.1R before TP1, at least +0.3R on the runner after TP1).
 Royal Ladder keeps the stop-to-entry-after-TP3 rule: stepping the stop up behind every TP lifts its win rate to 86% but cuts it from +34.7R to +13.2R. That option is in Settings → Trade management → High win rate.
+
+## Fewer full stop-outs (v1.8)
+
+Stop-out lab of 24 Nov 2026: about 20 days of 1m Deriv data, 23 markets (Ladder: its 12 pairs), pessimistic fills, no spread.
+A "full stop-out" is the original stop hit with the whole position still open.
+
+| ORB+ | Trades | In profit | Full stops | Total R | 1st half | 2nd half |
+|---|---|---|---|---|---|---|
+| v1.7 | 512 | 74% | 26% | +111.5R | 49.6 | 61.9 |
+| **v1.8:** lock +0.05R at +0.3R, cut on a 5m close 0.6R against | 668 | 79% | **9%** | +109.9R | 64.7 | 45.3 |
+| SL = 50% of TP2 (1:2) | 526 | 74% | 26% | +99.6R | 53.1 | 46.5 |
+| SL = 50% of TP1 | 499 | 71% | 29% | +102.8R | 68.1 | 34.8 |
+
+| Royal Ladder | Trades | In profit | Full stops | Total R | 1st half | 2nd half |
+|---|---|---|---|---|---|---|
+| v1.7 (SL 1.63 ATR) | 223 | 63% | 15% | +34.7R | 17.0 | 17.7 |
+| SL = 50% of TP3 (0.88 ATR) | 176 | 52% | 20% | +47.6R | 26.8 | 20.8 |
+| **v1.8:** SL = 50% of TP3, cut on a 5m close 0.6R against | 180 | 47% | **10%** | **+41.1R** | 21.6 | 19.5 |
+| SL = 50% of TP5 (1.90 ATR) | 218 | 66% | 13% | +29.0R | 15.3 | 13.7 |
+
+Early cuts turn most would-be full stops into smaller losses (about −0.6R); the losing-trade count does not fall.
+Gold lost money on the Ladder in every variant over this window (−5.9R in v1.8), so the gold Ladder is tagged Royalty.
