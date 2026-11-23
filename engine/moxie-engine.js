@@ -1,5 +1,5 @@
 /*!
- * Royal Trades — ORB+ Engine v1.0
+ * Royal Trades — ORB+ Engine
  * Multi-timeframe Opening Range Breakout engine with live trade capture.
  * Runs identically in the browser (window.MoxieEngine) and in Node (require).
  *
@@ -40,7 +40,10 @@
     m5Score: true,          // add +5 score when the 5m trend agrees
     // Per-market profiles from real-data backtests (22 Nov 2026). Keys: a symbol, or a source ('mt5' = Weltrade via MT5 bridge).
     overrides: { mt5: { m5Filter: 'off', m5Score: false } },     // 5m gate hurt Weltrade SyntX (34% vs 43% win)
-    unproven: ['mt5', 'stpRNG'],  // no backtested edge yet: Weltrade SyntX (7d: 43% win, -7.8R) and Step Index 100 (30d: 12 trades, 17% win)
+    // "Royalty" markets: no backtested edge yet, so signals carry a Royalty tag (watch or minimum size).
+    // Weltrade SyntX (7d: 43% win, -7.8R), Step Index 100 (30d: 17% win), and from the 23 Nov 2026 7-trading-day run:
+    // EUR/USD -3.4R, USD/JPY -3.1R, USD/CAD -3.0R, NZD/USD -4.3R, EUR/GBP -7.2R, BTC +0.2R, ETH -0.5R.
+    unproven: ['mt5', 'stpRNG', 'frxEURUSD', 'frxUSDJPY', 'frxUSDCAD', 'frxNZDUSD', 'frxEURGBP', 'cryBTCUSD', 'cryETHUSD'],
     entryMode: 'auto',      // 'auto' = limit back at the edge when the trigger candle over-extends; 'market' = always market; 'skip' = skip over-extended breaks
     r1Min: 1.0, r1Max: 1.5, // TP1 bounds in R (measured move = range height; tuned: losers often reached 0.5-0.9R first)
     r2Min: 1.8, r2Max: 3,   // TP2 bounds in R (2x range height)
@@ -511,7 +514,7 @@
         : `The entry is at market, ${fmt(sig.entry, d)}.`);
       lines.push(`The SL at ${fmt(sig.sl, d)} sits beyond the range midpoint and the recent 2m swing. Risk is ${(sig.risk / x.atr15).toFixed(2)}× the 15m ATR.`);
       lines.push(`TP1 ${fmt(sig.tp1, d)} (${sig.r1.toFixed(2)}R) and TP2 ${fmt(sig.tp2, d)} (${sig.r2.toFixed(2)}R). ${x.nearest != null ? `The next 1H structure is ${x.roomR.toFixed(1)}R away at ${fmt(x.nearest, d)}.` : 'There is no 1H structure in the way.'}`);
-      if (sig.unproven) lines.push('Caution: this market has no proven edge in backtests yet. Watch it, or trade the smallest size only.');
+      if (sig.unproven) lines.push('Royalty: this market runs the Royalty strategy, which has no proven edge in backtests yet. Watch it, or trade the smallest size only.');
       lines.push(`Management: close ${Math.round(this.cfg.partialAtTp1 * 100)}% at TP1 and move the SL to entry, then let the rest run to TP2.`);
       return lines.join(' ');
     }
@@ -746,15 +749,24 @@
   // Weltrade SyntX pairs arrive through your MT5 terminal (source 'mt5'), the same bridge model Aurum uses.
   const W = (symbol) => ({ symbol, name: symbol.replace(/-/g, ' '), market: 'synthetic', source: 'mt5', broker: 'Weltrade' });
   const DEFAULT_SYMBOLS = [
-    // Weltrade SyntX focus list
+    // Deriv synthetics
+    D('stpRNG', 'Step Index 100'), D('R_25', 'Volatility 25'), D('R_50', 'Volatility 50'), D('R_75', 'Volatility 75'), D('R_100', 'Volatility 100'),
+    D('1HZ25V', 'Volatility 25 (1s)'), D('1HZ75V', 'Volatility 75 (1s)'), D('BOOM1000', 'Boom 1000'), D('CRASH1000', 'Crash 1000'),
+    // Deriv gold & metals
+    D('frxXAUUSD', 'Gold (XAU/USD)', 'forex'), D('frxXAGUSD', 'Silver (XAG/USD)', 'forex'),
+    // Deriv forex
+    D('frxEURUSD', 'EUR/USD', 'forex'), D('frxGBPUSD', 'GBP/USD', 'forex'), D('frxUSDJPY', 'USD/JPY', 'forex'), D('frxAUDUSD', 'AUD/USD', 'forex'),
+    D('frxUSDCAD', 'USD/CAD', 'forex'), D('frxUSDCHF', 'USD/CHF', 'forex'), D('frxNZDUSD', 'NZD/USD', 'forex'),
+    D('frxGBPJPY', 'GBP/JPY', 'forex'), D('frxEURJPY', 'EUR/JPY', 'forex'), D('frxEURGBP', 'EUR/GBP', 'forex'),
+    // Deriv crypto
+    D('cryBTCUSD', 'BTC/USD', 'crypto'), D('cryETHUSD', 'ETH/USD', 'crypto'),
+  ];
+  // Weltrade SyntX pairs (MT5 bridge). Off by default for now; add them back in Settings.
+  const WELTRADE_SYMBOLS = [
     W('FlipX-1'), W('FlipX-2'), W('FlipX-3'), W('FlipX-4'), W('FlipX-5'), W('FiboX'), W('QuadX'), W('PlusX-1'),
     W('FX-Vol-20'), W('FX-Vol-40'), W('FX-Vol-60'), W('FX-Vol-99'), W('SFX-Vol-20'), W('SFX-Vol-40'),
     W('GainX-400'), W('GainX-600'), W('PainX-400'), W('PainX-600'),
-    // Deriv
-    D('stpRNG', 'Step Index 100'), D('R_25', 'Volatility 25'), D('R_50', 'Volatility 50'), D('R_75', 'Volatility 75'), D('R_100', 'Volatility 100'),
-    D('1HZ25V', 'Volatility 25 (1s)'), D('1HZ75V', 'Volatility 75 (1s)'), D('BOOM1000', 'Boom 1000'), D('CRASH1000', 'Crash 1000'),
-    D('frxXAUUSD', 'Gold (XAUUSD)', 'forex'), D('cryBTCUSD', 'BTCUSD', 'crypto'),
   ];
 
-  return { Engine, Series, DerivFeed, BridgeFeed, aggCandles, startLive, backtest, stats, trendOf, efficiency, pivots, fmt, toBar, decimalsOf, G, TF_NAME, DEFAULTS, DEFAULT_SYMBOLS, version: '1.2.0' };
+  return { Engine, Series, DerivFeed, BridgeFeed, aggCandles, startLive, backtest, stats, trendOf, efficiency, pivots, fmt, toBar, decimalsOf, G, TF_NAME, DEFAULTS, DEFAULT_SYMBOLS, WELTRADE_SYMBOLS, version: '1.3.0' };
 });

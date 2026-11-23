@@ -45,8 +45,8 @@ Data: 13 Deriv markets (about 7 days) plus Weltrade FlipX-1, FlipX-2 and FlipX-4
 | Market | Data | v1.0 (2m only) | v1.1 (with 5m) | Verdict |
 |---|---|---|---|---|
 | 12 Deriv markets | 7 days | 56.1% win, +17.5R | **60.0% win, +23.7R, PF 1.54** | Proven edge, so v1.1 applies |
-| 14 Weltrade SyntX pairs (FlipX 1–5, FiboX, QuadX, PlusX, FX/SFX Vol, GainX, PainX) | 6.8 days | 43.2% win, −7.8R | 33.9% win, −27.9R | **No edge.** Runs on v1.0 rules, flagged UNPROVEN |
-| Step Index 100 | 30 days | 12 trades, 17% win, −7.1R | 11 trades, 18% win, −6.1R | **No edge.** Flagged UNPROVEN |
+| 14 Weltrade SyntX pairs (FlipX 1–5, FiboX, QuadX, PlusX, FX/SFX Vol, GainX, PainX) | 6.8 days | 43.2% win, −7.8R | 33.9% win, −27.9R | **No edge.** Runs on v1.0 rules, tagged 👑 Royalty |
+| Step Index 100 | 30 days | 12 trades, 17% win, −7.1R | 11 trades, 18% win, −6.1R | **No edge.** Tagged 👑 Royalty |
 | Step Index 200 | 30 days | 34% win, −7.3R | 46% win, +4.1R, positive in both halves | Small edge |
 
 None of 12 variants tried on Weltrade held up across both halves of the week. FlipX-style pairs reverse direction by design, so breakouts there fail more often than they follow through.
@@ -59,6 +59,29 @@ None of 12 variants tried on Weltrade held up across both halves of the week. Fl
 - Max drawdown was 7.2R. At 2% risk per trade, that's about a 14% dip, so size small accounts accordingly.
 - Some pairs were poor for breakouts in this window, notably Volatility 100 and FlipX-2/4. Dropping pairs based on past results did **not** help in walk-forward tests, so the engine keeps scanning everything and lets the filters decide.
 - One week is a small sample. Re-check in the Backtest tab regularly.
+
+## Gold, forex and crypto (v1.3)
+
+Royal Trades scans Deriv's gold, silver, ten forex pairs, BTC and ETH alongside the synthetics. Each market was replayed through the same engine over its last 7 trading days, ending 23 Nov 2026, with the stop counted first when TP and SL share a candle.
+
+| Market | Trades | Win rate | Result | Tag |
+|---|---|---|---|---|
+| Gold (XAU/USD) | 24 | 63% | +8.6R | Standard |
+| AUD/USD | 22 | 64% | +7.9R | Standard |
+| EUR/JPY | 16 | 63% | +7.3R | Standard |
+| Silver (XAG/USD) | 17 | 65% | +6.8R | Standard |
+| GBP/USD | 16 | 69% | +4.2R | Standard |
+| USD/CHF | 10 | 60% | +4.0R | Standard |
+| GBP/JPY | 13 | 54% | +1.6R | Standard |
+| BTC/USD | 8 | 50% | +0.2R | 👑 Royalty |
+| ETH/USD | 7 | 43% | −0.5R | 👑 Royalty |
+| USD/CAD | 10 | 40% | −3.0R | 👑 Royalty |
+| USD/JPY | 8 | 25% | −3.1R | 👑 Royalty |
+| EUR/USD | 12 | 42% | −3.4R | 👑 Royalty |
+| NZD/USD | 12 | 33% | −4.3R | 👑 Royalty |
+| EUR/GBP | 11 | 18% | −7.2R | 👑 Royalty |
+
+**Royalty** is the name for the strategy as it runs on markets with no proven edge yet. Those signals still publish, carry a gold 👑 ROYALTY tag, and should be watched or traded at minimum size. Samples are small (7–24 trades per market) and the tags were chosen from this same week, so they will be re-checked as more data comes in. Forex and metals close at the weekend.
 
 ## Run it
 

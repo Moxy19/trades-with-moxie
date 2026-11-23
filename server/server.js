@@ -39,7 +39,7 @@ let SYMBOLS = M.DEFAULT_SYMBOLS;
 if (process.env.SYMBOLS) {
   SYMBOLS = process.env.SYMBOLS.split(',').map((s) => s.trim()).filter(Boolean).map((s) => {
     if (s.startsWith('mt5:')) { const c = s.slice(4); return { symbol: c, name: c.replace(/-/g, ' '), market: 'synthetic', source: 'mt5' }; }
-    const d = M.DEFAULT_SYMBOLS.find((x) => x.symbol === s);
+    const d = M.DEFAULT_SYMBOLS.concat(M.WELTRADE_SYMBOLS || []).find((x) => x.symbol === s);
     return d || { symbol: s, name: s, market: /^frx/.test(s) ? 'forex' : /^cry/.test(s) ? 'crypto' : 'synthetic', source: 'deriv' };
   });
 }
