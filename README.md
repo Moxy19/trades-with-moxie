@@ -186,3 +186,17 @@ Weltrade doesn't offer a public price API. Its chart data is restricted to its o
 Check `/api/bridge/status` on the server to see what has arrived.
 
 *Educational tool, not financial advice. Risk 1–2% per trade at most.*
+
+## Trailing stop after TP1 (v1.7)
+
+Lab of 23 Nov 2026, 24 Deriv markets, v1.6 filters, pessimistic fills (stop first on ties), no spread modelled.
+
+| ORB+ management | Trades | In profit | Full stops | Total R | 1st half | 2nd half |
+|---|---|---|---|---|---|---|
+| v1.6: stop to entry at +0.5R | 533 | 38% | 26% | +99.4R | 37.3 | 62.1 |
+| Lock +0.1R at +0.5R, +0.3R at TP1, fixed TP2 | 532 | 74% | 26% | +101.0R | 41.3 | 59.8 |
+| **v1.7 default:** same locks, then trail 20 pips (forex & metals) / 0.75× ATR (others), no fixed TP2 | 511 | 74% | 26% | **+112.5R** | 50.6 | 61.9 |
+| Same, 0.75× ATR trail everywhere | 528 | 74% | 26% | +116.7R | 61.8 | 54.9 |
+
+"Breakeven" is now a small win (+0.1R before TP1, at least +0.3R on the runner after TP1).
+Royal Ladder keeps the stop-to-entry-after-TP3 rule: stepping the stop up behind every TP lifts its win rate to 86% but cuts it from +34.7R to +13.2R. That option is in Settings → Trade management → High win rate.
