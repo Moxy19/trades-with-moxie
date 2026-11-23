@@ -3,6 +3,7 @@
 // trade's side of the 15m EMA50; limit order set "front" before the swing level; SL, and five TPs at fixed ATR multiples
 // (calibrated on gold: median 15m ATR $7.37, so $3/$12/$4/$8/$13/$18/$28 = 0.41/1.63/0.54/1.09/1.76/2.44/3.80 ATR);
 // stop to breakeven after TP2; position split equally across the five TPs. 1m bars decide fills; stop first on ties.
+// Fixed distances: pass unit (price units per 1.0), e.g. unit 7.37 on gold gives $3/$12/$4/$8/$13/$18/$28.
 // Usage: const r = await (0,eval)(src)({ symbol, m1Bars, ...overrides })  -> { s: summary, out: trades }
 (async (cfg = {}) => {
   const M = window.MoxieEngine;
@@ -32,7 +33,7 @@
       if (!ok) continue;
       const c = i + w, T = m15[c].t + 900;
       if (T < start || T < busy || m15[c].t + 900 > m1[m1.length - 1].t) continue;
-      const atr = atr15[c], lvl = d > 0 ? m15[i].l : m15[i].h, px = m15[c].c;
+      const atr = P.unit || atr15[c], lvl = d > 0 ? m15[i].l : m15[i].h, px = m15[c].c;
       if ((px - lvl) * d < P.away * atr) continue;               // price has left the level, so a limit makes sense
       const tr = tr1h(T);
       if (tr === -d) continue;                                     // never against the 1H
@@ -53,7 +54,7 @@
         if (stage === TPs.length) { res = 'ALL'; break; }
       }
       if (fill == null) continue;
-      const risk = P.sl * atr, last = m1[Math.min(j, m1.length - 1)], n = TPs.length;
+      const risk = P.sl * (P.unit || atr15[i + w]), last = m1[Math.min(j, m1.length - 1)], n = TPs.length;
       let R = 0;
       for (let s = 0; s < stage; s++) R += ((TPs[s] - E) * d / risk) / n;
       const rem = (n - stage) / n;
