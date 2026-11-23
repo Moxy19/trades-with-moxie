@@ -80,7 +80,7 @@ input:focus,select:focus{border-color:var(--violet)}
 .status{font-family:var(--mono);font-size:10px;letter-spacing:1px;padding:4px 8px;border-radius:999px;border:1px solid}
 .st-ACTIVE{color:var(--buy);border-color:rgba(34,197,94,.45)}.st-PENDING{color:var(--blue);border-color:rgba(96,165,250,.45)}
 .st-TP1_HIT{color:var(--gold);border-color:rgba(245,185,66,.5)}.st-TP2_HIT{color:#0b0d12;background:var(--buy);border-color:var(--buy)}
-.st-SL_HIT{color:#fff;background:var(--sell);border-color:var(--sell)}.st-BE_HIT{color:var(--gold);border-color:rgba(245,185,66,.5)}
+.st-TP5_HIT{color:#0b0d12;background:var(--buy);border-color:var(--buy)}.st-SL_HIT{color:#fff;background:var(--sell);border-color:var(--sell)}.st-BE_HIT{color:var(--gold);border-color:rgba(245,185,66,.5)}
 .st-EXPIRED,.st-CANCELLED,.st-TIME_EXIT{color:var(--muted);border-color:var(--line2)}
 .dir{display:flex;align-items:center;gap:10px;margin:10px 0 6px}
 .dir b{font-size:26px;letter-spacing:-.5px}.buy .dir b{color:var(--buy)}.sell .dir b{color:var(--sell)}
@@ -185,6 +185,7 @@ label.f input,label.f select{width:100%}
     <div class="kpis" id="perfKpis"></div>
     <div id="eqchart"></div>
     <div class="two" style="margin-top:14px"><div class="panel"><h3>By grade</h3><table id="tGrade"></table></div><div class="panel"><h3>By trade type</h3><table id="tKind"></table></div></div>
+    <div class="panel" style="margin-top:14px"><h3>By strategy</h3><table id="tStrat"></table></div>
     <div class="panel" style="margin-top:14px"><h3>By market</h3><table id="tSym"></table></div>
   </section>
 
@@ -286,7 +287,7 @@ const S = {
   server: store.get('server', ''), key: store.get('key', ''),
 };
 delete S.cfg.signalsEnabledFrom;
-S.cfg.unproven = M.DEFAULTS.unproven; S.cfg.overrides = M.DEFAULTS.overrides; // research-driven, not user settings
+S.cfg.unproven = M.DEFAULTS.unproven; S.cfg.overrides = M.DEFAULTS.overrides; S.cfg.ladder = M.DEFAULTS.ladder; S.cfg.ladderRoyalty = M.DEFAULTS.ladderRoyalty; // research-driven, not user settings
 S.symbols = S.symbols.map((x) => Object.assign({ source: 'deriv' }, x, x.source === 'weltrade' ? { source: 'mt5' } : {}));
 // v1.3 (Royal Trades): Deriv only for now, plus gold, forex and crypto. Runs once per browser.
 if (store.get('symVer', 0) < 3) {
@@ -317,7 +318,15 @@ function notify(title, body) {
 }
 // keep the tab's engine awake-ish: warn when the page is hidden on phones
 document.addEventListener('visibilitychange', () => { if (document.hidden && /Android|iPhone|iPad/i.test(navigator.userAgent) && S.mode === 'local') store.set('hiddenAt', Date.now()); });
-const STATUS_TXT = { ACTIVE: 'LIVE', PENDING: 'LIMIT SET', TP1_HIT: 'TP1 · SL→BE', TP2_HIT: 'TP2 HIT', SL_HIT: 'SL HIT', BE_HIT: 'TP1 · BE', EXPIRED: 'EXPIRED', CANCELLED: 'MISSED', TIME_EXIT: 'TIME EXIT' };
+const STATUS_TXT = { ACTIVE: 'LIVE', PENDING: 'LIMIT SET', TP1_HIT: 'TP1 · SL→BE', TP2_HIT: 'TP2 HIT', TP5_HIT: 'ALL TPs HIT', SL_HIT: 'SL HIT', BE_HIT: 'TP1 · BE', EXPIRED: 'EXPIRED', CANCELLED: 'MISSED', TIME_EXIT: 'TIME EXIT' };
+// Royal Ladder signals carry five targets; describe their status by how many were hit
+function statusTxt(s) {
+  if (s.strategy !== 'LADDER') return STATUS_TXT[s.status] || s.status;
+  if (s.status === 'TP1_HIT') return 'TP' + s.stage + ' HIT' + (s.stage >= s.beAt ? ' · SL→BE' : '');
+  if (s.status === 'BE_HIT') return 'TP' + s.stage + ' · BE';
+  if (s.status === 'SL_HIT' && s.stage) return 'TP' + s.stage + ' · SL';
+  return STATUS_TXT[s.status] || s.status;
+}
 
 function onSignal(sig) {
   upsert(sig); save();
@@ -327,9 +336,9 @@ function onSignal(sig) {
 }
 function onUpdate(sig, prev) {
   upsert(sig); save();
-  if (prev !== sig.status && ['TP1_HIT', 'TP2_HIT', 'SL_HIT', 'BE_HIT'].includes(sig.status)) {
-    toast(`${esc(sig.name)} ${sig.dir}: <b>${STATUS_TXT[sig.status]}</b>${sig.result != null ? ` (${sig.result > 0 ? '+' : ''}${sig.result}R)` : ''}`);
-    notify(`${sig.name} ${STATUS_TXT[sig.status]}`, sig.result != null ? `${sig.result}R` : '');
+  if ((prev !== sig.status || (sig.strategy === 'LADDER' && /^TP\d$/.test(prev || ''))) && ['TP1_HIT', 'TP2_HIT', 'TP5_HIT', 'SL_HIT', 'BE_HIT'].includes(sig.status)) {
+    toast(`${esc(sig.name)} ${sig.dir}: <b>${statusTxt(sig)}</b>${sig.result != null ? ` (${sig.result > 0 ? '+' : ''}${sig.result}R)` : ''}`);
+    notify(`${sig.name} ${statusTxt(sig)}`, sig.result != null ? `${sig.result}R` : '');
   }
   render();
 }
@@ -429,7 +438,7 @@ function liveR(s) { if (!['ACTIVE', 'TP1_HIT'].includes(s.status) || s.price == 
 function cardHTML(s) {
   const d = s.dec, buy = s.dir === 'BUY', open = ['PENDING', 'ACTIVE', 'TP1_HIT'].includes(s.status);
   const r = liveR(s);
-  const lo = buy ? s.sl : s.tp2, hi = buy ? s.tp2 : s.sl, span = hi - lo || 1;
+  const far = s.tps ? s.tps[s.tps.length - 1] : s.tp2, lo = buy ? s.sl : far, hi = buy ? far : s.sl, span = hi - lo || 1;
   const pct = (v) => Math.max(0, Math.min(100, ((v - lo) / span) * 100));
   const p = s.price != null ? pct(s.price) : pct(s.entry);
   const z = pct(s.entry);
@@ -440,14 +449,16 @@ function cardHTML(s) {
       <div><div class="sym">${esc(s.name)}</div><div class="meta">${esc(s.symbol)} · ${s.tf} · ${esc(s.setup)}</div></div>
       <span class="chip ${s.kind === 'SCALP' ? 'scalp' : 'trend'}">${s.kind}</span>${s.unproven ? '<span class="chip royalty" title="Royalty strategy: no proven edge in backtests yet. Watch it, or trade the minimum size.">👑 ROYALTY</span>' : ''}
       <span class="grade ${s.grade.replace('+', '')}">${s.grade}</span></div>
-    <div class="dir"><b>${buy ? '↗ BUY' : '↘ SELL'}</b><span class="status st-${s.status}">${STATUS_TXT[s.status] || s.status}</span>
+    <div class="dir"><b>${buy ? '↗ BUY' : '↘ SELL'}</b><span class="status st-${s.status}">${statusTxt(s)}</span>
       <div class="live">${open && s.price != null ? `<div class="p">${fmt(s.price, d)}</div><div class="r ${r >= 0 ? 'pos' : 'neg'}">${r == null ? 'awaiting fill' : (r >= 0 ? '+' : '') + r.toFixed(2) + 'R'}</div>` :
         s.result != null ? `<div class="p ${s.result >= 0 ? 'pos' : 'neg'}">${s.result > 0 ? '+' : ''}${s.result}R</div><div class="r" style="color:var(--muted)">final</div>` : ''}</div></div>
     <div class="lv">
       <div>Entry <span class="tag">${s.entryType}</span></div><div>${fmt(s.entry, d)}</div>
-      <div>Stop loss ${s.status === 'TP1_HIT' ? '<span class="tag">moved to entry</span>' : ''}</div><div class="neg">${fmt(s.sl, d)}</div>
+      ${s.strategy === 'LADDER' ? `<div>Stop loss ${s.stage >= s.beAt ? '<span class="tag">moved to entry</span>' : `<span class="tag">to entry after TP${s.beAt}</span>`}</div><div class="neg">${fmt(s.sl, d)}</div>
+      ${s.tps.map((x, k) => `<div>Take profit ${k + 1} <span class="tag">${s.rs[k].toFixed(2)}R · close 20%${s.stage > k ? ' · ✓' : ''}</span></div><div class="pos">${fmt(x, d)}</div>`).join('')}` :
+      `<div>Stop loss ${s.status === 'TP1_HIT' ? '<span class="tag">moved to entry</span>' : ''}</div><div class="neg">${fmt(s.sl, d)}</div>
       <div>Take profit 1 <span class="tag">${s.r1.toFixed(2)}R · close ${Math.round((S.cfg.partialAtTp1 || .5) * 100)}%</span></div><div class="pos">${fmt(s.tp1, d)}</div>
-      <div>Take profit 2 <span class="tag">${s.r2.toFixed(2)}R</span></div><div class="pos">${fmt(s.tp2, d)}</div>
+      <div>Take profit 2 <span class="tag">${s.r2.toFixed(2)}R</span></div><div class="pos">${fmt(s.tp2, d)}</div>`}
     </div>
     <div class="track" style="--z:${z}%;--p:${p}%;--t1:${pct(s.tp1)}%"><span class="t"></span><span class="m"></span></div>
     <div class="biasrow">${['H4', 'H2', 'H1', 'M15', 'M5'].filter((k) => s.bias[k]).map((k) => `<span class="b ${s.bias[k]}">${{ H4: '4H', H2: '2H', H1: '1H', M15: '15m', M5: '5m' }[k]} ${s.bias[k] === 'UP' ? '▲' : s.bias[k] === 'DOWN' ? '▼' : '•'}</span>`).join('')}<span class="b">score ${s.score}</span></div>
@@ -497,6 +508,14 @@ $('#cards').addEventListener('click', (e) => {
 });
 function signalText(s) {
   const d = s.dec;
+  if (s.strategy === 'LADDER') return `${s.dir === 'BUY' ? '🟢 BUY' : '🔴 SELL'} — ${s.name} · Royal Ladder${s.unproven ? ' · 👑 Royalty' : ''}
+Grade ${s.grade} (${s.score}/100)
+Entry: ${fmt(s.entry, d)} (limit)
+SL: ${fmt(s.sl, d)} (to entry after TP${s.beAt})
+${s.tps.map((x, k) => `TP${k + 1}: ${fmt(x, d)} (${s.rs[k].toFixed(2)}R)`).join('\n')}
+Close 20% at each TP. Order expires if not filled within ${Math.round((s.expiresAt - s.createdAt) / 3600)}h.
+Bias: 4H ${s.bias.H4} · 1H ${s.bias.H1} · 15m ${s.bias.M15}
+— Royal Trades · educational, not financial advice`;
   return `${s.dir === 'BUY' ? '🟢 BUY' : '🔴 SELL'} — ${s.name} · ${s.tf} · ${s.setup}${s.kind === 'SCALP' ? ' (scalp)' : ''}
 Grade ${s.grade} (${s.score}/100)
 Entry: ${fmt(s.entry, d)}${s.entryType === 'LIMIT' ? ' (limit)' : ''}
@@ -570,7 +589,7 @@ function drawOverlays() {
   const open = sigs.find((s) => ['PENDING', 'ACTIVE', 'TP1_HIT'].includes(s.status));
   if (open) {
     const L = (p, c, t) => plines.push(cs.createPriceLine({ price: p, color: c, lineWidth: 1, lineStyle: 0, title: t }));
-    L(open.entry, '#e2e8f0', 'Entry'); L(open.status === 'TP1_HIT' ? open.entry : open.sl, '#f43f5e', 'SL'); L(open.tp1, '#22c55e', 'TP1'); L(open.tp2, '#22c55e', 'TP2');
+    L(open.entry, '#e2e8f0', 'Entry'); L(open.strategy === 'LADDER' ? open.slLive : open.status === 'TP1_HIT' ? open.entry : open.sl, '#f43f5e', 'SL'); (open.tps || [open.tp1, open.tp2]).forEach((x, k) => L(x, '#22c55e', 'TP' + (k + 1)));
   }
   const t0 = chartBars.length ? chartBars[0].time : 0;
   const marks = sigs.filter((s) => s.createdAt >= t0).map((s) => ({ time: Math.floor(s.createdAt / chTf) * chTf, position: s.dir === 'BUY' ? 'belowBar' : 'aboveBar', color: s.dir === 'BUY' ? '#22c55e' : '#f43f5e', shape: s.dir === 'BUY' ? 'arrowUp' : 'arrowDown', text: s.dir === 'BUY' ? 'B' : 'S' }));
@@ -625,7 +644,7 @@ function renderPerf() {
   const st = M.stats(S.signals);
   $('#perfKpis').innerHTML = kpiHTML(st);
   $('#tGrade').innerHTML = groupTable(st.byGrade, 'Grade'); $('#tKind').innerHTML = groupTable(st.byKind, 'Type');
-  $('#tSym').innerHTML = groupTable(st.bySymbol, 'Market');
+  $('#tSym').innerHTML = groupTable(st.bySymbol, 'Market'); $('#tStrat').innerHTML = groupTable(st.byStrategy || {}, 'Strategy');
   if (window.LightweightCharts && $('#v-perf').classList.contains('on')) {
     if (!eqChart) { eqChart = LightweightCharts.createChart($('#eqchart'), { layout: { background: { color: '#0f1118' }, textColor: '#8b91a6' }, grid: { vertLines: { visible: false }, horzLines: { color: '#171a25' } }, timeScale: { timeVisible: true } });
       eqS = eqChart.addAreaSeries({ lineColor: '#d946ef', topColor: 'rgba(217,70,239,.35)', bottomColor: 'rgba(217,70,239,0)', lineWidth: 2 });

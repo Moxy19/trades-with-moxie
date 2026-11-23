@@ -83,6 +83,26 @@ Royal Trades scans Deriv's gold, silver, ten forex pairs, BTC and ETH alongside 
 
 **Royalty** is the name for the strategy as it runs on markets with no proven edge yet. Those signals still publish, carry a gold 👑 ROYALTY tag, and should be watched or traded at minimum size. Samples are small (7–24 trades per market) and the tags were chosen from this same week, so they will be re-checked as more data comes in. Forex and metals close at the weekend.
 
+## Royal Ladder (v1.4)
+
+A second live strategy, decoded from a gold signal ("BUY 3612, limit 3609, SL 3600, TP 3616/3620/3625/3630/3640") and refined by backtest:
+
+1. A fresh 15m swing point, confirmed by 5 candles on each side.
+2. Never against the 1H trend, and the 15m closes on the trade's side of its EMA50.
+3. A limit order placed just before the level (gold: $3), SL beyond it (gold: $12).
+4. Five targets (gold: +$4, +$8, +$13, +$18, +$28). Close a fifth at each, and move the stop to entry after TP2.
+5. Unfilled orders expire after 4 hours.
+
+Gold uses those fixed dollar distances. Every other market uses the same distances as multiples of its 15m ATR (gold's median ATR is $7.37). It runs live on gold, silver, forex and crypto.
+
+| Market group | Trades | TP1 hit | Closed in profit | Full stop | Result |
+|---|---|---|---|---|---|
+| Gold (fixed $, 41 days) | 48 | 85% | 75% | 15% | +12.5R |
+| Gold, silver, forex, crypto (ATR, ~20 days) | 318 | 73% | 62% | 27% | +14.7R |
+| Deriv synthetics (ATR, ~14 days, backtest only) | 214 | 77% | 62% | 22% | +12.3R |
+
+The ladder loses on EUR/USD, USD/CHF, EUR/GBP and BTC/USD, and is flat on ETH/USD, so those carry the 👑 Royalty tag for this strategy.
+
 ## Run it
 
 **Quickest:** open `dist/RoyalTrades.html` in Chrome. The engine runs in the tab, and it captures live only while the tab is open.

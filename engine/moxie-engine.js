@@ -46,6 +46,12 @@
     entryMode: 'auto',      // 'auto' = limit back at the edge when the trigger candle over-extends; 'market' = always market; 'skip' = skip over-extended breaks
     r1Min: 1.0, r1Max: 1.5, // TP1 bounds in R (measured move = range height; tuned: losers often reached 0.5-0.9R first)
     r2Min: 1.8, r2Max: 3,   // TP2 bounds in R (2x range height)
+    // Royal Ladder: the decoded + refined gold-signal strategy (limit at fresh 15m swing points, 5-TP ladder).
+    // Distances are 15m-ATR multiples calibrated on gold (median ATR $7.37: $3 front-run, $12 SL, $4/$8/$13/$18/$28 TPs).
+    ladder: { on: true, markets: ['forex', 'crypto'], symbols: [], units: { frxXAUUSD: 7.37 }, w: 5, front: 0.41, sl: 1.63, tps: [0.54, 1.09, 1.76, 2.44, 3.80], beAt: 2, expH: 4, holdH: 24, away: 0.41 },
+    // Ladder lab, 23 Nov 2026 (20,000 1m bars each; gold uses fixed $ distances: 41 days, 48 trades, 85% TP1, +12.5R):
+    // losing or flat markets carry the Royalty tag.
+    ladderRoyalty: ['frxEURUSD', 'frxUSDCHF', 'frxEURGBP', 'cryBTCUSD', 'cryETHUSD'],
     signalsEnabledFrom: 0,  // epoch; used by backtests to warm up
   };
 
@@ -218,7 +224,7 @@
       st.ready = true;
       // replay closed 1m history through open signals restored from storage
       for (const sig of this.openSignals(symbol)) {
-        for (const x of st.series[60].bars) if (x.t >= (sig.lastT || sig.createdAt)) this._track(sig, st, x.h, x.l, x.t + 60, x.c, true);
+        for (const x of st.series[60].bars) if (x.t >= (sig.lastT || sig.createdAt)) { if (sig.strategy === 'LADDER') this._trackLadder(sig, st, x.h, x.l, x.t + 60, x.c); else this._track(sig, st, x.h, x.l, x.t + 60, x.c, true); }
       }
     }
 
@@ -245,6 +251,7 @@
       // 2) strategy on closed 2m bar
       const trig = this.cfg.triggerTf === G.M5 ? G.M5 : G.M2;
       if (closed[trig] && st.ready) this._evaluate(st, closed[trig], trig);
+      if (closed[G.M15] && st.ready && this._ladderOn(st)) this._ladder(st, closed[G.M15]);
       // 3) track open signals with the newest data
       const isNewMinute = !prevForming || bar.t > prevForming.t;
       let hi = bar.c, lo = bar.c;
@@ -252,7 +259,8 @@
       const now = this.mode === 'backtest' ? bar.t + 60 : Math.max(bar.t, Math.floor(Date.now() / 1000));
       for (const sig of this.openSignals(symbol)) {
         if (sig.createdAt > now) continue;
-        this._track(sig, st, hi, lo, now, bar.c, isNewMinute);
+        if (sig.strategy === 'LADDER') this._trackLadder(sig, st, hi, lo, now, bar.c);
+        else this._track(sig, st, hi, lo, now, bar.c, isNewMinute);
       }
     }
 
@@ -303,7 +311,7 @@
       const cfg = this._cfgFor(st), b = st.block, dir = cand.dir, sgn = dirSign(dir);
       const S = st.series;
       const reject = (why) => { this.hooks.onReject && this.hooks.onReject({ symbol: st.symbol, dir, setup: cand.setup, t: T, why }); return null; };
-      if (this.openSignals(st.symbol).length) return reject('Trade already open on this pair');
+      if (this.openSignals(st.symbol).some((x) => x.strategy !== 'LADDER')) return reject('Trade already open on this pair');
 
       const tH4 = trendOf(S[G.H4]), tH2 = trendOf(S[G.H2]), tH1 = trendOf(S[G.H1]), t15 = trendOf(S[G.M15]);
       const atr15 = S[G.M15].atrv || h;
@@ -480,6 +488,110 @@
       }
     }
 
+    // ---------- Royal Ladder ----------
+    _ladderOn(st) {
+      const L = this.cfg.ladder;
+      if (!L || !L.on) return false;
+      return (L.symbols || []).includes(st.symbol) || (L.markets || []).includes(st.market);
+    }
+    _ladder(st, bar15) {
+      const L = Object.assign({}, DEFAULTS.ladder, this.cfg.ladder), T = bar15.t + G.M15;
+      if (T < this.cfg.signalsEnabledFrom) return;
+      if (this.openSignals(st.symbol).some((x) => x.strategy === 'LADDER')) return;
+      const b = st.series[G.M15].bars, h1 = st.series[G.H1].bars, w = L.w, n = b.length;
+      if (n < 120 || h1.length < 60) return;
+      const emaArr = (a, k) => { const m = 2 / (k + 1); let e = null; return a.map((v) => (e = e == null ? v : e + m * (v - e))); };
+      const tail15 = b.slice(-400), e15 = emaArr(tail15.map((x) => x.c), 50), last15 = tail15.length - 1;
+      let atr = null;
+      for (let i = 0; i < tail15.length; i++) { const x = tail15[i]; const tr = i ? Math.max(x.h - x.l, Math.abs(x.h - tail15[i - 1].c), Math.abs(x.l - tail15[i - 1].c)) : x.h - x.l; atr = atr == null ? tr : (atr * 13 + tr) / 14; }
+      const tail1h = h1.slice(-400), e1 = emaArr(tail1h.map((x) => x.c), 50), j = tail1h.length - 1;
+      const tr1h = tail1h[j].c > e1[j] && e1[j] > e1[j - 3] ? 1 : tail1h[j].c < e1[j] && e1[j] < e1[j - 3] ? -1 : 0;
+      if (L.units && L.units[st.symbol]) atr = L.units[st.symbol]; // fixed price distances (gold: the original $ ladder)
+      const i = n - 1 - w, px = b[n - 1].c;
+      for (const d of [1, -1]) {
+        let ok = true;
+        for (let k = 1; k <= w; k++) {
+          if (d > 0) { if (!(b[i].l < b[i - k].l && b[i].l <= b[i + k].l)) ok = false; }
+          else if (!(b[i].h > b[i - k].h && b[i].h >= b[i + k].h)) ok = false;
+        }
+        if (!ok) continue;
+        const lvl = d > 0 ? b[i].l : b[i].h;
+        if ((px - lvl) * d < L.away * atr) continue;          // price has moved away, so a limit back at the level makes sense
+        if (tr1h === -d) continue;                             // never against the 1H
+        if ((px - e15[last15]) * d < 0) continue;              // 15m closed on the trade's side of its EMA50
+        const dir = d > 0 ? 'BUY' : 'SELL', S = st.series;
+        const entry = lvl + d * L.front * atr, risk = L.sl * atr, sl = entry - d * risk;
+        const tps = L.tps.map((x) => entry + d * x * atr), rs = L.tps.map((x) => x / L.sl);
+        const bias = { H4: trendOf(S[G.H4]).dir, H2: trendOf(S[G.H2]).dir, H1: tr1h > 0 ? 'UP' : tr1h < 0 ? 'DOWN' : 'FLAT', M15: trendOf(S[G.M15]).dir, M5: trendOf(S[G.M5]).dir };
+        const want = d > 0 ? 'UP' : 'DOWN';
+        const reasons = [];
+        let score = 60;
+        const add = (pts, ok2, label, detail) => { if (ok2) score += pts; reasons.push({ ok: ok2, pts: ok2 ? pts : 0, label, detail }); };
+        reasons.push({ ok: true, pts: 0, label: 'Fresh 15m swing ' + (d > 0 ? 'low' : 'high'), detail: fmt(lvl, st.dec) + ', confirmed by ' + w + ' candles each side' });
+        add(15, bias.H1 === want, '1H trend with the trade', bias.H1);
+        add(10, bias.H4 === want, '4H trend with the trade', bias.H4);
+        add(5, bias.H2 === want, '2H trend with the trade', bias.H2);
+        add(10, bias.M15 === want, '15m trend with the trade', bias.M15 + ', close on the right side of EMA50');
+        score = Math.min(100, score);
+        const grade = score >= 85 ? 'A+' : score >= 74 ? 'A' : 'B';
+        const sig = {
+          id: uid(), symbol: st.symbol, name: st.name, market: st.market, source: st.source, dec: st.dec,
+          strategy: 'LADDER', setup: 'Royal Ladder', kind: bias.H1 === want ? 'TREND' : 'SCALP', dir, tf: '15m', entryType: 'LIMIT',
+          entry, sl, slLive: sl, tp1: tps[0], tp2: tps[1], tps, rs, risk, r1: rs[0], r2: rs[1], stage: 0, beAt: L.beAt,
+          expiresAt: T + L.expH * 3600, maxHold: L.holdH * 3600, level: lvl, atr,
+          score, grade, reasons, unproven: (this.cfg.ladderRoyalty || []).includes(st.symbol),
+          bias, or: null, status: 'PENDING', createdAt: T, filledAt: null, tp1At: null, closedAt: null, lastT: T,
+          result: null, mfeR: 0, maeR: 0, price: px, exit: null,
+        };
+        const dd = st.dec;
+        sig.text = [
+          `${dir} ${st.name}: Royal Ladder, grade ${grade} (${score}/100).`,
+          `A fresh 15m swing ${d > 0 ? 'low' : 'high'} formed at ${fmt(lvl, dd)} and price has moved away from it. The 1H trend is ${bias.H1.toLowerCase()} (never against the trade) and the 15m is on the right side of its EMA50.`,
+          `Limit ${dir.toLowerCase()} at ${fmt(entry, dd)}, set just before the level so it fills even if price doesn't quite tag it. Stop ${fmt(sl, dd)}. The order is cancelled if it isn't filled within ${L.expH} hours.`,
+          `Five targets: ${tps.map((x, k) => 'TP' + (k + 1) + ' ' + fmt(x, dd)).join(', ')}. Close a fifth at each, and move the stop to entry after TP${L.beAt}.`,
+          sig.unproven ? 'Royalty: the ladder has no proven edge on this market yet. Watch it, or trade the smallest size only.' : '',
+        ].filter(Boolean).join(' ');
+        this.signals.push(sig);
+        this.hooks.onSignal && this.hooks.onSignal(sig);
+        return sig;
+      }
+    }
+    _trackLadder(sig, st, hi, lo, t, price) {
+      const d = dirSign(sig.dir), fav = d > 0 ? hi : lo, adv = d > 0 ? lo : hi, prev = sig.status;
+      sig.price = price; sig.lastT = t;
+      if (sig.status === 'PENDING') {
+        if (t >= sig.expiresAt) return this._closeLadder(sig, st, 'EXPIRED', price, t);
+        if (!(d > 0 ? adv <= sig.entry : adv >= sig.entry)) return;
+        sig.status = 'ACTIVE'; sig.filledAt = t;
+        if (d > 0 ? adv <= sig.sl : adv >= sig.sl) return this._closeLadder(sig, st, 'SL_HIT', sig.sl, t);
+        this.hooks.onUpdate && this.hooks.onUpdate(sig, prev);
+        return; // targets are checked from the next bar
+      }
+      sig.mfeR = Math.max(sig.mfeR, (d * (fav - sig.entry)) / sig.risk);
+      sig.maeR = Math.min(sig.maeR, (d * (adv - sig.entry)) / sig.risk);
+      if (t - sig.filledAt > sig.maxHold) return this._closeLadder(sig, st, 'TIME_EXIT', price, t);
+      if (d > 0 ? adv <= sig.slLive : adv >= sig.slLive) return this._closeLadder(sig, st, sig.stage >= sig.beAt ? 'BE_HIT' : 'SL_HIT', sig.slLive, t);
+      const before = sig.stage;
+      while (sig.stage < sig.tps.length && (d > 0 ? fav >= sig.tps[sig.stage] : fav <= sig.tps[sig.stage])) {
+        sig.stage++;
+        if (sig.stage === 1) sig.tp1At = t;
+        if (sig.stage === sig.beAt) sig.slLive = sig.entry;
+      }
+      if (sig.stage === sig.tps.length) return this._closeLadder(sig, st, 'TP5_HIT', sig.tps[sig.tps.length - 1], t);
+      if (sig.stage > before) { sig.status = 'TP1_HIT'; this.hooks.onUpdate && this.hooks.onUpdate(sig, prev === 'TP1_HIT' ? 'TP' + before : prev); }
+    }
+    _closeLadder(sig, st, status, exitPrice, t) {
+      const prev = sig.status, d = dirSign(sig.dir), n = sig.tps.length;
+      let R = 0;
+      if (status !== 'EXPIRED' && status !== 'CANCELLED') {
+        for (let k = 0; k < sig.stage; k++) R += sig.rs[k] / n;
+        const rem = (n - sig.stage) / n;
+        R += ((d * (exitPrice - sig.entry)) / sig.risk) * rem;
+      }
+      sig.status = status; sig.closedAt = t; sig.exit = exitPrice; sig.result = Math.round(R * 100) / 100; sig.lastT = t;
+      this.hooks.onUpdate && this.hooks.onUpdate(sig, prev);
+    }
+
     // ---------- reading ----------
     snapshot(symbol) {
       const st = this.sym[symbol]; if (!st) return null;
@@ -488,7 +600,8 @@
       const er = efficiency(S[G.M15], 16);
       let orState = 'forming';
       if (b && b.done) orState = st.price > b.hi ? 'above' : st.price < b.lo ? 'below' : 'inside';
-      const open = this.openSignals(symbol)[0] || null;
+      const open = this.openSignals(symbol).find((x) => x.strategy !== 'LADDER') || null;
+      const ladderOpen = this.openSignals(symbol).find((x) => x.strategy === 'LADDER') || null;
       let look = 'Waiting';
       if (open) look = 'In trade';
       else if (tr.H1 === 'FLAT' && this.cfg.trendMode === 'strict') look = 'No 1H trend';
@@ -498,7 +611,7 @@
       else look = 'Timeframes disagree';
       return { symbol, name: st.name, market: st.market, dec: st.dec, price: st.price, t: st.lastT, trend: tr, er,
         or: b ? { hi: b.hi, lo: b.lo, done: b.done, start: b.start, end: b.end, state: orState } : null,
-        open: open ? open.id : null, look, ready: st.ready };
+        open: open ? open.id : null, ladder: ladderOpen ? ladderOpen.id : null, look, ready: st.ready };
     }
 
     narrative(sig, x) {
@@ -522,7 +635,7 @@
   // ---------- stats ----------
   function stats(list) {
     const closed = list.filter((s) => s.result != null && !['EXPIRED', 'CANCELLED'].includes(s.status));
-    const wins = closed.filter((s) => s.tp1At || s.status === 'TP2_HIT' || s.status === 'BE_HIT' || (s.status === 'TIME_EXIT' && s.result > 0));
+    const wins = closed.filter((s) => (s.strategy === 'LADDER' ? s.result > 0 : s.tp1At || s.status === 'TP2_HIT' || s.status === 'BE_HIT' || (s.status === 'TIME_EXIT' && s.result > 0)));
     const sumR = closed.reduce((a, s) => a + s.result, 0);
     const gross = closed.filter((s) => s.result > 0).reduce((a, s) => a + s.result, 0);
     const loss = -closed.filter((s) => s.result < 0).reduce((a, s) => a + s.result, 0);
@@ -539,10 +652,10 @@
       total: list.length, closed: closed.length, open: list.filter((s) => ['PENDING', 'ACTIVE', 'TP1_HIT'].includes(s.status)).length,
       expired: list.filter((s) => s.status === 'EXPIRED' || s.status === 'CANCELLED').length,
       wins: wins.length, winRate: closed.length ? wins.length / closed.length : 0,
-      sl: count('SL_HIT'), tp2: count('TP2_HIT'), be: count('BE_HIT'), timeExit: count('TIME_EXIT'),
+      sl: count('SL_HIT'), tp2: count('TP2_HIT') + count('TP5_HIT'), be: count('BE_HIT'), timeExit: count('TIME_EXIT'),
       totalR: Math.round(sumR * 100) / 100, avgR: closed.length ? sumR / closed.length : 0,
       profitFactor: loss ? gross / loss : gross ? Infinity : 0, maxDD: Math.round(dd * 100) / 100, curve,
-      byGrade: group((s) => s.grade), bySymbol: group((s) => s.name), byKind: group((s) => s.kind), bySetup: group((s) => s.setup),
+      byGrade: group((s) => s.grade), bySymbol: group((s) => s.name), byKind: group((s) => s.kind), bySetup: group((s) => s.setup), byStrategy: group((s) => (s.strategy === 'LADDER' ? 'Royal Ladder' : 'ORB+')),
     };
   }
 
@@ -740,7 +853,7 @@
     for (const b of bars) { if (b.t < startFeed) continue; eng.onBar(sym, b); }
     // close anything still open at the end at last price (time exit) for honest accounting
     const lastBar = last(bars);
-    for (const s of eng.openSignals(sym)) eng._close(s, st, s.status === 'PENDING' ? 'EXPIRED' : 'TIME_EXIT', lastBar.c, lastBar.t + 60);
+    for (const s of eng.openSignals(sym)) (s.strategy === 'LADDER' ? eng._closeLadder.bind(eng) : eng._close.bind(eng))(s, st, s.status === 'PENDING' ? 'EXPIRED' : 'TIME_EXIT', lastBar.c, lastBar.t + 60);
     return { signals: eng.signals, from: startFeed, to: lastBar.t, bars: bars.length };
   }
 
@@ -767,5 +880,5 @@
     W('GainX-400'), W('GainX-600'), W('PainX-400'), W('PainX-600'),
   ];
 
-  return { Engine, Series, DerivFeed, BridgeFeed, aggCandles, startLive, backtest, stats, trendOf, efficiency, pivots, fmt, toBar, decimalsOf, G, TF_NAME, DEFAULTS, DEFAULT_SYMBOLS, WELTRADE_SYMBOLS, version: '1.3.0' };
+  return { Engine, Series, DerivFeed, BridgeFeed, aggCandles, startLive, backtest, stats, trendOf, efficiency, pivots, fmt, toBar, decimalsOf, G, TF_NAME, DEFAULTS, DEFAULT_SYMBOLS, WELTRADE_SYMBOLS, version: '1.4.0' };
 });

@@ -43,7 +43,7 @@ def main():
         pg.on('pageerror', lambda e: errors.append(str(e)))
         pg.on('console', lambda m: errors.append('console: ' + m.text) if m.type == 'error' and 'fonts' not in m.text and 'unpkg' not in m.text and 'ERR_' not in m.text else None)
         pg.add_init_script(MOCK)
-        pg.goto('file:///home/claude/trades-with-moxie/dist/TradesWithMoxie.html')
+        pg.goto('file:///home/claude/trades-with-moxie/dist/RoyalTrades.html')
         pg.wait_for_timeout(9000)
         n = pg.evaluate('TWM.signals.length'); st = pg.evaluate('TWM.signals.map(s=>s.status).join(",")')
         print('signals', n, st[:300])
