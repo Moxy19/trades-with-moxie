@@ -39,6 +39,8 @@
     pendingExpiryMin: 30,   // unfilled limit orders expire
     maxHoldMin: 360,        // time exit after 6h
     partialAtTp1: 0.5,      // fraction closed at TP1 (rest runs to TP2 with SL at entry)
+    beAtR: 0,               // 0 = off. Move the stop to entry (+ beLockR) once a trade has been this many R in profit before TP1
+    beLockR: 0,             // R locked in by that early stop move
     lossGuard: true,        // block same-direction re-entry after SL until structure resets
     retest: false,          // ORB retest continuation setups (off: they lost money in real-data tests)
     triggerTf: 120,         // candle that must close beyond the range: 120 = 2m, 300 = 5m
@@ -456,6 +458,7 @@
       if (status === 'SL_HIT') R = -1;
       else if (status === 'TP2_HIT') R = p * sig.r1 + (1 - p) * sig.r2;
       else if (status === 'BE_HIT') R = p * sig.r1;
+      else if (status === 'BE_EARLY') R = rNow;  // stopped at entry (or the locked level) before TP1
       else if (status === 'TIME_EXIT') R = sig.tp1At ? p * sig.r1 + (1 - p) * rNow : rNow;
       else R = 0; // EXPIRED / CANCELLED never filled
       sig.status = status; sig.closedAt = t; sig.exit = exitPrice; sig.result = Math.round(R * 100) / 100; sig.lastT = t;
@@ -485,9 +488,12 @@
       sig.mfeR = Math.max(sig.mfeR, (sgn * (fav - sig.entry)) / sig.risk);
       sig.maeR = Math.min(sig.maeR, (sgn * (adv - sig.entry)) / sig.risk);
       if (sig.status === 'ACTIVE') {
-        const slHit = sgn > 0 ? adv <= sig.sl : adv >= sig.sl;
+        const stop = sig.beArmed ? sig.slLive : sig.sl;
+        const slHit = sgn > 0 ? adv <= stop : adv >= stop;
         const tp1Hit = sgn > 0 ? fav >= sig.tp1 : fav <= sig.tp1;
-        if (slHit) return this._close(sig, st, 'SL_HIT', sig.sl, t); // pessimistic if both in one bar
+        if (slHit) return this._close(sig, st, sig.beArmed ? 'BE_EARLY' : 'SL_HIT', stop, t); // pessimistic if both in one bar
+        // early breakeven: armed from the next bar once the trade has run beAtR in profit
+        if (cfg.beAtR && !sig.beArmed && sig.mfeR >= cfg.beAtR && !tp1Hit) { sig.beArmed = true; sig.slLive = sig.entry + sgn * (cfg.beLockR || 0) * sig.risk; this.hooks.onUpdate && this.hooks.onUpdate(sig, 'ACTIVE'); }
         if (tp1Hit) {
           sig.status = 'TP1_HIT'; sig.tp1At = t; sig.slLive = sig.entry;
           this.hooks.onUpdate && this.hooks.onUpdate(sig, 'ACTIVE');
