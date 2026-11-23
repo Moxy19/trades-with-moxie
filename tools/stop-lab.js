@@ -9,7 +9,7 @@
   if (!src.includes('_softStops')) throw new Error('engine-next not deployed yet');
   const mod = { exports: {} }; new Function('module', 'exports', src)(mod, mod.exports);
   const M = mod.exports && mod.exports.Engine ? mod.exports : window.MoxieEngine;
-  const KEY = 'rt.ss', N1 = opts.m1Bars || 30000;
+  const KEY = opts.key || 'rt.ss', N1 = opts.m1Bars || 30000;
   const lab = (window.__ss = JSON.parse(localStorage.getItem(KEY) || 'null') || { done: {}, err: {}, fin: false });
   lab.fin = false;
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(lab)); } catch (e) {} };
@@ -31,6 +31,7 @@
     M: { slOfTp: { ref: 'tp2', k: 0.5 }, softStop: { r: 0.5, tf: 300 }, ladder: L({ sl: 1.22 }) },
     N: { ladder: L({ sl: 0.545 }) },
   };
+  if (opts.configs) { for (const k in CONFIGS) delete CONFIGS[k]; for (const [k, c] of Object.entries(opts.configs)) CONFIGS[k] = Object.assign({}, c, c.ladder ? { ladder: L(c.ladder) } : {}); }
   const markets = opts.markets || M.DEFAULT_SYMBOLS.filter((x) => x.source !== 'mt5');
   const feed = new M.DerivFeed(); await feed.connect();
   const sum = (list, mid) => {
