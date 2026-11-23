@@ -1,5 +1,5 @@
 /*!
- * Trades with Moxie — ORB+ Engine v1.0
+ * Royal Trades — ORB+ Engine v1.0
  * Multi-timeframe Opening Range Breakout engine with live trade capture.
  * Runs identically in the browser (window.MoxieEngine) and in Node (require).
  *

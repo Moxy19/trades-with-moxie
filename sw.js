@@ -1,4 +1,4 @@
-// Trades with Moxie service worker: shows signal notifications and focuses the terminal when one is tapped.
+// Royal Trades service worker: shows signal notifications and focuses the terminal when one is tapped.
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
 self.addEventListener('notificationclick', (e) => {

@@ -1,7 +1,7 @@
 {
-  "name": "trades-with-moxie-server",
+  "name": "royal-trades-server",
   "version": "1.0.0",
-  "description": "Trades with Moxie: 24/7 ORB+ signal engine for Deriv and Weltrade SyntX with live trade capture",
+  "description": "Royal Trades: 24/7 ORB+ signal engine for Deriv and Weltrade SyntX with live trade capture",
   "main": "server.js",
   "scripts": { "start": "node server.js" },
   "engines": { "node": ">=22" },

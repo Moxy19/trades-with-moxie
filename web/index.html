@@ -8,8 +8,8 @@
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Moxie Trades">
-<title>Trades with Moxie — Live ORB+ Signal Terminal</title>
+<meta name="apple-mobile-web-app-title" content="Royal Trades">
+<title>Royal Trades — Live ORB+ Signal Terminal</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
@@ -131,7 +131,7 @@ label.f input,label.f select{width:100%}
 </head>
 <body>
 <header class="top"><div class="wrap row">
-  <div class="logo"><div class="orb"></div><div>Trades with Moxie<small>ORB+ signal terminal</small></div></div>
+  <div class="logo"><div class="orb"></div><div>👑 Royal Trades<small>ORB+ signal terminal</small></div></div>
   <nav class="tabs" id="tabs">
     <button data-v="signals" class="on">Live signals</button>
     <button data-v="scanner">Scanner</button>
@@ -251,7 +251,7 @@ label.f input,label.f select{width:100%}
         <div class="bar"><button class="btn" id="sSave">Save & reconnect</button><button class="btn" id="sClear">Clear signal history</button><button class="btn" id="sExport">Copy history (JSON)</button></div>
       </div>
     </div>
-    <div class="panel" style="margin-top:14px"><h3>Markets to scan</h3><div class="sub">Deriv markets (Step, Volatility, Boom/Crash, Jump, gold, crypto) stream live in any browser. Weltrade SyntX pairs (FlipX, FiboX, QuadX, FX Vol, SFX Vol, GainX, PainX…), marked MT5, come from your own MT5 terminal through the Moxie bridge EA and run on the Moxie server.</div>
+    <div class="panel" style="margin-top:14px"><h3>Markets to scan</h3><div class="sub">Deriv markets (Step, Volatility, Boom/Crash, Jump, gold, crypto) stream live in any browser. Weltrade SyntX pairs (FlipX, FiboX, QuadX, FX Vol, SFX Vol, GainX, PainX…), marked MT5, come from your own MT5 terminal through the Moxie bridge EA and run on the Royal Trades server.</div>
       <div class="bar"><button class="btn sm" id="symDefault">Default set</button><button class="btn sm" id="symNone">None</button><input id="symQ" placeholder="Filter…" style="flex:1"></div>
       <div class="symlist" id="symList"></div>
     </div>
@@ -340,7 +340,7 @@ async function bootLocal() {
   try { await feed.deriv.connect(); } catch (e) { setStatus('error'); toast('Could not reach the Deriv feed. Check your connection; the terminal keeps retrying.'); }
   loadSymbolCatalog();
   const mt5 = S.symbols.filter((x) => x.source === 'mt5');
-  if (mt5.length) toast(`${mt5.length} Weltrade pairs come through your MT5 bridge and run on the Moxie server. Deriv pairs are live here now.`, 9000);
+  if (mt5.length) toast(`${mt5.length} Weltrade pairs come through your MT5 bridge and run on the Royal Trades server. Deriv pairs are live here now.`, 9000);
   let rT = 0;
   M.startLive(engine, feed, S.symbols.filter((x) => x.source !== 'mt5'), {
     concurrency: 3,
@@ -350,7 +350,7 @@ async function bootLocal() {
   });
 }
 function makeFeeds(onStatus) { return { deriv: new M.DerivFeed({ onStatus: onStatus || (() => {}) }), mt5: S.serverBase ? serverCandles(S.serverBase) : null }; }
-// candles for MT5-bridge pairs, served by the Moxie server
+// candles for MT5-bridge pairs, served by the Royal Trades server
 function serverCandles(base) {
   const q = (o) => Object.entries(Object.assign(o, S.key ? { key: S.key } : {})).map(([k, v]) => k + '=' + encodeURIComponent(v)).join('&');
   const get = async (sym, g, count, end) => { const r = await fetch(`${base}/api/candles?${q({ symbol: sym, g, count, end: end || 'latest' })}`); if (!r.ok) throw new Error('server ' + r.status); return r.json(); };
@@ -384,7 +384,7 @@ async function bootServer(base) {
 async function boot() {
   let base = S.server.replace(/\/$/, '');
   if (!base && /^https?:/.test(location.protocol)) {
-    try { const h = await fetch('/api/health', { cache: 'no-store' }); if (h.ok && (await h.json()).app === 'trades-with-moxie') base = location.origin; } catch (e) {}
+    try { const h = await fetch('/api/health', { cache: 'no-store' }); if (h.ok && ['royal-trades','trades-with-moxie'].includes((await h.json()).app)) base = location.origin; } catch (e) {}
   }
   if (base) { try { await bootServer(base); return; } catch (e) { toast('Signal server unreachable, so the engine is running in this browser instead.'); } }
   await bootLocal();
@@ -496,7 +496,7 @@ SL: ${fmt(s.sl, d)}
 TP1: ${fmt(s.tp1, d)} (${s.r1.toFixed(2)}R) — close half, SL to entry
 TP2: ${fmt(s.tp2, d)} (${s.r2.toFixed(2)}R)
 Bias: 4H ${s.bias.H4} · 1H ${s.bias.H1} · 15m ${s.bias.M15}
-— Trades with Moxie · educational, not financial advice`;
+— Royal Trades · educational, not financial advice`;
 }
 async function copyText(t) {
   try { await navigator.clipboard.writeText(t); toast('Copied, ready to paste into WhatsApp or Telegram.', 2500); }
@@ -512,7 +512,7 @@ $('#alertBtn').addEventListener('click', async () => {
   beep(); // unlock audio on first click
   if (!S.alerts && typeof Notification !== 'undefined') {
     try { const p = await Notification.requestPermission(); S.alerts = p === 'granted';
-      if (S.alerts) { toast('Alerts on. Test notification sent.', 3000); notify('Trades with Moxie', 'Alerts are working. New signals will appear here.'); }
+      if (S.alerts) { toast('Alerts on. Test notification sent.', 3000); notify('Royal Trades', 'Alerts are working. New signals will appear here.'); }
       else toast('Notifications are blocked for this site. Allow them in the browser\'s site settings. In-app alerts and sound still work.'); } catch (e) { S.alerts = false; }
   } else if (S.alerts) { S.alerts = false; S.sound = !S.sound; }
   else S.sound = !S.sound;
@@ -531,7 +531,7 @@ function renderScanner() {
      <td class="n" style="color:${x.er < S.cfg.chopMin ? 'var(--warn)' : 'var(--text)'}">${(x.er * 100).toFixed(0)}%</td>
      <td style="font-family:var(--mono);font-size:12px">${x.or && x.or.hi != null ? `${fmt(x.or.lo, x.dec)} – ${fmt(x.or.hi, x.dec)} <span class="b ${x.or.state === 'above' ? 'UP' : x.or.state === 'below' ? 'DOWN' : ''}">${x.or.state}</span>` : '—'}</td>
      <td style="font-size:12.5px;color:${x.open ? 'var(--gold)' : 'var(--muted)'}">${esc(x.look)}${(M.DEFAULTS.unproven || []).includes(x.symbol) ? ' <span class="chip scalp">unproven</span>' : ''}</td></tr>`).join('') +
-    (mt5n ? `<tr><td colspan="10" style="color:var(--dim);font-size:12.5px">+ ${mt5n} Weltrade SyntX pairs (FlipX, FiboX, QuadX, FX Vol…) are scanned by the Moxie server through your MT5 bridge. Connect a server in Settings to see them here.</td></tr>` : '');
+    (mt5n ? `<tr><td colspan="10" style="color:var(--dim);font-size:12.5px">+ ${mt5n} Weltrade SyntX pairs (FlipX, FiboX, QuadX, FX Vol…) are scanned by the Royal Trades server through your MT5 bridge. Connect a server in Settings to see them here.</td></tr>` : '');
 }
 $('#scanBody').addEventListener('click', (e) => { const tr = e.target.closest('tr[data-sym]'); if (tr) { show('chart'); openChart(tr.dataset.sym); } });
 
@@ -579,7 +579,7 @@ async function openChart(sym) {
   const mySym = chSym, myTf = chTf;
   const meta = S.symbols.find((x) => x.symbol === mySym) || {};
   if (meta.source === 'mt5') {
-    if (!S.serverBase) { chartBars = []; cs.setData([]); $('#chInfo').textContent = 'MT5-bridge pair: charts load from the Moxie server'; return; }
+    if (!S.serverBase) { chartBars = []; cs.setData([]); $('#chInfo').textContent = 'MT5-bridge pair: charts load from the Royal Trades server'; return; }
     const sf = serverCandles(S.serverBase);
     const load = async (n) => (await sf.candles(mySym, myTf, n)).candles.map((c) => ({ time: c.epoch, open: +c.open, high: +c.high, low: +c.low, close: +c.close }));
     try {
@@ -693,7 +693,7 @@ function loadSettingsUI() {
   $('#sMode').value = S.cfg.trendMode; $('#sGrade').value = String(S.cfg.minScore >= 85 ? 85 : S.cfg.minScore >= 74 ? 74 : 62);
   $('#sBlock').value = String(S.cfg.orBlock); $('#sOrm').value = String(S.cfg.orMinutes); $('#sChop').value = String(S.cfg.chopMin); $('#sGuard').value = S.cfg.lossGuard ? '1' : '0'; $('#sM5').value = S.cfg.m5Filter || 'momentum';
   $('#sServer').value = S.server; $('#sKey').value = S.key;
-  $('#connInfo').textContent = S.mode === 'local' ? 'The engine is running in this browser and reading Deriv\'s public live feed. Keep this tab open for live capture, or point it at a Trades with Moxie server so signals run 24/7.' : 'Connected to a Trades with Moxie server. Signals are generated 24/7 even when this page is closed.';
+  $('#connInfo').textContent = S.mode === 'local' ? 'The engine is running in this browser and reading Deriv\'s public live feed. Keep this tab open for live capture, or point it at a Royal Trades server so signals run 24/7.' : 'Connected to a Royal Trades server. Signals are generated 24/7 even when this page is closed.';
 }
 $('#sMode').onchange = (e) => { S.cfg.trendMode = e.target.value; saveCfg(); };
 $('#sGrade').onchange = (e) => { S.cfg.minScore = +e.target.value; S.cfg.minScalpScore = Math.max(+e.target.value, 72); saveCfg(); };

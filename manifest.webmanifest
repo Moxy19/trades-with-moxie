@@ -1,6 +1,6 @@
 {
-  "name": "Trades with Moxie",
-  "short_name": "Moxie Trades",
+  "name": "Royal Trades",
+  "short_name": "Royal Trades",
   "description": "Live ORB+ signal terminal: graded, explained and tracked to TP or SL",
   "start_url": "./",
   "scope": "./",

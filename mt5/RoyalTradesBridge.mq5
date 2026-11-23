@@ -1,22 +1,22 @@
 //+------------------------------------------------------------------+
-//|  TradesWithMoxieBridge.mq5                                       |
+//|  RoyalTradesBridge.mq5                                       |
 //|  Streams your MT5 broker's prices (e.g. Weltrade SyntX: FlipX,   |
-//|  FiboX, QuadX, FX Vol...) to your Trades with Moxie server.      |
+//|  FiboX, QuadX, FX Vol...) to your Royal Trades server.      |
 //|  It only reads prices. It never places, modifies or closes trades. |
 //|                                                                  |
 //|  Setup:                                                          |
 //|  1. Tools > Options > Expert Advisors > tick "Allow WebRequest   |
 //|     for listed URL" and add your server, e.g.                    |
-//|     https://your-moxie-server.example.com                       |
+//|     https://your-royal-trades-server.example.com                       |
 //|  2. Attach this EA to any one chart (e.g. FlipX-1, M1).          |
 //|  3. Set ServerURL, BridgeKey (same as BRIDGE_KEY on the server)  |
 //|     and Symbols. Keep MT5 running (PC or VPS) for live capture.  |
 //+------------------------------------------------------------------+
-#property copyright "Trades with Moxie"
+#property copyright "Royal Trades"
 #property version   "1.00"
 #property strict
 
-input string ServerURL    = "https://your-moxie-server.example.com/api/bridge";
+input string ServerURL    = "https://your-royal-trades-server.example.com/api/bridge";
 input string BridgeKey    = "change-me";
 input string Symbols      = "FlipX-1,FlipX-2,FlipX-3,FlipX-4,FlipX-5,FiboX,QuadX,PlusX-1,FX-Vol-20,FX-Vol-40,FX-Vol-60,FX-Vol-99,SFX-Vol-20,SFX-Vol-40,GainX-400,GainX-600,PainX-400,PainX-600";
 input int    PushSeconds  = 2;      // live push interval
@@ -33,17 +33,17 @@ datetime g_lastOffsetCheck = 0;
 int OnInit()
   {
    int n = StringSplit(Symbols, ',', g_syms);
-   if(n <= 0) { Print("Moxie bridge: no symbols"); return(INIT_PARAMETERS_INCORRECT); }
+   if(n <= 0) { Print("Royal Trades bridge: no symbols"); return(INIT_PARAMETERS_INCORRECT); }
    ArrayResize(g_hasHistory, n);
    for(int i = 0; i < n; i++)
      {
       StringTrimLeft(g_syms[i]); StringTrimRight(g_syms[i]);
       g_hasHistory[i] = false;
-      if(!SymbolSelect(g_syms[i], true)) Print("Moxie bridge: symbol not found at this broker: ", g_syms[i]);
+      if(!SymbolSelect(g_syms[i], true)) Print("Royal Trades bridge: symbol not found at this broker: ", g_syms[i]);
      }
    UpdateOffset();
    EventSetTimer(MathMax(1, PushSeconds));
-   Print("Moxie bridge started for ", n, " symbols, server offset ", g_offset / 3600, "h");
+   Print("Royal Trades bridge started for ", n, " symbols, server offset ", g_offset / 3600, "h");
    return(INIT_SUCCEEDED);
   }
 void OnDeinit(const int reason) { EventKillTimer(); }
@@ -104,11 +104,11 @@ bool Post(const string json)
    if(code == -1)
      {
       int err = GetLastError();
-      if(err == 4014) Print("Moxie bridge: add the server URL under Tools > Options > Expert Advisors > Allow WebRequest");
-      else Print("Moxie bridge: WebRequest error ", err);
+      if(err == 4014) Print("Royal Trades bridge: add the server URL under Tools > Options > Expert Advisors > Allow WebRequest");
+      else Print("Royal Trades bridge: WebRequest error ", err);
       return(false);
      }
-   if(code != 200) { Print("Moxie bridge: server replied ", code, " ", CharArrayToString(result)); return(false); }
+   if(code != 200) { Print("Royal Trades bridge: server replied ", code, " ", CharArrayToString(result)); return(false); }
    return(true);
   }
 
@@ -122,7 +122,7 @@ void OnTimer()
      {
       if(g_hasHistory[i]) continue;
       string body = "{\"key\":\"" + BridgeKey + "\",\"symbols\":[" + SymbolPayload(g_syms[i], true) + "]}";
-      if(Post(body)) { g_hasHistory[i] = true; Print("Moxie bridge: history sent for ", g_syms[i]); }
+      if(Post(body)) { g_hasHistory[i] = true; Print("Royal Trades bridge: history sent for ", g_syms[i]); }
       return;
      }
    // 2) live: latest bars for every symbol in one small request

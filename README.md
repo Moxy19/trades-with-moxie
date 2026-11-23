@@ -1,4 +1,4 @@
-# Trades with Moxie — ORB+ live signal terminal
+# Royal Trades — ORB+ live signal terminal
 
 A live signal platform in the style of Aurum Signals, built from scratch around a transparent, testable strategy engine. Aurum keeps its strategy hidden inside a private MT5 EA.
 
@@ -8,7 +8,7 @@ A live signal platform in the style of Aurum Signals, built from scratch around 
 |---|---|---|
 | Engine | `engine/moxie-engine.js` | ORB+ strategy, multi-timeframe filters, grading, live trade capture, stats, and the Deriv and Weltrade feeds. Runs in the browser and in Node. |
 | Terminal | `web/index.html` | Live signals, scanner, chart, performance, backtest, risk tools and settings |
-| Single file | `dist/TradesWithMoxie.html` | Terminal with the engine built in. Open it in Chrome and it runs. |
+| Single file | `dist/RoyalTrades.html` | Terminal with the engine built in. Open it in Chrome and it runs. |
 | Server | `server/server.js` | 24/7 engine with SSE stream to the terminal, optional Telegram broadcast and an optional access key for members |
 
 ## How a signal is made
@@ -35,10 +35,10 @@ Data: 13 Deriv markets (about 7 days) plus Weltrade FlipX-1, FlipX-2 and FlipX-4
 | | Signals | Win rate (TP1+) | Net | Profit factor |
 |---|---|---|---|---|
 | Aurum Signals, its last 59 closed (21–22 Nov, from its history tab) | 59 | 36% | about −5.7R | below 1 |
-| Trades with Moxie, first draft | 118 | 45% | +3.4R | 1.05 |
-| Trades with Moxie, final, strict 1H rule | 180 | 54% | +24.7R | 1.30 |
-| Trades with Moxie, adaptive 1H rule | 187 | 54.5% | +29.0R | 1.34 |
-| **Trades with Moxie v1.1 with 5m confirmation (default)**, 13 Deriv markets, 7 days to 22 Nov 18:00 | **136** | **60.3%** | **+32.6R** | **1.60** |
+| Royal Trades, first draft | 118 | 45% | +3.4R | 1.05 |
+| Royal Trades, final, strict 1H rule | 180 | 54% | +24.7R | 1.30 |
+| Royal Trades, adaptive 1H rule | 187 | 54.5% | +29.0R | 1.34 |
+| **Royal Trades v1.1 with 5m confirmation (default)**, 13 Deriv markets, 7 days to 22 Nov 18:00 | **136** | **60.3%** | **+32.6R** | **1.60** |
 
 **Per market (backtests to 22 Nov 2026):**
 
@@ -62,7 +62,7 @@ None of 12 variants tried on Weltrade held up across both halves of the week. Fl
 
 ## Run it
 
-**Quickest:** open `dist/TradesWithMoxie.html` in Chrome. The engine runs in the tab, and it captures live only while the tab is open.
+**Quickest:** open `dist/RoyalTrades.html` in Chrome. The engine runs in the tab, and it captures live only while the tab is open.
 
 **24/7 server** (Node 22+, no dependencies):
 
@@ -78,7 +78,7 @@ Open `http://your-server:8080`. The terminal detects the server and switches to 
 
 ## Weltrade pairs: the MT5 bridge
 
-Weltrade doesn't offer a public price API. Its chart data is restricted to its own website, so the app doesn't scrape it. Instead, `mt5/TradesWithMoxieBridge.mq5` runs in **your own MT5 terminal**, logged into Weltrade, and posts prices to the server. This is the same bridge model Aurum uses ("MT5 BRIDGE · LAST RELAY"). The bridge only reads prices and never trades.
+Weltrade doesn't offer a public price API. Its chart data is restricted to its own website, so the app doesn't scrape it. Instead, `mt5/RoyalTradesBridge.mq5` runs in **your own MT5 terminal**, logged into Weltrade, and posts prices to the server. This is the same bridge model Aurum uses ("MT5 BRIDGE · LAST RELAY"). The bridge only reads prices and never trades.
 
 1. Start the server with a bridge secret, for example `BRIDGE_KEY=long-random-secret node server.js`.
 2. In MT5 desktop (on a PC or VPS, not the phone app), go to Tools > Options > Expert Advisors, tick "Allow WebRequest" and add your server URL.

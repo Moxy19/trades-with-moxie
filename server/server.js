@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Trades with Moxie — signal server (Node 22+, zero dependencies)
+ * Royal Trades — signal server (Node 22+, zero dependencies)
  *
  * Runs the ORB+ engine 24/7 on Deriv's public feed plus any MT5 broker (Weltrade SyntX) via the bridge EA, stores every signal,
  * streams them to the web terminal (Server-Sent Events) and, optionally, posts them to Telegram.
@@ -67,7 +67,7 @@ try { engine.restoreSignals(JSON.parse(fs.readFileSync(SIG_FILE, 'utf8'))); cons
 
 function signalText(s) {
   const d = s.dec, f = (x) => M.fmt(x, d);
-  return `${s.dir === 'BUY' ? '🟢 BUY' : '🔴 SELL'} — ${s.name} · ${s.tf} · ${s.setup}${s.kind === 'SCALP' ? ' (scalp)' : ''}\nGrade ${s.grade} (${s.score}/100)\nEntry: ${f(s.entry)}${s.entryType === 'LIMIT' ? ' (limit)' : ''}\nSL: ${f(s.sl)}\nTP1: ${f(s.tp1)} (${s.r1.toFixed(2)}R): close half, SL to entry\nTP2: ${f(s.tp2)} (${s.r2.toFixed(2)}R)\n— Trades with Moxie · educational, not financial advice`;
+  return `${s.dir === 'BUY' ? '🟢 BUY' : '🔴 SELL'} — ${s.name} · ${s.tf} · ${s.setup}${s.kind === 'SCALP' ? ' (scalp)' : ''}\nGrade ${s.grade} (${s.score}/100)\nEntry: ${f(s.entry)}${s.entryType === 'LIMIT' ? ' (limit)' : ''}\nSL: ${f(s.sl)}\nTP1: ${f(s.tp1)} (${s.r1.toFixed(2)}R): close half, SL to entry\nTP2: ${f(s.tp2)} (${s.r2.toFixed(2)}R)\n— Royal Trades · educational, not financial advice`;
 }
 async function telegram(text) {
   if (!TG_TOKEN || !TG_CHAT) return;
@@ -111,7 +111,7 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, { ok: true, bars: n });
     } catch (e) { return send(res, 400, { error: e.message }); }
   }
-  if (u.pathname === '/api/health') return send(res, 200, { app: 'trades-with-moxie', version: M.version, markets: SYMBOLS.length, lastTick, signals: engine.signals.length });
+  if (u.pathname === '/api/health') return send(res, 200, { app: 'royal-trades', version: M.version, markets: SYMBOLS.length, lastTick, signals: engine.signals.length });
   if (u.pathname.startsWith('/api/')) {
     if (KEY && u.searchParams.get('key') !== KEY) return send(res, 401, { error: 'access key required' });
     if (u.pathname === '/api/signals') return send(res, 200, engine.signals.slice(-600));
@@ -139,5 +139,5 @@ const server = http.createServer(async (req, res) => {
   if (!file.startsWith(WEB_DIR) && file !== ENGINE_FILE) return send(res, 403, 'forbidden', 'text/plain');
   fs.readFile(file, (err, buf) => err ? send(res, 404, 'not found', 'text/plain') : send(res, 200, buf, MIME[path.extname(file)] || 'application/octet-stream'));
 });
-server.listen(PORT, () => { console.log(`Trades with Moxie server on :${PORT}`); start(); });
+server.listen(PORT, () => { console.log(`Royal Trades server on :${PORT}`); start(); });
 process.on('SIGTERM', () => { fs.writeFileSync(SIG_FILE, JSON.stringify(engine.signals.slice(-3000))); process.exit(0); });
