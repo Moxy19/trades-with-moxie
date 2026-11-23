@@ -103,6 +103,40 @@ Gold uses those fixed dollar distances. Every other market uses the same distanc
 
 The ladder loses on EUR/USD, USD/CHF, EUR/GBP and BTC/USD, and is flat on ETH/USD, so those carry the 👑 Royalty tag for this strategy.
 
+## Stop-loss review and 5m entries (v1.5)
+
+**Stop-loss lab, 23 Nov 2026.** 593 ORB+ trades (about 21 days of synthetics, 30 of forex and crypto) were replayed, and every stop-out was compared with the winners.
+
+- Most stops are false breakouts: 70% hit within 30 minutes of entry, and 30% never moved more than 0.2R in profit.
+- Losses cluster in places that can be avoided:
+  - opening ranges wider than 1.5× the 15m ATR (38% win);
+  - scores under 74;
+  - forex and metals from 06:00 to 10:00 SAST, the London-open fakeouts (42% win, −9R);
+  - six markets where ORB+ lost money in both halves of the data: NZD/USD, USD/CHF, EUR/USD, USD/JPY, Volatility 75 and Volatility 25 (1s).
+- The Ladder lost in both halves on EUR/GBP and USD/CHF.
+
+v1.5 filters all of these out. Replayed through the engine on the same data:
+
+| Strategy | Version | Trades | Win | Stop-outs | Result |
+|---|---|---|---|---|---|
+| ORB+ | before | 593 | 51% | 48% | +57.8R |
+| ORB+ | v1.5 | 405 | 56% | 44% | +86.0R |
+| Ladder | before | 442 | 61% | 38% | +14.1R |
+| Ladder | v1.5 | 368 | 63% | 36% | +33.6R |
+
+Both halves of the data improved for both strategies.
+
+**Ladder 5m confirmation (v1.5.1).** The Ladder now waits for price to reach the zone, then enters on the first 5m candle that closes back in the trade's direction. If price hits the stop first, the setup is cancelled. It also skips levels that are already more than 3 ATRs from price.
+
+On gold, forex and crypto (engine replay, 13 markets):
+
+| Entry | Trades | TP1 hit | Win | Stop-outs | Result |
+|---|---|---|---|---|---|
+| Limit at the level | 339 | 75% | 63% | 36% | +30.9R |
+| 5m confirmation | 216 | 87% | 73% | 27% | +29.6R |
+
+Finding setups on 5m swings instead of 15m made signals arrive about 70 minutes sooner, but each trade was less accurate. Measuring stops with the 5m ATR was worse. On synthetics, none of the Ladder versions made money, so it stays off there.
+
 ## Run it
 
 **Quickest:** open `dist/RoyalTrades.html` in Chrome. The engine runs in the tab, and it captures live only while the tab is open.

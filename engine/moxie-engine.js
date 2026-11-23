@@ -24,8 +24,14 @@
     orMinutes: 15,          // opening range length
     bufferFrac: 0.15,       // breakout must clear the edge by this fraction of range height (tuned on 7d real data)
     trendMode: 'adaptive',  // 'strict' = only with 1H trend; 'adaptive' = also counter-1H scalps when 1H is weak
-    minScore: 62,           // publish threshold (B grade)
-    minScalpScore: 72,      // counter-1H scalps need more confluence
+    minScore: 74,           // publish threshold (A grade). SL lab 23 Nov: scores under 74 won 37% (-0.28R each)
+    minScalpScore: 80,      // counter-1H scalps need more confluence
+    // Stop-loss lab, 23 Nov 2026 (593 ORB+ trades, ~21 days synthetics / ~30 days forex & crypto). Each filter
+    // removed trades that lost money in both halves of the data.
+    maxOrAtr: 1.5,          // skip when the opening range is wider than 1.5× the 15m ATR (those breakouts won 38%)
+    quiet: { markets: ['forex'], fromUtc: 4, toUtc: 8 },  // no forex/metals ORB+ 06:00–10:00 SAST (London-open fakeouts: 42% win, -9R)
+    orbOff: ['frxNZDUSD', 'frxUSDCHF', 'frxEURUSD', '1HZ25V', 'R_75', 'frxUSDJPY'],  // ORB+ lost in both halves on these markets
+    ladderOff: ['frxEURGBP', 'frxUSDCHF'],                                       // Royal Ladder lost in both halves on these
     chopMin: 0,             // optional 15m efficiency floor (0..1). Off by default: in walk-forward tests it removed more winners than losers
     maxRiskAtr: 1.8,        // stop distance cap in 15m ATRs
     minRiskAtr: 0.35,       // stop distance floor in 15m ATRs (avoid noise stops)
@@ -48,7 +54,10 @@
     r2Min: 1.8, r2Max: 3,   // TP2 bounds in R (2x range height)
     // Royal Ladder: the decoded + refined gold-signal strategy (limit at fresh 15m swing points, 5-TP ladder).
     // Distances are 15m-ATR multiples calibrated on gold (median ATR $7.37: $3 front-run, $12 SL, $4/$8/$13/$18/$28 TPs).
-    ladder: { on: true, markets: ['forex', 'crypto'], symbols: [], units: { frxXAUUSD: 7.37 }, w: 5, front: 0.41, sl: 1.63, tps: [0.54, 1.09, 1.76, 2.44, 3.80], beAt: 2, expH: 4, holdH: 24, away: 0.41 },
+    ladder: { on: true, markets: ['forex', 'crypto'], symbols: [], units: { frxXAUUSD: 7.37 }, confirm: true, maxAway: 3, w: 5, front: 0.41, sl: 1.63, tps: [0.54, 1.09, 1.76, 2.44, 3.80], beAt: 2, expH: 4, holdH: 24, away: 0.41 },
+    // 5m entry lab, 23 Nov 2026 (30,000 1m bars, gold/forex/crypto): waiting for a 5m candle to close back in the trade's
+    // direction at the level lifted the win rate from 65% to 76% and cut stop-outs from 34% to 24% (+0.16R a trade vs +0.11R).
+    // maxAway 3: no limit is posted when price is already more than 3 ATRs from the level (those rarely filled).
     // Ladder lab, 23 Nov 2026 (20,000 1m bars each; gold uses fixed $ distances: 41 days, 48 trades, 85% TP1, +12.5R):
     // losing or flat markets carry the Royalty tag.
     ladderRoyalty: ['frxEURUSD', 'frxUSDCHF', 'frxEURGBP', 'cryBTCUSD', 'cryETHUSD'],
@@ -252,6 +261,7 @@
       const trig = this.cfg.triggerTf === G.M5 ? G.M5 : G.M2;
       if (closed[trig] && st.ready) this._evaluate(st, closed[trig], trig);
       if (closed[G.M15] && st.ready && this._ladderOn(st)) this._ladder(st, closed[G.M15]);
+      if (closed[G.M5]) this._ladderConfirm(st, closed[G.M5]);
       // 3) track open signals with the newest data
       const isNewMinute = !prevForming || bar.t > prevForming.t;
       let hi = bar.c, lo = bar.c;
@@ -315,6 +325,12 @@
 
       const tH4 = trendOf(S[G.H4]), tH2 = trendOf(S[G.H2]), tH1 = trendOf(S[G.H1]), t15 = trendOf(S[G.M15]);
       const atr15 = S[G.M15].atrv || h;
+      if ((cfg.orbOff || []).includes(st.symbol)) return reject('ORB+ is off on this market (it lost money in testing)');
+      if (cfg.maxOrAtr && h > cfg.maxOrAtr * atr15) return reject('Opening range too wide (' + (h / atr15).toFixed(1) + '× ATR): breakouts from wide ranges usually fail');
+      if (cfg.quiet && (cfg.quiet.markets || []).includes(st.market)) {
+        const hu = new Date(T * 1000).getUTCHours();
+        if (hu >= cfg.quiet.fromUtc && hu < cfg.quiet.toUtc) return reject('Quiet window (London open): breakouts fail more often');
+      }
       const er15 = efficiency(S[G.M15], 16);
       const m1 = S[G.M1];
       const mom1 = m1.n > 21 && (sgn > 0 ? last(m1.bars).c > m1.e(9) && m1.e(9) > m1.e(21) : last(m1.bars).c < m1.e(9) && m1.e(9) < m1.e(21));
@@ -491,7 +507,7 @@
     // ---------- Royal Ladder ----------
     _ladderOn(st) {
       const L = this.cfg.ladder;
-      if (!L || !L.on) return false;
+      if (!L || !L.on || (this.cfg.ladderOff || []).includes(st.symbol)) return false;
       return (L.symbols || []).includes(st.symbol) || (L.markets || []).includes(st.market);
     }
     _ladder(st, bar15) {
@@ -517,6 +533,7 @@
         if (!ok) continue;
         const lvl = d > 0 ? b[i].l : b[i].h;
         if ((px - lvl) * d < L.away * atr) continue;          // price has moved away, so a limit back at the level makes sense
+        if (L.maxAway && (px - lvl) * d > L.maxAway * atr) continue; // too far: price rarely comes back in time
         if (tr1h === -d) continue;                             // never against the 1H
         if ((px - e15[last15]) * d < 0) continue;              // 15m closed on the trade's side of its EMA50
         const dir = d > 0 ? 'BUY' : 'SELL', S = st.series;
@@ -536,9 +553,9 @@
         const grade = score >= 85 ? 'A+' : score >= 74 ? 'A' : 'B';
         const sig = {
           id: uid(), symbol: st.symbol, name: st.name, market: st.market, source: st.source, dec: st.dec,
-          strategy: 'LADDER', setup: 'Royal Ladder', kind: bias.H1 === want ? 'TREND' : 'SCALP', dir, tf: '15m', entryType: 'LIMIT',
+          strategy: 'LADDER', setup: 'Royal Ladder', kind: bias.H1 === want ? 'TREND' : 'SCALP', dir, tf: '15m', entryType: L.confirm ? 'CONFIRM' : 'LIMIT', confirm: !!L.confirm, touched: null, level: lvl, zone: entry,
           entry, sl, slLive: sl, tp1: tps[0], tp2: tps[1], tps, rs, risk, r1: rs[0], r2: rs[1], stage: 0, beAt: L.beAt,
-          expiresAt: T + L.expH * 3600, maxHold: L.holdH * 3600, level: lvl, atr,
+          expiresAt: T + L.expH * 3600, maxHold: L.holdH * 3600, atr,
           score, grade, reasons, unproven: (this.cfg.ladderRoyalty || []).includes(st.symbol),
           bias, or: null, status: 'PENDING', createdAt: T, filledAt: null, tp1At: null, closedAt: null, lastT: T,
           result: null, mfeR: 0, maeR: 0, price: px, exit: null,
@@ -547,7 +564,8 @@
         sig.text = [
           `${dir} ${st.name}: Royal Ladder, grade ${grade} (${score}/100).`,
           `A fresh 15m swing ${d > 0 ? 'low' : 'high'} formed at ${fmt(lvl, dd)} and price has moved away from it. The 1H trend is ${bias.H1.toLowerCase()} (never against the trade) and the 15m is on the right side of its EMA50.`,
-          `Limit ${dir.toLowerCase()} at ${fmt(entry, dd)}, set just before the level so it fills even if price doesn't quite tag it. Stop ${fmt(sl, dd)}. The order is cancelled if it isn't filled within ${L.expH} hours.`,
+          L.confirm ? `Entry zone ${fmt(entry, dd)}, just before the level. Wait for price to reach it, then ${dir.toLowerCase()} when a 5m candle closes back ${d > 0 ? 'up' : 'down'} through it. Stop ${fmt(sl, dd)}. The setup is cancelled if price hits the stop first or nothing confirms within ${L.expH} hours.`
+            : `Limit ${dir.toLowerCase()} at ${fmt(entry, dd)}, set just before the level so it fills even if price doesn't quite tag it. Stop ${fmt(sl, dd)}. The order is cancelled if it isn't filled within ${L.expH} hours.`,
           `Five targets: ${tps.map((x, k) => 'TP' + (k + 1) + ' ' + fmt(x, dd)).join(', ')}. Close a fifth at each, and move the stop to entry after TP${L.beAt}.`,
           sig.unproven ? 'Royalty: the ladder has no proven edge on this market yet. Watch it, or trade the smallest size only.' : '',
         ].filter(Boolean).join(' ');
@@ -561,6 +579,11 @@
       sig.price = price; sig.lastT = t;
       if (sig.status === 'PENDING') {
         if (t >= sig.expiresAt) return this._closeLadder(sig, st, 'EXPIRED', price, t);
+        if (sig.confirm) {
+          if (!sig.touched && (d > 0 ? adv <= sig.zone : adv >= sig.zone)) { sig.touched = t; this.hooks.onUpdate && this.hooks.onUpdate(sig, 'PENDING'); }
+          if (sig.touched && (d > 0 ? adv <= sig.sl : adv >= sig.sl)) return this._closeLadder(sig, st, 'CANCELLED', price, t); // stop level hit before a 5m confirmation: no trade
+          return;
+        }
         if (!(d > 0 ? adv <= sig.entry : adv >= sig.entry)) return;
         sig.status = 'ACTIVE'; sig.filledAt = t;
         if (d > 0 ? adv <= sig.sl : adv >= sig.sl) return this._closeLadder(sig, st, 'SL_HIT', sig.sl, t);
@@ -579,6 +602,22 @@
       }
       if (sig.stage === sig.tps.length) return this._closeLadder(sig, st, 'TP5_HIT', sig.tps[sig.tps.length - 1], t);
       if (sig.stage > before) { sig.status = 'TP1_HIT'; this.hooks.onUpdate && this.hooks.onUpdate(sig, prev === 'TP1_HIT' ? 'TP' + before : prev); }
+    }
+    // 5m confirmation: after price reached the zone, enter on the first 5m close back in the trade's direction
+    _ladderConfirm(st, bar5) {
+      for (const sig of this.openSignals(st.symbol)) {
+        if (sig.strategy !== 'LADDER' || sig.status !== 'PENDING' || !sig.confirm || !sig.touched) continue;
+        if (bar5.t + G.M5 <= sig.touched - 60) continue;           // this 5m candle closed before the touch
+        const d = dirSign(sig.dir);
+        if (d > 0 ? bar5.l <= sig.sl : bar5.h >= sig.sl) { this._closeLadder(sig, st, 'CANCELLED', bar5.c, bar5.t + G.M5); continue; }
+        if (!(d > 0 ? bar5.c > bar5.o && bar5.c > sig.zone : bar5.c < bar5.o && bar5.c < sig.zone)) continue;
+        const entry = bar5.c, risk = Math.abs(entry - sig.sl), first = sig.tps[0];
+        if (risk > 1.5 * sig.risk || (first - entry) * d <= 0) { this._closeLadder(sig, st, 'CANCELLED', entry, bar5.t + G.M5); continue; } // confirmation came too late
+        const prev = sig.status;
+        sig.entry = entry; sig.risk = risk; sig.rs = sig.tps.map((x) => Math.abs(x - entry) / risk); sig.r1 = sig.rs[0]; sig.r2 = sig.rs[1];
+        sig.status = 'ACTIVE'; sig.filledAt = bar5.t + G.M5; sig.price = entry;
+        this.hooks.onUpdate && this.hooks.onUpdate(sig, prev);
+      }
     }
     _closeLadder(sig, st, status, exitPrice, t) {
       const prev = sig.status, d = dirSign(sig.dir), n = sig.tps.length;
@@ -880,5 +919,5 @@
     W('GainX-400'), W('GainX-600'), W('PainX-400'), W('PainX-600'),
   ];
 
-  return { Engine, Series, DerivFeed, BridgeFeed, aggCandles, startLive, backtest, stats, trendOf, efficiency, pivots, fmt, toBar, decimalsOf, G, TF_NAME, DEFAULTS, DEFAULT_SYMBOLS, WELTRADE_SYMBOLS, version: '1.4.0' };
+  return { Engine, Series, DerivFeed, BridgeFeed, aggCandles, startLive, backtest, stats, trendOf, efficiency, pivots, fmt, toBar, decimalsOf, G, TF_NAME, DEFAULTS, DEFAULT_SYMBOLS, WELTRADE_SYMBOLS, version: '1.5.1' };
 });
