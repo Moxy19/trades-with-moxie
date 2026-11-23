@@ -40,10 +40,9 @@
     m5Score: true,          // add +5 score when the 5m trend agrees
     // Per-market profiles from real-data backtests (22 Nov 2026). Keys: a symbol, or a source ('mt5' = Weltrade via MT5 bridge).
     overrides: { mt5: { m5Filter: 'off', m5Score: false } },     // 5m gate hurt Weltrade SyntX (34% vs 43% win)
-    // "Royalty" markets: no backtested edge yet, so signals carry a Royalty tag (watch or minimum size).
-    // Weltrade SyntX (7d: 43% win, -7.8R), Step Index 100 (30d: 17% win), and from the 23 Nov 2026 7-trading-day run:
-    // EUR/USD -3.4R, USD/JPY -3.1R, USD/CAD -3.0R, NZD/USD -4.3R, EUR/GBP -7.2R, BTC +0.2R, ETH -0.5R.
-    unproven: ['mt5', 'stpRNG', 'frxEURUSD', 'frxUSDJPY', 'frxUSDCAD', 'frxNZDUSD', 'frxEURGBP', 'cryBTCUSD', 'cryETHUSD'],
+    // "Royalty" markets: ORB+ lost money in the 23 Nov 2026 strategy lab (20,000 1m bars each: ~14 days synthetics,
+    // ~20 days forex/crypto) or, for Weltrade SyntX, in the 7-day test. Signals carry a Royalty tag: watch or minimum size.
+    unproven: ['mt5', 'stpRNG', 'R_75', '1HZ25V', 'frxEURUSD', 'frxUSDJPY', 'frxUSDCHF', 'frxNZDUSD', 'frxGBPJPY', 'frxEURGBP', 'cryETHUSD'],
     entryMode: 'auto',      // 'auto' = limit back at the edge when the trigger candle over-extends; 'market' = always market; 'skip' = skip over-extended breaks
     r1Min: 1.0, r1Max: 1.5, // TP1 bounds in R (measured move = range height; tuned: losers often reached 0.5-0.9R first)
     r2Min: 1.8, r2Max: 3,   // TP2 bounds in R (2x range height)
