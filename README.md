@@ -137,6 +137,27 @@ On gold, forex and crypto (engine replay, 13 markets):
 
 Finding setups on 5m swings instead of 15m made signals arrive about 70 minutes sooner, but each trade was less accurate. Measuring stops with the 5m ATR was worse. On synthetics, none of the Ladder versions made money, so it stays off there.
 
+## Trade management for profit (v1.6)
+
+The management lab (23 Nov 2026) used the v1.5.1 rules on all 24 markets, about 21 days of synthetics and 30 of forex and crypto. It replayed every option through the engine.
+
+| Change | ORB+ result | Notes |
+|---|---|---|
+| v1.5.1 as shipped | +83.8R | 55% win, 44% stop-outs |
+| **Stop to entry at +0.5R (now default)** | **+99.8R** | stop-outs fall to 25%; win rate shows 38% because breakeven exits don't count as wins; both halves better |
+| Stop to entry at +0.7R, locking +0.2R | +85.8R | 65% win: the "High win rate" setting |
+| Close 30% or 70% at TP1 | +83.9R / +83.8R | no real difference |
+| Further or nearer TP2 | +83.0R / +64.3R | nearer is worse |
+| 3h or 12h maximum hold | +85.2R / +84.1R | no real difference |
+
+| Royal Ladder (gold, forex, crypto) | Result | Win rate |
+|---|---|---|
+| Stop to entry after TP2 (v1.5.1) | +27.8R | 72% |
+| **Stop to entry after TP3 (now default)** | **+35.7R** | 64% |
+| Stop to entry after TP1 ("High win rate") | +17.8R | 82% |
+
+You can switch between "Max profit" and "High win rate" in Settings under "Trade management".
+
 ## Run it
 
 **Quickest:** open `dist/RoyalTrades.html` in Chrome. The engine runs in the tab, and it captures live only while the tab is open.

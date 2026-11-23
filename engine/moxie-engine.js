@@ -39,6 +39,10 @@
     pendingExpiryMin: 30,   // unfilled limit orders expire
     maxHoldMin: 360,        // time exit after 6h
     partialAtTp1: 0.5,      // fraction closed at TP1 (rest runs to TP2 with SL at entry)
+    // Management lab, 23 Nov 2026 (v1.5.1 rules, 24 markets): moving the stop to entry at +0.5R lifted ORB+ from +83.8R to
+    // +99.8R (both halves better; stop-outs 44% -> 25%). Partial size, TP2 distance and holding time made no real difference.
+    beAtR: 0.5,             // 0 = off. Move the stop to entry (+ beLockR) once a trade has been this many R in profit before TP1
+    beLockR: 0,             // R locked in by that early stop move
     lossGuard: true,        // block same-direction re-entry after SL until structure resets
     retest: false,          // ORB retest continuation setups (off: they lost money in real-data tests)
     triggerTf: 120,         // candle that must close beyond the range: 120 = 2m, 300 = 5m
@@ -54,7 +58,8 @@
     r2Min: 1.8, r2Max: 3,   // TP2 bounds in R (2x range height)
     // Royal Ladder: the decoded + refined gold-signal strategy (limit at fresh 15m swing points, 5-TP ladder).
     // Distances are 15m-ATR multiples calibrated on gold (median ATR $7.37: $3 front-run, $12 SL, $4/$8/$13/$18/$28 TPs).
-    ladder: { on: true, markets: ['forex', 'crypto'], symbols: [], units: { frxXAUUSD: 7.37 }, confirm: true, maxAway: 3, w: 5, front: 0.41, sl: 1.63, tps: [0.54, 1.09, 1.76, 2.44, 3.80], beAt: 2, expH: 4, holdH: 24, away: 0.41 },
+    ladder: { on: true, markets: ['forex', 'crypto'], symbols: [], units: { frxXAUUSD: 7.37 }, confirm: true, maxAway: 3, w: 5, front: 0.41, sl: 1.63, tps: [0.54, 1.09, 1.76, 2.44, 3.80], beAt: 3, expH: 4, holdH: 24, away: 0.41 },
+    // beAt 3 (stop to entry after TP3): +35.7R vs +27.8R at TP2 in the management lab, both halves better.
     // 5m entry lab, 23 Nov 2026 (30,000 1m bars, gold/forex/crypto): waiting for a 5m candle to close back in the trade's
     // direction at the level lifted the win rate from 65% to 76% and cut stop-outs from 34% to 24% (+0.16R a trade vs +0.11R).
     // maxAway 3: no limit is posted when price is already more than 3 ATRs from the level (those rarely filled).
@@ -456,6 +461,7 @@
       if (status === 'SL_HIT') R = -1;
       else if (status === 'TP2_HIT') R = p * sig.r1 + (1 - p) * sig.r2;
       else if (status === 'BE_HIT') R = p * sig.r1;
+      else if (status === 'BE_EARLY') R = rNow;  // stopped at entry (or the locked level) before TP1
       else if (status === 'TIME_EXIT') R = sig.tp1At ? p * sig.r1 + (1 - p) * rNow : rNow;
       else R = 0; // EXPIRED / CANCELLED never filled
       sig.status = status; sig.closedAt = t; sig.exit = exitPrice; sig.result = Math.round(R * 100) / 100; sig.lastT = t;
@@ -485,9 +491,12 @@
       sig.mfeR = Math.max(sig.mfeR, (sgn * (fav - sig.entry)) / sig.risk);
       sig.maeR = Math.min(sig.maeR, (sgn * (adv - sig.entry)) / sig.risk);
       if (sig.status === 'ACTIVE') {
-        const slHit = sgn > 0 ? adv <= sig.sl : adv >= sig.sl;
+        const stop = sig.beArmed ? sig.slLive : sig.sl;
+        const slHit = sgn > 0 ? adv <= stop : adv >= stop;
         const tp1Hit = sgn > 0 ? fav >= sig.tp1 : fav <= sig.tp1;
-        if (slHit) return this._close(sig, st, 'SL_HIT', sig.sl, t); // pessimistic if both in one bar
+        if (slHit) return this._close(sig, st, sig.beArmed ? 'BE_EARLY' : 'SL_HIT', stop, t); // pessimistic if both in one bar
+        // early breakeven: armed from the next bar once the trade has run beAtR in profit
+        if (cfg.beAtR && !sig.beArmed && sig.mfeR >= cfg.beAtR && !tp1Hit) { sig.beArmed = true; sig.slLive = sig.entry + sgn * (cfg.beLockR || 0) * sig.risk; this.hooks.onUpdate && this.hooks.onUpdate(sig, 'ACTIVE'); }
         if (tp1Hit) {
           sig.status = 'TP1_HIT'; sig.tp1At = t; sig.slLive = sig.entry;
           this.hooks.onUpdate && this.hooks.onUpdate(sig, 'ACTIVE');
@@ -896,6 +905,11 @@
     return { signals: eng.signals, from: startFeed, to: lastBar.t, bars: bars.length };
   }
 
+  // Trade-management presets (management lab, 23 Nov 2026)
+  const MANAGEMENT = {
+    profit: { label: 'Max profit', beAtR: 0.5, beLockR: 0, ladderBeAt: 3 },        // ORB+ +99.8R (38% win), Ladder +35.7R (64% win)
+    winrate: { label: 'High win rate', beAtR: 0.7, beLockR: 0.2, ladderBeAt: 1 },  // ORB+ +85.8R (65% win), Ladder +17.8R (82% win)
+  };
   const D = (symbol, name, market = 'synthetic') => ({ symbol, name, market, source: 'deriv' });
   // Weltrade SyntX pairs arrive through your MT5 terminal (source 'mt5'), the same bridge model Aurum uses.
   const W = (symbol) => ({ symbol, name: symbol.replace(/-/g, ' '), market: 'synthetic', source: 'mt5', broker: 'Weltrade' });
@@ -919,5 +933,5 @@
     W('GainX-400'), W('GainX-600'), W('PainX-400'), W('PainX-600'),
   ];
 
-  return { Engine, Series, DerivFeed, BridgeFeed, aggCandles, startLive, backtest, stats, trendOf, efficiency, pivots, fmt, toBar, decimalsOf, G, TF_NAME, DEFAULTS, DEFAULT_SYMBOLS, WELTRADE_SYMBOLS, version: '1.5.1' };
+  return { Engine, Series, DerivFeed, BridgeFeed, aggCandles, startLive, backtest, stats, trendOf, efficiency, pivots, fmt, toBar, decimalsOf, G, TF_NAME, DEFAULTS, DEFAULT_SYMBOLS, WELTRADE_SYMBOLS, MANAGEMENT, version: '1.6.0' };
 });

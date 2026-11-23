@@ -80,7 +80,7 @@ input:focus,select:focus{border-color:var(--violet)}
 .status{font-family:var(--mono);font-size:10px;letter-spacing:1px;padding:4px 8px;border-radius:999px;border:1px solid}
 .st-ACTIVE{color:var(--buy);border-color:rgba(34,197,94,.45)}.st-PENDING{color:var(--blue);border-color:rgba(96,165,250,.45)}
 .st-TP1_HIT{color:var(--gold);border-color:rgba(245,185,66,.5)}.st-TP2_HIT{color:#0b0d12;background:var(--buy);border-color:var(--buy)}
-.st-TP5_HIT{color:#0b0d12;background:var(--buy);border-color:var(--buy)}.st-SL_HIT{color:#fff;background:var(--sell);border-color:var(--sell)}.st-BE_HIT{color:var(--gold);border-color:rgba(245,185,66,.5)}
+.st-TP5_HIT{color:#0b0d12;background:var(--buy);border-color:var(--buy)}.st-BE_EARLY{color:var(--muted);border-color:var(--line)}.st-SL_HIT{color:#fff;background:var(--sell);border-color:var(--sell)}.st-BE_HIT{color:var(--gold);border-color:rgba(245,185,66,.5)}
 .st-EXPIRED,.st-CANCELLED,.st-TIME_EXIT{color:var(--muted);border-color:var(--line2)}
 .dir{display:flex;align-items:center;gap:10px;margin:10px 0 6px}
 .dir b{font-size:26px;letter-spacing:-.5px}.buy .dir b{color:var(--buy)}.sell .dir b{color:var(--sell)}
@@ -238,6 +238,7 @@ label.f input,label.f select{width:100%}
       <div class="panel"><h3>Strategy</h3>
         <div class="two">
           <label class="f">1H trend rule<select id="sMode"><option value="adaptive">Adaptive (counter-1H scalps when 1H is weak)</option><option value="strict">Strict (never against 1H)</option></select></label>
+          <label class="f">Trade management<select id="sMgmt"><option value="profit">Max profit: stop to entry at +0.5R (Ladder after TP3)</option><option value="winrate">High win rate: lock +0.2R at +0.7R (Ladder after TP1)</option></select></label>
           <label class="f">Minimum grade to publish<select id="sGrade"><option value="62">B and above</option><option value="74">A and above</option><option value="85">A+ only</option></select></label>
           <label class="f">Opening range resets every<select id="sBlock"><option value="3600">1 hour</option><option value="7200">2 hours</option><option value="14400">4 hours</option><option value="86400">Day (00:00 UTC)</option></select></label>
           <label class="f">Opening range length<select id="sOrm"><option value="5">5 minutes</option><option value="10">10 minutes</option><option value="15">15 minutes</option><option value="30">30 minutes</option></select></label>
@@ -303,6 +304,10 @@ label.f input,label.f select{width:100%}
     pendingExpiryMin: 30,   // unfilled limit orders expire
     maxHoldMin: 360,        // time exit after 6h
     partialAtTp1: 0.5,      // fraction closed at TP1 (rest runs to TP2 with SL at entry)
+    // Management lab, 23 Nov 2026 (v1.5.1 rules, 24 markets): moving the stop to entry at +0.5R lifted ORB+ from +83.8R to
+    // +99.8R (both halves better; stop-outs 44% -> 25%). Partial size, TP2 distance and holding time made no real difference.
+    beAtR: 0.5,             // 0 = off. Move the stop to entry (+ beLockR) once a trade has been this many R in profit before TP1
+    beLockR: 0,             // R locked in by that early stop move
     lossGuard: true,        // block same-direction re-entry after SL until structure resets
     retest: false,          // ORB retest continuation setups (off: they lost money in real-data tests)
     triggerTf: 120,         // candle that must close beyond the range: 120 = 2m, 300 = 5m
@@ -318,7 +323,8 @@ label.f input,label.f select{width:100%}
     r2Min: 1.8, r2Max: 3,   // TP2 bounds in R (2x range height)
     // Royal Ladder: the decoded + refined gold-signal strategy (limit at fresh 15m swing points, 5-TP ladder).
     // Distances are 15m-ATR multiples calibrated on gold (median ATR $7.37: $3 front-run, $12 SL, $4/$8/$13/$18/$28 TPs).
-    ladder: { on: true, markets: ['forex', 'crypto'], symbols: [], units: { frxXAUUSD: 7.37 }, confirm: true, maxAway: 3, w: 5, front: 0.41, sl: 1.63, tps: [0.54, 1.09, 1.76, 2.44, 3.80], beAt: 2, expH: 4, holdH: 24, away: 0.41 },
+    ladder: { on: true, markets: ['forex', 'crypto'], symbols: [], units: { frxXAUUSD: 7.37 }, confirm: true, maxAway: 3, w: 5, front: 0.41, sl: 1.63, tps: [0.54, 1.09, 1.76, 2.44, 3.80], beAt: 3, expH: 4, holdH: 24, away: 0.41 },
+    // beAt 3 (stop to entry after TP3): +35.7R vs +27.8R at TP2 in the management lab, both halves better.
     // 5m entry lab, 23 Nov 2026 (30,000 1m bars, gold/forex/crypto): waiting for a 5m candle to close back in the trade's
     // direction at the level lifted the win rate from 65% to 76% and cut stop-outs from 34% to 24% (+0.16R a trade vs +0.11R).
     // maxAway 3: no limit is posted when price is already more than 3 ATRs from the level (those rarely filled).
@@ -720,6 +726,7 @@ label.f input,label.f select{width:100%}
       if (status === 'SL_HIT') R = -1;
       else if (status === 'TP2_HIT') R = p * sig.r1 + (1 - p) * sig.r2;
       else if (status === 'BE_HIT') R = p * sig.r1;
+      else if (status === 'BE_EARLY') R = rNow;  // stopped at entry (or the locked level) before TP1
       else if (status === 'TIME_EXIT') R = sig.tp1At ? p * sig.r1 + (1 - p) * rNow : rNow;
       else R = 0; // EXPIRED / CANCELLED never filled
       sig.status = status; sig.closedAt = t; sig.exit = exitPrice; sig.result = Math.round(R * 100) / 100; sig.lastT = t;
@@ -749,9 +756,12 @@ label.f input,label.f select{width:100%}
       sig.mfeR = Math.max(sig.mfeR, (sgn * (fav - sig.entry)) / sig.risk);
       sig.maeR = Math.min(sig.maeR, (sgn * (adv - sig.entry)) / sig.risk);
       if (sig.status === 'ACTIVE') {
-        const slHit = sgn > 0 ? adv <= sig.sl : adv >= sig.sl;
+        const stop = sig.beArmed ? sig.slLive : sig.sl;
+        const slHit = sgn > 0 ? adv <= stop : adv >= stop;
         const tp1Hit = sgn > 0 ? fav >= sig.tp1 : fav <= sig.tp1;
-        if (slHit) return this._close(sig, st, 'SL_HIT', sig.sl, t); // pessimistic if both in one bar
+        if (slHit) return this._close(sig, st, sig.beArmed ? 'BE_EARLY' : 'SL_HIT', stop, t); // pessimistic if both in one bar
+        // early breakeven: armed from the next bar once the trade has run beAtR in profit
+        if (cfg.beAtR && !sig.beArmed && sig.mfeR >= cfg.beAtR && !tp1Hit) { sig.beArmed = true; sig.slLive = sig.entry + sgn * (cfg.beLockR || 0) * sig.risk; this.hooks.onUpdate && this.hooks.onUpdate(sig, 'ACTIVE'); }
         if (tp1Hit) {
           sig.status = 'TP1_HIT'; sig.tp1At = t; sig.slLive = sig.entry;
           this.hooks.onUpdate && this.hooks.onUpdate(sig, 'ACTIVE');
@@ -1160,6 +1170,11 @@ label.f input,label.f select{width:100%}
     return { signals: eng.signals, from: startFeed, to: lastBar.t, bars: bars.length };
   }
 
+  // Trade-management presets (management lab, 23 Nov 2026)
+  const MANAGEMENT = {
+    profit: { label: 'Max profit', beAtR: 0.5, beLockR: 0, ladderBeAt: 3 },        // ORB+ +99.8R (38% win), Ladder +35.7R (64% win)
+    winrate: { label: 'High win rate', beAtR: 0.7, beLockR: 0.2, ladderBeAt: 1 },  // ORB+ +85.8R (65% win), Ladder +17.8R (82% win)
+  };
   const D = (symbol, name, market = 'synthetic') => ({ symbol, name, market, source: 'deriv' });
   // Weltrade SyntX pairs arrive through your MT5 terminal (source 'mt5'), the same bridge model Aurum uses.
   const W = (symbol) => ({ symbol, name: symbol.replace(/-/g, ' '), market: 'synthetic', source: 'mt5', broker: 'Weltrade' });
@@ -1183,7 +1198,7 @@ label.f input,label.f select{width:100%}
     W('GainX-400'), W('GainX-600'), W('PainX-400'), W('PainX-600'),
   ];
 
-  return { Engine, Series, DerivFeed, BridgeFeed, aggCandles, startLive, backtest, stats, trendOf, efficiency, pivots, fmt, toBar, decimalsOf, G, TF_NAME, DEFAULTS, DEFAULT_SYMBOLS, WELTRADE_SYMBOLS, version: '1.5.1' };
+  return { Engine, Series, DerivFeed, BridgeFeed, aggCandles, startLive, backtest, stats, trendOf, efficiency, pivots, fmt, toBar, decimalsOf, G, TF_NAME, DEFAULTS, DEFAULT_SYMBOLS, WELTRADE_SYMBOLS, MANAGEMENT, version: '1.6.0' };
 });
 
 </script>
@@ -1214,6 +1229,8 @@ const S = {
 delete S.cfg.signalsEnabledFrom;
 S.cfg.unproven = M.DEFAULTS.unproven; S.cfg.overrides = M.DEFAULTS.overrides; S.cfg.ladder = M.DEFAULTS.ladder; S.cfg.ladderRoyalty = M.DEFAULTS.ladderRoyalty;
 S.cfg.maxOrAtr = M.DEFAULTS.maxOrAtr; S.cfg.quiet = M.DEFAULTS.quiet; S.cfg.orbOff = M.DEFAULTS.orbOff; S.cfg.ladderOff = M.DEFAULTS.ladderOff;
+function applyMgmt(k) { const m = M.MANAGEMENT[k] || M.MANAGEMENT.profit; S.cfg.beAtR = m.beAtR; S.cfg.beLockR = m.beLockR; S.cfg.ladder = Object.assign({}, M.DEFAULTS.ladder, { beAt: m.ladderBeAt }); }
+applyMgmt(store.get('mgmt', 'profit'));
 if (store.get('cfgVer', 0) < 2) { S.cfg.minScore = Math.max(S.cfg.minScore || 0, M.DEFAULTS.minScore); S.cfg.minScalpScore = Math.max(S.cfg.minScalpScore || 0, M.DEFAULTS.minScalpScore); store.set('cfgVer', 2); } // research-driven, not user settings
 S.symbols = S.symbols.map((x) => Object.assign({ source: 'deriv' }, x, x.source === 'weltrade' ? { source: 'mt5' } : {}));
 // v1.3 (Royal Trades): Deriv only for now, plus gold, forex and crypto. Runs once per browser.
@@ -1245,7 +1262,7 @@ function notify(title, body) {
 }
 // keep the tab's engine awake-ish: warn when the page is hidden on phones
 document.addEventListener('visibilitychange', () => { if (document.hidden && /Android|iPhone|iPad/i.test(navigator.userAgent) && S.mode === 'local') store.set('hiddenAt', Date.now()); });
-const STATUS_TXT = { ACTIVE: 'LIVE', PENDING: 'LIMIT SET', TP1_HIT: 'TP1 · SL→BE', TP2_HIT: 'TP2 HIT', TP5_HIT: 'ALL TPs HIT', SL_HIT: 'SL HIT', BE_HIT: 'TP1 · BE', EXPIRED: 'EXPIRED', CANCELLED: 'MISSED', TIME_EXIT: 'TIME EXIT' };
+const STATUS_TXT = { BE_EARLY: 'BREAKEVEN', ACTIVE: 'LIVE', PENDING: 'LIMIT SET', TP1_HIT: 'TP1 · SL→BE', TP2_HIT: 'TP2 HIT', TP5_HIT: 'ALL TPs HIT', SL_HIT: 'SL HIT', BE_HIT: 'TP1 · BE', EXPIRED: 'EXPIRED', CANCELLED: 'MISSED', TIME_EXIT: 'TIME EXIT' };
 // Royal Ladder signals carry five targets; describe their status by how many were hit
 function statusTxt(s) {
   if (s.strategy !== 'LADDER') return STATUS_TXT[s.status] || s.status;
@@ -1264,7 +1281,7 @@ function onSignal(sig) {
 }
 function onUpdate(sig, prev) {
   upsert(sig); save();
-  if ((prev !== sig.status || (sig.strategy === 'LADDER' && /^TP\d$/.test(prev || ''))) && ['TP1_HIT', 'TP2_HIT', 'TP5_HIT', 'SL_HIT', 'BE_HIT'].includes(sig.status)) {
+  if ((prev !== sig.status || (sig.strategy === 'LADDER' && /^TP\d$/.test(prev || ''))) && ['TP1_HIT', 'TP2_HIT', 'TP5_HIT', 'SL_HIT', 'BE_HIT', 'BE_EARLY'].includes(sig.status)) {
     toast(`${esc(sig.name)} ${sig.dir}: <b>${statusTxt(sig)}</b>${sig.result != null ? ` (${sig.result > 0 ? '+' : ''}${sig.result}R)` : ''}`);
     notify(`${sig.name} ${statusTxt(sig)}`, sig.result != null ? `${sig.result}R` : '');
   }
@@ -1384,7 +1401,7 @@ function cardHTML(s) {
       <div>Entry <span class="tag">${s.entryType === 'CONFIRM' ? (s.status === 'PENDING' ? 'zone · enter on 5m close' : '5m confirmed') : s.entryType}</span></div><div>${fmt(s.entry, d)}</div>
       ${s.strategy === 'LADDER' ? `<div>Stop loss ${s.stage >= s.beAt ? '<span class="tag">moved to entry</span>' : `<span class="tag">to entry after TP${s.beAt}</span>`}</div><div class="neg">${fmt(s.sl, d)}</div>
       ${s.tps.map((x, k) => `<div>Take profit ${k + 1} <span class="tag">${s.rs[k].toFixed(2)}R · close 20%${s.stage > k ? ' · ✓' : ''}</span></div><div class="pos">${fmt(x, d)}</div>`).join('')}` :
-      `<div>Stop loss ${s.status === 'TP1_HIT' ? '<span class="tag">moved to entry</span>' : ''}</div><div class="neg">${fmt(s.sl, d)}</div>
+      `<div>Stop loss ${s.status === 'TP1_HIT' || s.beArmed ? '<span class="tag">moved to entry</span>' : S.cfg.beAtR ? `<span class="tag">to entry at +${S.cfg.beAtR}R</span>` : ''}</div><div class="neg">${fmt(s.sl, d)}</div>
       <div>Take profit 1 <span class="tag">${s.r1.toFixed(2)}R · close ${Math.round((S.cfg.partialAtTp1 || .5) * 100)}%</span></div><div class="pos">${fmt(s.tp1, d)}</div>
       <div>Take profit 2 <span class="tag">${s.r2.toFixed(2)}R</span></div><div class="pos">${fmt(s.tp2, d)}</div>`}
     </div>
@@ -1524,7 +1541,7 @@ function drawOverlays() {
   const open = sigs.find((s) => ['PENDING', 'ACTIVE', 'TP1_HIT'].includes(s.status));
   if (open) {
     const L = (p, c, t) => plines.push(cs.createPriceLine({ price: p, color: c, lineWidth: 1, lineStyle: 0, title: t }));
-    L(open.entry, '#e2e8f0', 'Entry'); L(open.strategy === 'LADDER' ? open.slLive : open.status === 'TP1_HIT' ? open.entry : open.sl, '#f43f5e', 'SL'); (open.tps || [open.tp1, open.tp2]).forEach((x, k) => L(x, '#22c55e', 'TP' + (k + 1)));
+    L(open.entry, '#e2e8f0', 'Entry'); L(open.strategy === 'LADDER' || open.beArmed ? open.slLive : open.status === 'TP1_HIT' ? open.entry : open.sl, '#f43f5e', 'SL'); (open.tps || [open.tp1, open.tp2]).forEach((x, k) => L(x, '#22c55e', 'TP' + (k + 1)));
   }
   const t0 = chartBars.length ? chartBars[0].time : 0;
   const marks = sigs.filter((s) => s.createdAt >= t0).map((s) => ({ time: Math.floor(s.createdAt / chTf) * chTf, position: s.dir === 'BUY' ? 'belowBar' : 'aboveBar', color: s.dir === 'BUY' ? '#22c55e' : '#f43f5e', shape: s.dir === 'BUY' ? 'arrowUp' : 'arrowDown', text: s.dir === 'BUY' ? 'B' : 'S' }));
@@ -1658,12 +1675,13 @@ function chall() { const b = +$('#chBal').value, d = +$('#chDd').value, l = +$('
 // ---------- settings ----------
 function saveCfg() { const c = Object.assign({}, S.cfg); delete c.signalsEnabledFrom; store.set('cfg', c); if (engine) engine.setConfig(S.cfg); renderStrip(); }
 function loadSettingsUI() {
-  $('#sMode').value = S.cfg.trendMode; $('#sGrade').value = String(S.cfg.minScore >= 85 ? 85 : S.cfg.minScore >= 74 ? 74 : 62);
+  $('#sMgmt').value = store.get('mgmt', 'profit'); $('#sMode').value = S.cfg.trendMode; $('#sGrade').value = String(S.cfg.minScore >= 85 ? 85 : S.cfg.minScore >= 74 ? 74 : 62);
   $('#sBlock').value = String(S.cfg.orBlock); $('#sOrm').value = String(S.cfg.orMinutes); $('#sChop').value = String(S.cfg.chopMin); $('#sGuard').value = S.cfg.lossGuard ? '1' : '0'; $('#sM5').value = S.cfg.m5Filter || 'momentum';
   $('#sServer').value = S.server; $('#sKey').value = S.key;
   $('#connInfo').textContent = S.mode === 'local' ? 'The engine is running in this browser and reading Deriv\'s public live feed. Keep this tab open for live capture, or point it at a Royal Trades server so signals run 24/7.' : 'Connected to a Royal Trades server. Signals are generated 24/7 even when this page is closed.';
 }
 $('#sMode').onchange = (e) => { S.cfg.trendMode = e.target.value; saveCfg(); };
+$('#sMgmt').onchange = (e) => { store.set('mgmt', e.target.value); applyMgmt(e.target.value); saveCfg(); toast('Trade management: ' + M.MANAGEMENT[e.target.value].label + '. Applies from now on.'); };
 $('#sGrade').onchange = (e) => { S.cfg.minScore = +e.target.value; S.cfg.minScalpScore = Math.max(+e.target.value, 72); saveCfg(); };
 $('#sBlock').onchange = (e) => { S.cfg.orBlock = +e.target.value; saveCfg(); toast('The new range setting applies from the next block.'); };
 $('#sOrm').onchange = (e) => { S.cfg.orMinutes = +e.target.value; saveCfg(); };
