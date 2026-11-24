@@ -237,3 +237,14 @@ but never past half of the TP1 distance.
 | 1R, cap kept for the whole trade | 78% | 1% | +132.5R | 51% | 1% | +34.7R | 73% | +167.2R |
 
 The win rate shown in the app now counts trades closed in profit and splits it by strategy (ORB+ and Royal Ladder).
+
+## v1.9.1: market clean-up and ORB+ headline
+
+Same lab data as v1.9. Gold on the Royal Ladder (−5.0R) and USD/CAD on ORB+ (−2.3R) lost money in both halves, so both are off.
+
+| | Trades | ORB+ wins | Ladder wins | All wins | Total R | 1st half | 2nd half |
+|---|---|---|---|---|---|---|---|
+| v1.9 | 971 | 78% | 45% | 72% | +175.7R | 94.2 | 81.5 |
+| **v1.9.1** | 909 | 78% | 48% | 73% | **+183.0R** | 96.5 | 86.6 |
+
+The headline win rate in the app is now ORB+ only; the Royal Ladder is shown beside it as the Royalty stream, with the overall figure.

@@ -295,8 +295,8 @@ label.f input,label.f select{width:100%}
     // removed trades that lost money in both halves of the data.
     maxOrAtr: 1.5,          // skip when the opening range is wider than 1.5× the 15m ATR (those breakouts won 38%)
     quiet: { markets: ['forex'], fromUtc: 4, toUtc: 8 },  // no forex/metals ORB+ 06:00–10:00 SAST (London-open fakeouts: 42% win, -9R)
-    orbOff: ['frxNZDUSD', 'frxUSDCHF', 'frxEURUSD', '1HZ25V', 'R_75', 'frxUSDJPY'],  // ORB+ lost in both halves on these markets
-    ladderOff: ['frxEURGBP', 'frxUSDCHF'],                                       // Royal Ladder lost in both halves on these
+    orbOff: ['frxNZDUSD', 'frxUSDCHF', 'frxEURUSD', '1HZ25V', 'R_75', 'frxUSDJPY', 'frxUSDCAD'],  // ORB+ lost in both halves on these markets
+    ladderOff: ['frxEURGBP', 'frxUSDCHF', 'frxXAUUSD'],                                       // Royal Ladder lost in both halves on these
     chopMin: 0,             // optional 15m efficiency floor (0..1). Off by default: in walk-forward tests it removed more winners than losers
     maxRiskAtr: 1.8,        // stop distance cap in 15m ATRs
     minRiskAtr: 0.35,       // stop distance floor in 15m ATRs (avoid noise stops)
@@ -1268,7 +1268,7 @@ label.f input,label.f select{width:100%}
     W('GainX-400'), W('GainX-600'), W('PainX-400'), W('PainX-600'),
   ];
 
-  return { Engine, Series, DerivFeed, BridgeFeed, aggCandles, startLive, backtest, stats, trendOf, efficiency, pivots, fmt, toBar, decimalsOf, G, TF_NAME, DEFAULTS, DEFAULT_SYMBOLS, WELTRADE_SYMBOLS, MANAGEMENT, version: '1.9.0' };
+  return { Engine, Series, DerivFeed, BridgeFeed, aggCandles, startLive, backtest, stats, trendOf, efficiency, pivots, fmt, toBar, decimalsOf, G, TF_NAME, DEFAULTS, DEFAULT_SYMBOLS, WELTRADE_SYMBOLS, MANAGEMENT, version: '1.9.1' };
 });
 
 </script>
@@ -1442,7 +1442,8 @@ function renderStrip() {
 function kpiHTML(st, extra) {
   const pf = st.profitFactor === Infinity ? '∞' : st.profitFactor.toFixed(2);
   return `<div class="kpi"><div class="l">${extra ? 'Active now' : 'Signals'}</div><div class="v">${extra ? st.open : st.total}</div><div class="s">${extra ? st.total + ' total captured' : st.open + ' open'}</div></div>
-  <div class="kpi"><div class="l">Win rate (closed in profit)</div><div class="v">${st.closed ? Math.round(st.winRate * 100) + '%' : '—'}</div><div class="s">${st.wins} of ${st.closed} closed${Object.entries(st.byStrategy || {}).map(([k, g]) => ' · ' + k + ' ' + Math.round((100 * g.w) / Math.max(1, g.n)) + '%').join('')}</div></div>
+  ${(() => { const o = (st.byStrategy || {})['ORB+'], lad = (st.byStrategy || {})['Royal Ladder']; const pc = (g) => Math.round((100 * g.w) / Math.max(1, g.n)) + '%';
+    return `<div class="kpi"><div class="l">Win rate · ORB+</div><div class="v">${o && o.n ? pc(o) : '—'}</div><div class="s">${o ? o.w + ' of ' + o.n + ' closed in profit' : 'no closed ORB+ trades'}${lad && lad.n ? ' · Royalty Ladder ' + pc(lad) + ' (' + lad.n + ')' : ''} · all ${st.closed ? Math.round(st.winRate * 100) + '%' : '—'}</div></div>`; })()}
   <div class="kpi"><div class="l">Net result</div><div class="v ${st.totalR >= 0 ? 'pos' : 'neg'}">${st.totalR > 0 ? '+' : ''}${st.totalR}R</div><div class="s">avg ${st.avgR.toFixed(2)}R / trade</div></div>
   <div class="kpi"><div class="l">Profit factor</div><div class="v">${st.closed ? pf : '—'}</div><div class="s">${st.tp2} TP2 · ${st.be} BE · ${st.sl} SL</div></div>
   <div class="kpi"><div class="l">Max drawdown</div><div class="v">${st.maxDD}R</div><div class="s">peak-to-trough</div></div>`;

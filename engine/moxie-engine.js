@@ -30,8 +30,8 @@
     // removed trades that lost money in both halves of the data.
     maxOrAtr: 1.5,          // skip when the opening range is wider than 1.5× the 15m ATR (those breakouts won 38%)
     quiet: { markets: ['forex'], fromUtc: 4, toUtc: 8 },  // no forex/metals ORB+ 06:00–10:00 SAST (London-open fakeouts: 42% win, -9R)
-    orbOff: ['frxNZDUSD', 'frxUSDCHF', 'frxEURUSD', '1HZ25V', 'R_75', 'frxUSDJPY'],  // ORB+ lost in both halves on these markets
-    ladderOff: ['frxEURGBP', 'frxUSDCHF'],                                       // Royal Ladder lost in both halves on these
+    orbOff: ['frxNZDUSD', 'frxUSDCHF', 'frxEURUSD', '1HZ25V', 'R_75', 'frxUSDJPY', 'frxUSDCAD'],  // ORB+ lost in both halves on these markets
+    ladderOff: ['frxEURGBP', 'frxUSDCHF', 'frxXAUUSD'],                                       // Royal Ladder lost in both halves on these
     chopMin: 0,             // optional 15m efficiency floor (0..1). Off by default: in walk-forward tests it removed more winners than losers
     maxRiskAtr: 1.8,        // stop distance cap in 15m ATRs
     minRiskAtr: 0.35,       // stop distance floor in 15m ATRs (avoid noise stops)
@@ -1003,5 +1003,5 @@
     W('GainX-400'), W('GainX-600'), W('PainX-400'), W('PainX-600'),
   ];
 
-  return { Engine, Series, DerivFeed, BridgeFeed, aggCandles, startLive, backtest, stats, trendOf, efficiency, pivots, fmt, toBar, decimalsOf, G, TF_NAME, DEFAULTS, DEFAULT_SYMBOLS, WELTRADE_SYMBOLS, MANAGEMENT, version: '1.9.0' };
+  return { Engine, Series, DerivFeed, BridgeFeed, aggCandles, startLive, backtest, stats, trendOf, efficiency, pivots, fmt, toBar, decimalsOf, G, TF_NAME, DEFAULTS, DEFAULT_SYMBOLS, WELTRADE_SYMBOLS, MANAGEMENT, version: '1.9.1' };
 });
