@@ -35,11 +35,14 @@
   const markets = opts.markets || M.DEFAULT_SYMBOLS.filter((x) => x.source !== 'mt5');
   const feed = new M.DerivFeed(); await feed.connect();
   const sum = (list, mid) => {
-    const r = { n: list.length, w: 0, l: 0, full: 0, soft: 0, R: 0, h1: 0, h2: 0 };
+    const r = { n: list.length, w: 0, l: 0, full: 0, soft: 0, R: 0, h1: 0, h2: 0, t1: 0, t2: 0, t3: 0, t4: 0, t5: 0, lossAfterT1: 0 };
     for (const s of list) {
       if (s.result > 0) r.w++; else if (s.result < 0) r.l++;
       if (s.status === 'SL_HIT' && !(s.strategy === 'LADDER' && s.stage > 0)) r.full++;
       if (s.status === 'SOFT_EXIT') r.soft++;
+      const st = s.strategy === 'LADDER' ? s.stage || 0 : (s.tp1At ? 1 : 0) + (s.tp1At && s.mfeR >= s.r2 - 1e-9 ? 1 : 0);
+      for (let k = 1; k <= 5; k++) if (st >= k) r['t' + k]++;
+      if (st >= 1 && s.result < 0) r.lossAfterT1++;
       r.R += s.result; if (s.createdAt < mid) r.h1 += s.result; else r.h2 += s.result;
     }
     for (const k of ['R', 'h1', 'h2']) r[k] = Math.round(r[k] * 100) / 100;
