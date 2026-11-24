@@ -16,7 +16,7 @@ const assert = require('assert');
         else assert(sig.sl > sig.entry && sig.tp1 < sig.entry && sig.tp2 < sig.tp1, 'sell levels ordered');
         assert(!['PENDING', 'ACTIVE', 'TP1_HIT'].includes(sig.status), 'all closed at end');
         if (mode === 'strict') assert(sig.kind === 'TREND' && sig.bias.H1 === (sig.dir === 'BUY' ? 'UP' : 'DOWN'), 'strict never against 1H');
-        assert(sig.r1 >= 0.99, 'TP1 at least ~1R');
+        assert(sig.r1 >= M.DEFAULTS.r1Min - 0.01, 'TP1 at least the configured minimum');
       }
     }
   }

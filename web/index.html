@@ -393,6 +393,8 @@ if (!M.MANAGEMENT[store.get('mgmt', 'volume')]) store.set('mgmt', 'quality'); //
 if (store.get('mgmtVer', 0) < 1) { store.set('mgmt', 'volume'); store.set('mgmtVer', 1); }
 applyMgmt(store.get('mgmt', 'volume'));
 if (store.get('cfgVer', 0) < 2) { S.cfg.minScore = Math.max(S.cfg.minScore || 0, M.DEFAULTS.minScore); S.cfg.minScalpScore = Math.max(S.cfg.minScalpScore || 0, M.DEFAULTS.minScalpScore); store.set('cfgVer', 2); } // research-driven, not user settings
+// v1.15: TP1 0.3R, golden rule (no trades against 4H/2H, no counter-1H scalps), early 5m cut off. Research-driven, applied once.
+if (store.get('cfgVer', 0) < 3) { Object.assign(S.cfg, { r1Min: M.DEFAULTS.r1Min, r1Max: M.DEFAULTS.r1Max, trendMode: M.DEFAULTS.trendMode, htfNoAgainst: M.DEFAULTS.htfNoAgainst, softStop: null }); { const c = Object.assign({}, S.cfg); delete c.signalsEnabledFrom; store.set('cfg', c); } store.set('cfgVer', 3); }
 S.symbols = S.symbols.map((x) => Object.assign({ source: 'deriv' }, x, x.source === 'weltrade' ? { source: 'mt5' } : {}));
 // v1.3 (Royal Trades): Deriv only for now, plus gold, forex and crypto. Runs once per browser.
 if (store.get('symVer', 0) < 3) {

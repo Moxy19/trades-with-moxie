@@ -386,8 +386,8 @@ label.f input,label.f select{width:100%}
     bufferFrac: 0.15,       // breakout must clear the edge by this fraction of range height (tuned on 7d real data)
     amd: false,             // lab: true = add AMD setups (range sweep, then a 2m close back through the midpoint); 'only' = AMD setups only
     smc: null,              // lab: { bos: block if 1H structure (BOS/CHoCH) is against, zone: block if an opposing OB/FVG sits before TP1, needZone: entry must sit at a demand/supply OB or FVG }
-    htfNoAgainst: false,    // golden rule (lab): block any trade with 4H or 2H against it
-    trendMode: 'adaptive',  // 'strict' = only with 1H trend; 'adaptive' = also counter-1H scalps when 1H is weak
+    htfNoAgainst: true,     // v1.15 golden rule (user): block any trade with 4H or 2H against it (lab): block any trade with 4H or 2H against it
+    trendMode: 'strict',    // v1.15 golden rule: no counter-1H scalps. 'strict' = only with 1H trend; 'adaptive' = also counter-1H scalps when 1H is weak
     minScore: 74,           // publish threshold (A grade). SL lab 23 Nov: scores under 74 won 37% (-0.28R each)
     minScalpScore: 80,      // counter-1H scalps need more confluence
     // Stop-loss lab, 23 Nov 2026 (593 ORB+ trades, ~21 days synthetics / ~30 days forex & crypto). Each filter
@@ -425,7 +425,7 @@ label.f input,label.f select{width:100%}
     // Dynamic-stop lab, 24 Nov 2026 (23 markets, ~20 days, on top of v1.8): trailing the stop 1R behind the best price,
     // never past half of the TP1 distance, until TP1: ORB+ +134.4R vs +106.3R, full stop-outs 9% -> 1%, wins 78% vs 79%;
     dyn: null,              // was { dist: 1, cap: 0.5, whole: false }. { dist, cap, whole }: dynamic stop that trails dist × risk behind the best price, never past cap × the TP1 distance (whole: for the whole trade, else until TP1)
-    softStop: { r: 0.6, tf: 300 }, // before the stop has moved: exit at the close of a 5m candle that closes 0.6R or more against the trade
+    softStop: null,         // v1.15: off (it cut 197 trades for -141R; lab 24 Nov). Was { r: 0.6, tf: 300 }: before the stop has moved: exit at the close of a 5m candle that closes 0.6R or more against the trade
     lossGuard: true,        // block same-direction re-entry after SL until structure resets
     retest: false,          // ORB retest continuation setups (off: they lost money in real-data tests)
     triggerTf: 120,         // candle that must close beyond the range: 120 = 2m, 300 = 5m
@@ -437,7 +437,7 @@ label.f input,label.f select{width:100%}
     // ~20 days forex/crypto) or, for Weltrade SyntX, in the 7-day test. Signals carry a Royalty tag: watch or minimum size.
     unproven: ['mt5', 'stpRNG', 'R_75', '1HZ25V', 'frxEURUSD', 'frxUSDJPY', 'frxUSDCHF', 'frxNZDUSD', 'frxGBPJPY', 'frxEURGBP', 'cryETHUSD'],
     entryMode: 'auto',      // 'auto' = limit back at the edge when the trigger candle over-extends; 'market' = always market; 'skip' = skip over-extended breaks
-    r1Min: 1.0, r1Max: 1.5, // TP1 bounds in R (measured move = range height; tuned: losers often reached 0.5-0.9R first)
+    r1Min: 0.3, r1Max: 0.3, // v1.15 (user's pick, 24 Nov lab: 79% wins, 78% unseen, ~20/day, +232R, PF 1.89). Was 1.0-1.5. // TP1 bounds in R (measured move = range height; tuned: losers often reached 0.5-0.9R first)
     r2Min: 1.8, r2Max: 3,   // TP2 bounds in R (2x range height)
     signalsEnabledFrom: 0,  // epoch; used by backtests to warm up
   };
@@ -1281,9 +1281,9 @@ label.f input,label.f select{width:100%}
   // Trade-management presets (management lab, 23 Nov 2026)
   const MANAGEMENT = {
     // Regime lab, 24 Nov 2026: both windows together, ORB+ only
-    quality: { label: 'High quality', beAtR: 0, beLockR: 0, tp1Lock: 0.3, softStop: { r: 0.6, tf: 300 }, dyn: null, trail: { mode: 'pips', pips: 20, atr: 0.75, keepTp2: false },
+    quality: { label: 'High quality', beAtR: 0, beLockR: 0, tp1Lock: 0.3, softStop: null, dyn: null, trail: { mode: 'pips', pips: 20, atr: 0.75, keepTp2: false },
       minOrAtr: 0.6, maxOrAtr: 0.9, hours: { fromUtc: 6, toUtc: 18 } },   // 89% in profit, PF 3.85, 3.7R DD, +100.1R, ~6 signals a day
-    volume: { label: 'More signals', beAtR: 0, beLockR: 0, tp1Lock: 0.3, softStop: { r: 0.6, tf: 300 }, dyn: null, trail: { mode: 'pips', pips: 20, atr: 0.75, keepTp2: false },
+    volume: { label: 'More signals', beAtR: 0, beLockR: 0, tp1Lock: 0.3, softStop: null, dyn: null, trail: { mode: 'pips', pips: 20, atr: 0.75, keepTp2: false },
       minOrAtr: 0, maxOrAtr: 1.5, hours: null },                            // 87% in profit, PF 2.37, 7.0R DD, +214.8R, ~23 signals a day
   };
 
@@ -1310,7 +1310,7 @@ label.f input,label.f select{width:100%}
     W('GainX-400'), W('GainX-600'), W('PainX-400'), W('PainX-600'),
   ];
 
-  return { smcRead, Engine, Series, DerivFeed, BridgeFeed, aggCandles, startLive, backtest, stats, trendOf, efficiency, pivots, fmt, toBar, decimalsOf, G, TF_NAME, DEFAULTS, DEFAULT_SYMBOLS, WELTRADE_SYMBOLS, MANAGEMENT, version: '1.14.1' };
+  return { smcRead, Engine, Series, DerivFeed, BridgeFeed, aggCandles, startLive, backtest, stats, trendOf, efficiency, pivots, fmt, toBar, decimalsOf, G, TF_NAME, DEFAULTS, DEFAULT_SYMBOLS, WELTRADE_SYMBOLS, MANAGEMENT, version: '1.15' };
 });
 
 </script>
@@ -1824,6 +1824,8 @@ if (!M.MANAGEMENT[store.get('mgmt', 'volume')]) store.set('mgmt', 'quality'); //
 if (store.get('mgmtVer', 0) < 1) { store.set('mgmt', 'volume'); store.set('mgmtVer', 1); }
 applyMgmt(store.get('mgmt', 'volume'));
 if (store.get('cfgVer', 0) < 2) { S.cfg.minScore = Math.max(S.cfg.minScore || 0, M.DEFAULTS.minScore); S.cfg.minScalpScore = Math.max(S.cfg.minScalpScore || 0, M.DEFAULTS.minScalpScore); store.set('cfgVer', 2); } // research-driven, not user settings
+// v1.15: TP1 0.3R, golden rule (no trades against 4H/2H, no counter-1H scalps), early 5m cut off. Research-driven, applied once.
+if (store.get('cfgVer', 0) < 3) { Object.assign(S.cfg, { r1Min: M.DEFAULTS.r1Min, r1Max: M.DEFAULTS.r1Max, trendMode: M.DEFAULTS.trendMode, htfNoAgainst: M.DEFAULTS.htfNoAgainst, softStop: null }); { const c = Object.assign({}, S.cfg); delete c.signalsEnabledFrom; store.set('cfg', c); } store.set('cfgVer', 3); }
 S.symbols = S.symbols.map((x) => Object.assign({ source: 'deriv' }, x, x.source === 'weltrade' ? { source: 'mt5' } : {}));
 // v1.3 (Royal Trades): Deriv only for now, plus gold, forex and crypto. Runs once per browser.
 if (store.get('symVer', 0) < 3) {

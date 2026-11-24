@@ -309,6 +309,8 @@ full size again at a new high.
 v1.12 turned the late-entry filter on in the live engine; v1.12.1 turns it off again (v1.11.1 entries, user's choice) (`skipLate: true`, set it to `false` to go back to v1.11.1 entries).
 
 v1.13.1 (24 Nov) reverts v1.13 to the "More signals" preset (about 23 signals a day). v1.14 (24 Nov, user rule): no stop move or profit lock before TP1. The early +0.05R lock at +0.15R (`beAtR`/`beLockR`) and the pre-TP1 dynamic stop (`dyn`) are off; the stop moves to entry +0.3R only once TP1 is touched. The 5m soft stop (a loss cut) stays. v1.14.1 (user plan, `three: true`): each signal is 3 equal positions with the same SL. At TP1, positions 1 and 2 move their SL to TP1 and position 3 moves its SL halfway between entry and TP1; all 3 aim for TP2. Results: TP2 = r2; pullback = (2×r1 + 0.5×r1)/3; TP1 banked then TP2 = (2×r1 + r2)/3.
+
+v1.15 (24 Nov, user pick): TP1 fixed at 0.3R (`r1Min`/`r1Max` 0.3), golden rule on (`htfNoAgainst: true` blocks trades against the 4H or 2H trend; `trendMode: 'strict'` blocks counter-1H scalps), 5m soft stop off (`softStop: null`). 3-position plan kept. Lab (23 markets, 3 x ~21 days): 79% of trades touch TP1 (78% on the unseen window), about 20 a day, +232R, PF 1.89. No spread modelled; small 0.3R wins are sensitive to spread.
 Over all 60 days it lifts the profit factor from 3.51 to 5.17 and the in-profit rate from 88% to 90%, with about 60% fewer
 trades and less total R (+78.4R vs +145.0R). On the oldest window alone, which was never used to choose settings, it did
 slightly worse than v1.11.1 (PF 2.55 vs 3.05), so watch the live record. The −2R / −3R size rule and the Ladder removal are unchanged.
