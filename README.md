@@ -333,3 +333,11 @@ The robot takes the same signals the terminal shows and places the trades for yo
 **Safety limits** (all editable): the v1.11.1 drawdown rule on the robot's own results (half size from 2R below its peak, quarter from 3R), max 2 open trades, one per market, 8 trades a day, a 6% daily loss limit that counts open risk, a pause after 3 losses in a row, a $3 balance floor, a cap on stake per trade, and skips for signals older than 3 minutes or more than 0.3R past entry. Default filters: grades A+ and A, synthetics only, Royalty markets skipped. Per-pair settings: on/off, direction, stake and max trades a day.
 
 **Tested** (`node test/robot.test.js`): sizing, every limit, Paper trading on the live engine path, and the Deriv client against a fake Deriv server. That covers the OTP exchange, the demo/real account check, proposal → buy → contract stream → sell, and the token never leaking. It has not yet run against Deriv's real servers, because this build environment can't reach them. The MT5 robot has not been compiled yet. Compile it in MetaEditor and run it on a demo account before relying on it.
+
+## v1.13: Boom/Crash volume settings (24 Nov 2026)
+
+Volume lab (3 windows of ~20 days, real Deriv data): the ORB+ edge sits mostly in Boom and Crash. v1.13 adds Boom/Crash
+300/500/600/900 and runs all 10 Boom/Crash indices with loose filters (score 40+, all hours, no range-size limits), with the
+other markets unchanged. Together: ~59 trades a day, 81% in profit, 31% reach TP1, PF 3.06 (oldest window alone 3.88),
+6.8R max drawdown. No spread modelled; Boom/Crash spikes can slip stops. Later break-even locks and TP2 trailing were
+tested and did worse.

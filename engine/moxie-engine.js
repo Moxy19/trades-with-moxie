@@ -19,6 +19,8 @@
   const TF_NAME = { 60: '1m', 120: '2m', 300: '5m', 900: '15m', 3600: '1H', 7200: '2H', 14400: '4H' };
   const EMA_LENS = [9, 21, 50, 200];
 
+  const BOOM_CRASH_SYMBOLS = ['BOOM300N', 'BOOM500', 'BOOM600', 'BOOM900', 'BOOM1000', 'CRASH300N', 'CRASH500', 'CRASH600', 'CRASH900', 'CRASH1000'];
+  const BOOM_CRASH = { minScore: 40, minScalpScore: 50, hours: null, quiet: null, orbOff: [], minOrAtr: 0, maxOrAtr: 9, minRoomR: 0 }; // v1.13: loose settings on Boom/Crash only
   const DEFAULTS = {
     orBlock: 3600,          // session block in seconds (3600 = new opening range every hour)
     orMinutes: 15,          // opening range length
@@ -66,7 +68,10 @@
     m5Filter: 'momentum',   // 5m gate (default momentum: best in real-data tests, both halves): 'off' | 'aligned' (5m trend with trade) | 'notAgainst' | 'side' (5m close on right side of EMA21) | 'momentum' (last 5m candle with trade)
     m5Score: true,          // add +5 score when the 5m trend agrees
     // Per-market profiles from real-data backtests (22 Nov 2026). Keys: a symbol, or a source ('mt5' = Weltrade via MT5 bridge).
-    overrides: { mt5: { m5Filter: 'off', m5Score: false } },     // 5m gate hurt Weltrade SyntX (34% vs 43% win)
+    // Volume lab, 24 Nov 2026 (3 x ~20-day windows): Boom/Crash breakouts keep their edge with loose filters. All 10 Boom/Crash
+    // indices with these settings: ~50 trades a day, 80% in profit, PF 3.26 (oldest window alone 4.33), 6.2R max drawdown.
+    overrides: Object.assign({ mt5: { m5Filter: 'off', m5Score: false } },     // 5m gate hurt Weltrade SyntX (34% vs 43% win)
+      Object.fromEntries(BOOM_CRASH_SYMBOLS.map((s) => [s, BOOM_CRASH]))),
     // "Royalty" markets: ORB+ lost money in the 23 Nov 2026 strategy lab (20,000 1m bars each: ~14 days synthetics,
     // ~20 days forex/crypto) or, for Weltrade SyntX, in the 7-day test. Signals carry a Royalty tag: watch or minimum size.
     unproven: ['mt5', 'stpRNG', 'R_75', '1HZ25V', 'frxEURUSD', 'frxUSDJPY', 'frxUSDCHF', 'frxNZDUSD', 'frxGBPJPY', 'frxEURGBP', 'cryETHUSD'],
@@ -847,6 +852,8 @@
     // Deriv synthetics
     D('stpRNG', 'Step Index 100'), D('R_25', 'Volatility 25'), D('R_50', 'Volatility 50'), D('R_75', 'Volatility 75'), D('R_100', 'Volatility 100'),
     D('1HZ25V', 'Volatility 25 (1s)'), D('1HZ75V', 'Volatility 75 (1s)'), D('BOOM1000', 'Boom 1000'), D('CRASH1000', 'Crash 1000'),
+    D('BOOM300N', 'Boom 300'), D('BOOM500', 'Boom 500'), D('BOOM600', 'Boom 600'), D('BOOM900', 'Boom 900'),
+    D('CRASH300N', 'Crash 300'), D('CRASH500', 'Crash 500'), D('CRASH600', 'Crash 600'), D('CRASH900', 'Crash 900'),
     // Deriv gold & metals
     D('frxXAUUSD', 'Gold (XAU/USD)', 'forex'), D('frxXAGUSD', 'Silver (XAG/USD)', 'forex'),
     // Deriv forex
@@ -863,5 +870,5 @@
     W('GainX-400'), W('GainX-600'), W('PainX-400'), W('PainX-600'),
   ];
 
-  return { Engine, Series, DerivFeed, BridgeFeed, aggCandles, startLive, backtest, stats, trendOf, efficiency, pivots, fmt, toBar, decimalsOf, G, TF_NAME, DEFAULTS, DEFAULT_SYMBOLS, WELTRADE_SYMBOLS, MANAGEMENT, version: '1.12.1' };
+  return { Engine, Series, DerivFeed, BridgeFeed, aggCandles, startLive, backtest, stats, trendOf, efficiency, pivots, fmt, toBar, decimalsOf, G, TF_NAME, DEFAULTS, DEFAULT_SYMBOLS, WELTRADE_SYMBOLS, MANAGEMENT, version: '1.13.0' };
 });
