@@ -72,7 +72,7 @@
     // Distances are 15m-ATR multiples calibrated on gold (median ATR $7.37: $3 front-run, $12 SL, $4/$8/$13/$18/$28 TPs).
     // Stop-out lab, 24 Nov 2026 (12 Ladder pairs, ~20 days): stop at 50% of the TP3 distance (0.88 ATR instead of 1.63) plus a
     // cut when a 5m candle closes 0.6R against the trade: +41.1R vs +34.7R, full stop-outs 15% -> 10% (9% without gold).
-    ladder: { on: true, markets: ['forex', 'crypto'], symbols: [], units: { frxXAUUSD: 7.37 }, confirm: true, maxAway: 3, w: 5, front: 0.41, sl: 0.88, tps: [0.54, 1.09, 1.76, 2.44, 3.80], beAt: 3, softStop: { r: 0.6, tf: 300 }, dyn: { dist: 1, cap: 0.5, whole: false }, expH: 4, holdH: 24, away: 0.41 },
+    ladder: { on: false, markets: ['forex', 'crypto'], symbols: [], units: { frxXAUUSD: 7.37 }, confirm: true, maxAway: 3, w: 5, front: 0.41, sl: 0.88, tps: [0.54, 1.09, 1.76, 2.44, 3.80], beAt: 3, softStop: { r: 0.6, tf: 300 }, dyn: { dist: 1, cap: 0.5, whole: false }, expH: 4, holdH: 24, away: 0.41 },
     // beAt 3 (stop to entry after TP3): +35.7R vs +27.8R at TP2 in the management lab, both halves better.
     // 5m entry lab, 23 Nov 2026 (30,000 1m bars, gold/forex/crypto): waiting for a 5m candle to close back in the trade's
     // direction at the level lifted the win rate from 65% to 76% and cut stop-outs from 34% to 24% (+0.16R a trade vs +0.11R).
@@ -1009,5 +1009,5 @@
     W('GainX-400'), W('GainX-600'), W('PainX-400'), W('PainX-600'),
   ];
 
-  return { Engine, Series, DerivFeed, BridgeFeed, aggCandles, startLive, backtest, stats, trendOf, efficiency, pivots, fmt, toBar, decimalsOf, G, TF_NAME, DEFAULTS, DEFAULT_SYMBOLS, WELTRADE_SYMBOLS, MANAGEMENT, version: '1.9.2' };
+  return { Engine, Series, DerivFeed, BridgeFeed, aggCandles, startLive, backtest, stats, trendOf, efficiency, pivots, fmt, toBar, decimalsOf, G, TF_NAME, DEFAULTS, DEFAULT_SYMBOLS, WELTRADE_SYMBOLS, MANAGEMENT, version: '1.9.3' };
 });
