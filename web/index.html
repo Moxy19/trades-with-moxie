@@ -174,7 +174,7 @@ label.f input,label.f select{width:100%}
 
   <!-- CHART -->
   <section class="view" id="v-chart">
-    <div class="bar"><select id="chSym"></select><div class="seg" id="chTf"></div><span class="pill" id="chInfo">—</span></div>
+    <div class="bar"><select id="chSym"></select><div class="seg" id="chTf"></div><span class="pill" id="chInfo">—</span><button class="btn sm" id="chReset" title="Fit the price axis and jump to the latest candle (or double-click the chart)">Reset view</button></div>
     <div id="chart"></div>
     <div class="note">Shows candles with EMA 9, 21, 50 and 200, the current opening range (dashed), B/S tags for every signal on this pair, and the entry, SL and TP lines of the open trade.</div>
   </section>
@@ -574,6 +574,13 @@ function ensureChart() {
   emaS = [[9, '#f8fafc'], [21, '#60a5fa'], [50, '#22c55e'], [200, '#f43f5e']].map(([n, c]) => ({ n, s: chart.addLineSeries({ color: c, lineWidth: n === 200 ? 2 : 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false }) }));
   new ResizeObserver(() => chart.applyOptions({ width: $('#chart').clientWidth })).observe($('#chart'));
 }
+function resetView() {
+  if (!chart) return;
+  chart.priceScale('right').applyOptions({ autoScale: true });
+  chart.timeScale().scrollToRealTime();
+}
+$('#chReset').addEventListener('click', resetView);
+$('#chart').addEventListener('dblclick', resetView);
 function ema(vals, n) { const k = 2 / (n + 1); let p = null; return vals.map((v) => (p = p == null ? v : p + k * (v - p))); }
 function drawOverlays() {
   if (!cs) return;
@@ -605,12 +612,18 @@ async function openChart(sym) {
   $('#chInfo').textContent = 'loading…';
   const mySym = chSym, myTf = chTf;
   const meta = S.symbols.find((x) => x.symbol === mySym) || {};
+  // each market gets its own price precision, and the price axis is re-fitted so a range left over from another market can't hide the candles
+  const sn0 = S.snaps[mySym], dec = sn0 && sn0.dec != null ? sn0.dec : meta.dec != null ? meta.dec : 2;
+  const pf = { type: 'price', precision: dec, minMove: +(1 / Math.pow(10, dec)).toFixed(dec) };
+  cs.applyOptions({ priceFormat: pf }); emaS.forEach(({ s }) => s.applyOptions({ priceFormat: pf }));
+  resetView();
+  chartBars = []; cs.setData([]); emaS.forEach(({ s }) => s.setData([]));
   if (meta.source === 'mt5') {
     if (!S.serverBase) { chartBars = []; cs.setData([]); $('#chInfo').textContent = 'MT5-bridge pair: charts load from the Royal Trades server'; return; }
     const sf = serverCandles(S.serverBase);
     const load = async (n) => (await sf.candles(mySym, myTf, n)).candles.map((c) => ({ time: c.epoch, open: +c.open, high: +c.high, low: +c.low, close: +c.close }));
     try {
-      chartBars = await load(600); cs.setData(chartBars); drawOverlays(); chart.timeScale().scrollToRealTime();
+      chartBars = await load(600); cs.setData(chartBars); drawOverlays(); resetView();
       $('#chInfo').textContent = `${mySym} · ${CH_TF.find((x) => x[0] === myTf)[1]} · via MT5 bridge`;
       chartPoll = setInterval(async () => { if (mySym !== chSym || myTf !== chTf) return clearInterval(chartPoll); try { for (const b of await load(3)) { const lb = chartBars[chartBars.length - 1]; if (lb && lb.time === b.time) chartBars[chartBars.length - 1] = b; else if (!lb || b.time > lb.time) chartBars.push(b); else continue; cs.update(b); } } catch (e) {} }, 5000);
     } catch (e) { $('#chInfo').textContent = 'could not load: ' + e.message; }
@@ -622,11 +635,11 @@ async function openChart(sym) {
       const b = { time: +o.open_time, open: +o.open, high: +o.high, low: +o.low, close: +o.close };
       const lb = chartBars[chartBars.length - 1];
       if (lb && lb.time === b.time) chartBars[chartBars.length - 1] = b; else if (!lb || b.time > lb.time) chartBars.push(b);
-      cs.update(b); $('#chInfo').textContent = `${mySym} · ${CH_TF.find((x) => x[0] === myTf)[1]} · ${b.close}`;
+      cs.update(b); $('#chInfo').textContent = `${mySym} · ${CH_TF.find((x) => x[0] === myTf)[1]} · ${fmt(b.close, dec)}`;
     }, 600);
     chartSub = first.subscription && first.subscription.id;
     chartBars = (first.candles || []).map((c) => ({ time: c.epoch, open: +c.open, high: +c.high, low: +c.low, close: +c.close }));
-    cs.setData(chartBars); drawOverlays(); chart.timeScale().scrollToRealTime();
+    cs.setData(chartBars); drawOverlays(); resetView();
     $('#chInfo').textContent = `${mySym} · ${CH_TF.find((x) => x[0] === myTf)[1]}`;
   } catch (e) { $('#chInfo').textContent = 'could not load: ' + e.message; }
 }
