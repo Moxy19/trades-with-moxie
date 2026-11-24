@@ -5,7 +5,8 @@ const M = require('../engine/moxie-engine.js');
 const R = require('../engine/royal-robot.js');
 const { gen, agg } = require('./mockfeed.js');
 
-const base = Object.assign({}, R.ROBOT_DEFAULTS);
+assert.strictEqual(R.ROBOT_DEFAULTS.atTp1, 'three', 'the 3-position plan is the default');
+const base = Object.assign({}, R.ROBOT_DEFAULTS, { atTp1: 'auto' }); // sections 1-4 test the two-contract mode; 5-6 test the 3-position plan
 const tick = () => new Promise((r) => setImmediate(r));
 
 (async () => {
@@ -164,6 +165,55 @@ const tick = () => new Promise((r) => setImmediate(r));
     const everything = JSON.stringify(robot.journal) + logs.join('\n') + JSON.stringify(robot.state()) + JSON.stringify(Object.assign({}, broker, { ws: null, ping: null, pending: null })) + JSON.stringify(sent);
     assert(!everything.includes(TOKEN), 'token leaked');
     await robot.stop();
+  }
+
+  // ---------- 5) 3-position plan: sizing ----------
+  const b3 = Object.assign({}, R.ROBOT_DEFAULTS, { mode: 'paper', markets: ['synthetic', 'forex', 'crypto'], maxStake: 100, maxConsecLosses: 99 });
+  {
+    const t = R.sizeTrade({ price: 40000, sl: 39920, r1: 1.2, r2: 2.5, balance: 1000, set: b3, mults: [50, 100, 200, 300, 500], minStake: 1 });
+    assert(!t.skip, t.skip); console.log('size 3-plan $1000:', JSON.stringify(t));
+    assert.strictEqual(t.legs.length, 3, 'three contracts');
+    assert.deepStrictEqual(t.legs.map((l) => l.role), ['lock', 'lock', 'half']);
+    assert(Math.abs(t.risk - 10) < 0.1, 'same total risk as one trade: ' + t.risk);
+    for (const l of t.legs) assert(Math.abs(l.tp$ - l.sl$ * 2.5) < 0.02, 'every contract takes profit at TP2');
+    // $10 account: not enough for 3 × the $1 minimum at 1% risk -> fewer contracts, still inside the cap
+    const small = R.sizeTrade({ price: 40000, sl: 39920, r1: 1.2, r2: 2.5, balance: 10, set: b3, mults: [50, 100, 200, 300, 500], minStake: 1 });
+    console.log('size 3-plan $10:', JSON.stringify(small));
+    if (!small.skip) { assert(small.legs.length >= 1 && small.legs.length <= 3); assert(small.risk <= 10 * b3.maxRiskPct / 100 + 1e-9); }
+  }
+
+  // ---------- 6) 3-position plan: TP1 -> back to TP1 -> back to halfway, and TP2 ----------
+  {
+    let now = 1796000000 * 1000;
+    const robot = new R.Robot(Object.assign({}, b3), { now: () => now });
+    const paper = new R.PaperBroker({ balance: 1000 }); await robot.start(paper);
+    const mk = (o) => Object.assign({ id: Math.random().toString(36).slice(2), symbol: 'R_50', name: 'Volatility 50', market: 'synthetic', source: 'deriv', dir: 'BUY', grade: 'A', status: 'ACTIVE', entry: 40000, price: 40000, sl: 39920, slLive: 39920, tp1: 40096, tp2: 40200, risk: 80, r1: 1.2, r2: 2.5, createdAt: now / 1000, filledAt: now / 1000, unproven: false }, o);
+    const open = (id) => (robot.pos[id] ? robot.pos[id].legs.filter((l) => l.open) : []);
+    // a) retrace: TP1 is crossed, price comes back to TP1 (two lock TP1), then back to halfway (the third locks half of TP1)
+    const a = mk({}); robot.tick('R_50', 40000); assert(await robot.onSignal(a), 'opened 3-plan');
+    assert.strictEqual(open(a.id).length, 3);
+    robot.tick('R_50', 40097); await tick();
+    Object.assign(a, { status: 'TP1_HIT', sl12: 40096, sl3: 40048, open12: true, slLive: 40096 }); await robot.onUpdate(a, 'ACTIVE');
+    assert.strictEqual(open(a.id).length, 3, 'nothing closes at TP1: all three aim for TP2');
+    robot.tick('R_50', 40096); await tick();
+    Object.assign(a, { open12: false, slLive: 40048 }); await robot.onUpdate(a, 'TP1_HIT');
+    assert.deepStrictEqual(open(a.id).map((l) => l.role), ['half'], 'two lock TP1, the third keeps running');
+    robot.tick('R_50', 40048); await tick();
+    Object.assign(a, { status: 'TRAIL_EXIT', exit: 40048 }); await robot.onUpdate(a, 'TP1_HIT');
+    assert(!robot.pos[a.id], 'third closed at halfway');
+    const ca = robot.journal.filter((j) => j.type === 'close'); console.log('retrace closes:', ca.map((j) => j.msg));
+    assert(ca.length && ca.every((j) => j.pnl > 0), 'every contract banked a profit');
+    // b) runs to TP2: all three take profit at TP2
+    const b = mk({ symbol: 'R_25', name: 'Volatility 25' }); robot.tick('R_25', 40000); assert(await robot.onSignal(b));
+    robot.tick('R_25', 40097); await tick();
+    Object.assign(b, { status: 'TP1_HIT', sl12: 40096, sl3: 40048, open12: true, slLive: 40096 }); await robot.onUpdate(b, 'ACTIVE');
+    robot.tick('R_25', 40201); await tick();
+    Object.assign(b, { status: 'TP2_HIT', exit: 40200 }); await robot.onUpdate(b, 'TP1_HIT');
+    assert(!robot.pos[b.id], 'all closed at TP2');
+    const cb = robot.journal.filter((j) => j.type === 'close').slice(ca.length); console.log('TP2 closes:', cb.map((j) => j.msg));
+    const tp2pnl = cb.reduce((x, j) => x + j.pnl, 0), retracePnl = ca.reduce((x, j) => x + j.pnl, 0);
+    assert(tp2pnl > retracePnl, 'TP2 pays more than the retrace');
+    await robot.stop(true);
   }
   console.log('ROBOT TESTS PASSED');
   process.exit(0);
