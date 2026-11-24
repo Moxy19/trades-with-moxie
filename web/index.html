@@ -318,12 +318,12 @@ function notify(title, body) {
 }
 // keep the tab's engine awake-ish: warn when the page is hidden on phones
 document.addEventListener('visibilitychange', () => { if (document.hidden && /Android|iPhone|iPad/i.test(navigator.userAgent) && S.mode === 'local') store.set('hiddenAt', Date.now()); });
-const STATUS_TXT = { ACTIVE: 'LIVE', PENDING: 'LIMIT SET', TP1_HIT: 'TP1 · SL→BE', TP2_HIT: 'TP2 HIT', TP5_HIT: 'ALL TPs HIT', SL_HIT: 'SL HIT', BE_HIT: 'TP1 · BE', EXPIRED: 'EXPIRED', CANCELLED: 'MISSED', TIME_EXIT: 'TIME EXIT' };
+const STATUS_TXT = { ACTIVE: 'LIVE', PENDING: 'LIMIT SET', TP1_HIT: 'TP1 · SL LOCKED', TP2_HIT: 'TP2 HIT', TP5_HIT: 'ALL TPs HIT', SL_HIT: 'SL HIT', BE_HIT: 'TP1 · LOCKED EXIT', EXPIRED: 'EXPIRED', CANCELLED: 'MISSED', TIME_EXIT: 'TIME EXIT' };
 // Royal Ladder signals carry five targets; describe their status by how many were hit
 function statusTxt(s) {
   if (s.strategy !== 'LADDER') return STATUS_TXT[s.status] || s.status;
-  if (s.status === 'TP1_HIT') return 'TP' + s.stage + ' HIT' + (s.stage >= s.beAt ? ' · SL→BE' : '');
-  if (s.status === 'BE_HIT') return 'TP' + s.stage + ' · BE';
+  if (s.status === 'TP1_HIT') return 'TP' + s.stage + ' HIT · SL LOCKED';
+  if (s.status === 'BE_HIT') return 'TP' + s.stage + ' · LOCKED EXIT';
   if (s.status === 'SL_HIT' && s.stage) return 'TP' + s.stage + ' · SL';
   return STATUS_TXT[s.status] || s.status;
 }
@@ -520,7 +520,7 @@ Bias: 4H ${s.bias.H4} · 1H ${s.bias.H1} · 15m ${s.bias.M15}
 Grade ${s.grade} (${s.score}/100)
 Entry: ${fmt(s.entry, d)}${s.entryType === 'LIMIT' ? ' (limit)' : ''}
 SL: ${fmt(s.sl, d)}
-TP1: ${fmt(s.tp1, d)} (${s.r1.toFixed(2)}R) — close half, SL to entry
+TP1: ${fmt(s.tp1, d)} (${s.r1.toFixed(2)}R) — 3 positions: SL of 1–2 to TP1, SL of 3 halfway; all aim for TP2
 TP2: ${fmt(s.tp2, d)} (${s.r2.toFixed(2)}R)
 Bias: 4H ${s.bias.H4} · 1H ${s.bias.H1} · 15m ${s.bias.M15}
 — Royal Trades · educational, not financial advice`;

@@ -32,7 +32,9 @@
     minRoomR: 1.0,          // need at least 1R to nearest 1H obstacle
     pendingExpiryMin: 30,   // unfilled limit orders expire
     maxHoldMin: 360,        // time exit after 6h
-    partialAtTp1: 0.5,      // fraction closed at TP1 (rest runs to TP2 with SL at entry)
+    partialAtTp1: 0.5,      // fraction closed at TP1 (rest runs to TP2)
+    three: true,            // ORB+ 3-position plan (Moxy, 24 Nov): 3 equal positions, all aim for TP2. At TP1: positions 1-2 SL -> TP1, position 3 SL -> halfway entry/TP1
+    lockAtTp1: 0.5,         // Royal Ladder: after TP1 the stop moves this far from entry towards TP1 (0 = entry, 0.5 = halfway)
     lossGuard: true,        // block same-direction re-entry after SL until structure resets
     retest: false,          // ORB retest continuation setups (off: they lost money in real-data tests)
     triggerTf: 120,         // candle that must close beyond the range: 120 = 2m, 300 = 5m
@@ -437,9 +439,10 @@
       const rNow = (sgn * (exitPrice - sig.entry)) / sig.risk;
       const p = this.cfg.partialAtTp1;
       let R = 0;
-      if (status === 'SL_HIT') R = -1;
+      if (sig.threeR != null) R = sig.threeR; // 3-position plan sets its own result (average of the 3 positions)
+      else if (status === 'SL_HIT') R = -1;
       else if (status === 'TP2_HIT') R = p * sig.r1 + (1 - p) * sig.r2;
-      else if (status === 'BE_HIT') R = p * sig.r1;
+      else if (status === 'BE_HIT') R = p * sig.r1 + (1 - p) * rNow; // rest closed at the locked stop (entry or part of TP1)
       else if (status === 'TIME_EXIT') R = sig.tp1At ? p * sig.r1 + (1 - p) * rNow : rNow;
       else R = 0; // EXPIRED / CANCELLED never filled
       sig.status = status; sig.closedAt = t; sig.exit = exitPrice; sig.result = Math.round(R * 100) / 100; sig.lastT = t;
@@ -474,13 +477,29 @@
         if (slHit) return this._close(sig, st, 'SL_HIT', sig.sl, t); // pessimistic if both in one bar
         if (tp1Hit) {
           sig.status = 'TP1_HIT'; sig.tp1At = t; sig.slLive = sig.entry;
+          if (cfg.three) {
+            sig.sl12 = sig.tp1; sig.sl3 = sig.entry + 0.5 * (sig.tp1 - sig.entry); sig.open12 = true; sig.slLive = sig.sl12;
+            this.hooks.onUpdate && this.hooks.onUpdate(sig, 'ACTIVE');
+            if (sgn > 0 ? fav >= sig.tp2 : fav <= sig.tp2) { sig.threeR = sig.r2; return this._close(sig, st, 'TP2_HIT', sig.tp2, t); }
+            return; // the new stops apply from the next tick/bar
+          }
           this.hooks.onUpdate && this.hooks.onUpdate(sig, 'ACTIVE');
           if (sgn > 0 ? fav >= sig.tp2 : fav <= sig.tp2) return this._close(sig, st, 'TP2_HIT', sig.tp2, t);
           if (this.mode === 'backtest') return; // BE can't be ordered inside the same bar; check next bar
         }
       }
       if (sig.status === 'TP1_HIT') {
-        if (sgn > 0 ? fav >= sig.tp2 : fav <= sig.tp2) return this._close(sig, st, 'TP2_HIT', sig.tp2, t);
+        if (sig.sl12 == null && (sgn > 0 ? fav >= sig.tp2 : fav <= sig.tp2)) return this._close(sig, st, 'TP2_HIT', sig.tp2, t);
+        if (sig.sl12 != null) {
+          // 3-position plan, stops first (pessimistic): positions 1-2 at TP1, position 3 halfway between entry and TP1
+          if (sig.open12 && (sgn > 0 ? adv <= sig.sl12 : adv >= sig.sl12)) { sig.open12 = false; sig.slLive = sig.sl3; this.hooks.onUpdate && this.hooks.onUpdate(sig, 'TP1_HIT'); }
+          const bank = 2 * sig.r1; // positions 1-2 closed at TP1
+          if (!sig.open12 && (sgn > 0 ? adv <= sig.sl3 : adv >= sig.sl3)) { sig.threeR = (bank + 0.5 * sig.r1) / 3; return this._close(sig, st, 'BE_HIT', sig.sl3, t); }
+          if (sgn > 0 ? fav >= sig.tp2 : fav <= sig.tp2) { sig.threeR = sig.open12 ? sig.r2 : (bank + sig.r2) / 3; return this._close(sig, st, 'TP2_HIT', sig.tp2, t); }
+          if (sig.filledAt && t - sig.filledAt > cfg.maxHoldMin * 60) { const rNow = (sgn * (price - sig.entry)) / sig.risk; sig.threeR = sig.open12 ? rNow : (bank + rNow) / 3; return this._close(sig, st, 'TIME_EXIT', price, t); }
+          return;
+        }
+        // trades that reached TP1 before the 3-position plan keep their old rule: half closed, stop at entry
         if (sgn > 0 ? adv <= sig.entry : adv >= sig.entry) return this._close(sig, st, 'BE_HIT', sig.entry, t);
       }
       if ((sig.status === 'ACTIVE' || sig.status === 'TP1_HIT') && sig.filledAt && t - sig.filledAt > cfg.maxHoldMin * 60) {
@@ -548,7 +567,7 @@
           `${dir} ${st.name}: Royal Ladder, grade ${grade} (${score}/100).`,
           `A fresh 15m swing ${d > 0 ? 'low' : 'high'} formed at ${fmt(lvl, dd)} and price has moved away from it. The 1H trend is ${bias.H1.toLowerCase()} (never against the trade) and the 15m is on the right side of its EMA50.`,
           `Limit ${dir.toLowerCase()} at ${fmt(entry, dd)}, set just before the level so it fills even if price doesn't quite tag it. Stop ${fmt(sl, dd)}. The order is cancelled if it isn't filled within ${L.expH} hours.`,
-          `Five targets: ${tps.map((x, k) => 'TP' + (k + 1) + ' ' + fmt(x, dd)).join(', ')}. Close a fifth at each, and move the stop to entry after TP${L.beAt}.`,
+          `Five targets: ${tps.map((x, k) => 'TP' + (k + 1) + ' ' + fmt(x, dd)).join(', ')}. Close a fifth at each. After TP1 the stop moves halfway to TP1, so the rest of the trade is locked in profit.`,
           sig.unproven ? 'Royalty: the ladder has no proven edge on this market yet. Watch it, or trade the smallest size only.' : '',
         ].filter(Boolean).join(' ');
         this.signals.push(sig);
@@ -570,12 +589,15 @@
       sig.mfeR = Math.max(sig.mfeR, (d * (fav - sig.entry)) / sig.risk);
       sig.maeR = Math.min(sig.maeR, (d * (adv - sig.entry)) / sig.risk);
       if (t - sig.filledAt > sig.maxHold) return this._closeLadder(sig, st, 'TIME_EXIT', price, t);
-      if (d > 0 ? adv <= sig.slLive : adv >= sig.slLive) return this._closeLadder(sig, st, sig.stage >= sig.beAt ? 'BE_HIT' : 'SL_HIT', sig.slLive, t);
+      // after TP1 the stop moves to the lock level (halfway to TP1 by default); open trades from before the rule ratchet up
+      const lock = sig.entry + (this.cfg.lockAtTp1 || 0) * (sig.tps[0] - sig.entry);
+      if (sig.stage >= 1 && this.cfg.lockAtTp1 > 0 && d * (lock - sig.slLive) > 0 && d * (price - lock) > 0) sig.slLive = lock;
+      if (d > 0 ? adv <= sig.slLive : adv >= sig.slLive) return this._closeLadder(sig, st, sig.stage >= 1 && d * (sig.slLive - sig.entry) >= 0 ? 'BE_HIT' : 'SL_HIT', sig.slLive, t);
       const before = sig.stage;
       while (sig.stage < sig.tps.length && (d > 0 ? fav >= sig.tps[sig.stage] : fav <= sig.tps[sig.stage])) {
         sig.stage++;
-        if (sig.stage === 1) sig.tp1At = t;
-        if (sig.stage === sig.beAt) sig.slLive = sig.entry;
+        if (sig.stage === 1) { sig.tp1At = t; const lk = sig.entry + (this.cfg.lockAtTp1 || 0) * (sig.tps[0] - sig.entry); if (d * (lk - sig.slLive) > 0) sig.slLive = lk; }
+        if (sig.stage === sig.beAt && d * (sig.entry - sig.slLive) > 0) sig.slLive = sig.entry; // never lowers a locked stop
       }
       if (sig.stage === sig.tps.length) return this._closeLadder(sig, st, 'TP5_HIT', sig.tps[sig.tps.length - 1], t);
       if (sig.stage > before) { sig.status = 'TP1_HIT'; this.hooks.onUpdate && this.hooks.onUpdate(sig, prev === 'TP1_HIT' ? 'TP' + before : prev); }
@@ -627,7 +649,8 @@
       lines.push(`The SL at ${fmt(sig.sl, d)} sits beyond the range midpoint and the recent 2m swing. Risk is ${(sig.risk / x.atr15).toFixed(2)}× the 15m ATR.`);
       lines.push(`TP1 ${fmt(sig.tp1, d)} (${sig.r1.toFixed(2)}R) and TP2 ${fmt(sig.tp2, d)} (${sig.r2.toFixed(2)}R). ${x.nearest != null ? `The next 1H structure is ${x.roomR.toFixed(1)}R away at ${fmt(x.nearest, d)}.` : 'There is no 1H structure in the way.'}`);
       if (sig.unproven) lines.push('Royalty: this market runs the Royalty strategy, which has no proven edge in backtests yet. Watch it, or trade the smallest size only.');
-      lines.push(`Management: close ${Math.round(this.cfg.partialAtTp1 * 100)}% at TP1 and move the SL to entry, then let the rest run to TP2.`);
+      if (this.cfg.three) lines.push(`Management: open 3 equal positions with the same SL, all aiming for TP2. Nothing moves before TP1. At TP1, move the SL of positions 1 and 2 to TP1 (${fmt(sig.tp1, sig.dec)}) and the SL of position 3 halfway, to ${fmt(sig.entry + 0.5 * (sig.tp1 - sig.entry), sig.dec)}, in case price retraces.`);
+      else lines.push(`Management: close ${Math.round(this.cfg.partialAtTp1 * 100)}% at TP1 and move the SL to entry, then let the rest run to TP2.`);
       return lines.join(' ');
     }
   }
@@ -880,5 +903,5 @@
     W('GainX-400'), W('GainX-600'), W('PainX-400'), W('PainX-600'),
   ];
 
-  return { Engine, Series, DerivFeed, BridgeFeed, aggCandles, startLive, backtest, stats, trendOf, efficiency, pivots, fmt, toBar, decimalsOf, G, TF_NAME, DEFAULTS, DEFAULT_SYMBOLS, WELTRADE_SYMBOLS, version: '1.4.0' };
+  return { Engine, Series, DerivFeed, BridgeFeed, aggCandles, startLive, backtest, stats, trendOf, efficiency, pivots, fmt, toBar, decimalsOf, G, TF_NAME, DEFAULTS, DEFAULT_SYMBOLS, WELTRADE_SYMBOLS, version: '1.4.1' };
 });
