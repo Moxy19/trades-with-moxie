@@ -14,17 +14,30 @@
   lab.fin = false;
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(lab)); } catch (e) { lab.saveErr = String(e); } };
   const markets = opts.markets || M.DEFAULT_SYMBOLS.filter((x) => x.source !== 'mt5');
-  const feed = new M.DerivFeed(); await feed.connect();
+  let feed = new M.DerivFeed(); await feed.connect();
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  // Deriv rate-limits ticks_history: wait and retry; reconnect after a timeout or a closed socket
+  const retry = async (fn) => {
+    for (let k = 0; ; k++) {
+      try { return await fn(); } catch (e) {
+        const m = String((e && e.message) || e);
+        if (k >= 6) throw e;
+        lab.progress = (lab.progress || '').split(' · ')[0] + ' · waiting (' + m.slice(0, 40) + ')';
+        if (/rate limit/i.test(m)) await sleep(65000);
+        else { await sleep(5000); try { feed.ws.onclose = null; feed.ws.close(); } catch (x) {} feed = new M.DerivFeed(); await feed.connect(); }
+      }
+    }
+  };
   for (const mk of markets) {
     const sym = mk.symbol;
     if (lab.done[sym]) continue;
     lab.progress = sym;
     try {
-      let raw1 = await feed.candlesBack(sym, 60, N1 + (opts.skipBars || 0));
+      let raw1 = await retry(() => feed.candlesBack(sym, 60, N1 + (opts.skipBars || 0)));
       if (opts.skipBars) raw1 = Object.assign({}, raw1, { candles: raw1.candles.slice(0, -opts.skipBars) });
       if (!raw1.candles.length) throw new Error('no data');
       const memo = {};
-      const cache = { candlesBack: async () => raw1, candles: (s, g, c, e) => (memo[g + ':' + c + ':' + e] = memo[g + ':' + c + ':' + e] || feed.candles(s, g, c, e)) };
+      const cache = { candlesBack: async () => raw1, candles: (s, g, c, e) => (memo[g + ':' + c + ':' + e] = memo[g + ':' + c + ':' + e] || retry(() => feed.candles(s, g, c, e))) };
       const res = {};
       for (const [k, e] of Object.entries(opts.engines)) {
         lab.progress = sym + ' ' + k;
@@ -33,7 +46,7 @@
         res[k] = bt.signals.filter((s) => s.strategy !== 'LADDER' && s.result != null && s.filledAt).map((s) => [s.closedAt, s.result, s.createdAt, s.tp1At ? 1 : 0, s.status]);
         await new Promise((r) => setTimeout(r, 0));
       }
-      lab.done[sym] = { market: mk.market, res };
+      lab.done[sym] = { market: mk.market, res }; delete lab.err[sym];
     } catch (e) { lab.err[sym] = String((e && e.message) || e); }
     save();
   }
