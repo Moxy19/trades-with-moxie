@@ -34,7 +34,7 @@
     minOrAtr: 0.6,          // skip when the opening range is narrower than this × the 15m ATR (0 = off)
     hours: { fromUtc: 6, toUtc: 18 }, // only signal inside these UTC hours (08:00–20:00 SAST); null = always
     needH4: false,          // require the 4H trend to agree with the trade
-    skipLate: true,         // v1.12: skip late entries (score 95+ with 2H and 4H already aligned). 60 days: 90% in profit, PF 5.17 (live rules 88%, PF 3.51); oldest window alone PF 2.55 vs 3.05
+    skipLate: false,        // late-entry filter (score 95+ with 2H and 4H aligned). v1.12 had it on; v1.12.1 turns it off at the user's request (more trades, more total R; it also did worse on the unseen window)
     maxOrAtr: 0.9,          // skip when the opening range is wider than this × the 15m ATR (regime lab; was 1.5)
     quiet: { markets: ['forex'], fromUtc: 4, toUtc: 8 },  // no forex/metals ORB+ 06:00–10:00 SAST (London-open fakeouts: 42% win, -9R)
     orbOff: ['frxNZDUSD', 'frxUSDCHF', 'frxEURUSD', '1HZ25V', 'R_75', 'frxUSDJPY', 'frxUSDCAD'],  // ORB+ lost in both halves on these markets
@@ -863,5 +863,5 @@
     W('GainX-400'), W('GainX-600'), W('PainX-400'), W('PainX-600'),
   ];
 
-  return { Engine, Series, DerivFeed, BridgeFeed, aggCandles, startLive, backtest, stats, trendOf, efficiency, pivots, fmt, toBar, decimalsOf, G, TF_NAME, DEFAULTS, DEFAULT_SYMBOLS, WELTRADE_SYMBOLS, MANAGEMENT, version: '1.12.0' };
+  return { Engine, Series, DerivFeed, BridgeFeed, aggCandles, startLive, backtest, stats, trendOf, efficiency, pivots, fmt, toBar, decimalsOf, G, TF_NAME, DEFAULTS, DEFAULT_SYMBOLS, WELTRADE_SYMBOLS, MANAGEMENT, version: '1.12.1' };
 });
