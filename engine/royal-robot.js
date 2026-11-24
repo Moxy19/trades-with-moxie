@@ -435,7 +435,7 @@
       const net = cents(p.legs.reduce((a, x) => a + (x.profit || 0), 0)), d = this._today();
       d.realized = cents(d.realized + net);
       if (p.risk > 0) { this.eq.r = Math.round((this.eq.r + net / p.risk) * 100) / 100; this.eq.peak = Math.max(this.eq.peak, this.eq.r); }
-      if (net < 0) { d.losses++; d.consec++; } else { d.wins++; d.consec = 0; }
+      if (net < 0) { d.losses++; d.consec++; } else if (net > 0) { d.wins++; d.consec = 0; } // $0.00 (a cent-rounded lock) is neither
       this.note('close', `${p.sig.dir} ${p.sig.name} closed (${why}) · ${net >= 0 ? '+' : '−'}$${Math.abs(net).toFixed(2)}${p.risk ? ' (' + (net / p.risk >= 0 ? '+' : '') + (net / p.risk).toFixed(2) + 'R)' : ''}`, { sym: p.sig.symbol, sig: p.sig.id, pnl: net });
       delete this.pos[p.sig.id];
       if (d.consec >= this.set.maxConsecLosses) this._halt(`${d.consec} losses in a row`);
