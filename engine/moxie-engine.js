@@ -23,6 +23,7 @@
     orBlock: 3600,          // session block in seconds (3600 = new opening range every hour)
     orMinutes: 15,          // opening range length
     bufferFrac: 0.15,       // breakout must clear the edge by this fraction of range height (tuned on 7d real data)
+    amd: false,             // lab: true = add AMD setups (range sweep, then a 2m close back through the midpoint); 'only' = AMD setups only
     smc: null,              // lab: { bos: block if 1H structure (BOS/CHoCH) is against, zone: block if an opposing OB/FVG sits before TP1, needZone: entry must sit at a demand/supply OB or FVG }
     htfNoAgainst: false,    // golden rule (lab): block any trade with 4H or 2H against it
     trendMode: 'adaptive',  // 'strict' = only with 1H trend; 'adaptive' = also counter-1H scalps when 1H is weak
@@ -374,6 +375,15 @@
           b.retestDn = true; cands.push({ dir: 'SELL', setup: 'ORB Retest' });
         }
       }
+      // AMD (lab): the opening range is the accumulation; a run beyond one side is the manipulation (sweep); a 2m close
+      // back through the range midpoint is the change of character that starts the distribution the other way.
+      if (cfg.amd) {
+        if (cfg.amd === 'only') cands.length = 0;
+        if (bar2.l < b.lo - buf) { b.amdLo = Math.min(b.amdLo == null ? Infinity : b.amdLo, bar2.l); }
+        if (bar2.h > b.hi + buf) { b.amdHi = Math.max(b.amdHi == null ? -Infinity : b.amdHi, bar2.h); }
+        if (b.amdLo != null && !b.amdBuy && bar2.c > mid && bar2.c > bar2.o && bar2.l > b.amdLo) { b.amdBuy = true; cands.push({ dir: 'BUY', setup: 'AMD (sweep + CHoCH)', sl: b.amdLo }); }
+        if (b.amdHi != null && !b.amdSell && bar2.c < mid && bar2.c < bar2.o && bar2.h < b.amdHi) { b.amdSell = true; cands.push({ dir: 'SELL', setup: 'AMD (sweep + CHoCH)', sl: b.amdHi }); }
+      }
       for (const c of cands) this._consider(st, c, bar2, T, h, mid);
     }
 
@@ -453,7 +463,7 @@
       // --- stop: beyond range midpoint or the recent 2m swing, whichever protects better ---
       const s2 = S[G.M2].bars.slice(-3);
       const swing = sgn > 0 ? Math.min(...s2.map((x) => x.l)) : Math.max(...s2.map((x) => x.h));
-      let sl = sgn > 0 ? Math.min(mid, swing) : Math.max(mid, swing);
+      let sl = cand.sl != null ? cand.sl : sgn > 0 ? Math.min(mid, swing) : Math.max(mid, swing);
       sl -= sgn * 0.05 * atr15;
       let risk = Math.abs(entry - sl);
       if (risk > cfg.maxRiskAtr * atr15) {
