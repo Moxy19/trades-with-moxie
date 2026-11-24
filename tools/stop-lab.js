@@ -60,7 +60,8 @@
     if (lab.done[sym]) continue;
     lab.progress = sym;
     try {
-      const raw1 = await feed.candlesBack(sym, 60, N1);
+      let raw1 = await feed.candlesBack(sym, 60, N1 + (opts.skipBars || 0));
+      if (opts.skipBars) raw1 = Object.assign({}, raw1, { candles: raw1.candles.slice(0, -opts.skipBars) }); // out-of-sample: an earlier window
       if (!raw1.candles.length) throw new Error('no data');
       const memo = {};
       const cache = { candlesBack: async () => raw1, candles: (s, g, c, e) => (memo[g + ':' + e] = memo[g + ':' + e] || feed.candles(s, g, c, e)) };

@@ -28,6 +28,9 @@
     minScalpScore: 80,      // counter-1H scalps need more confluence
     // Stop-loss lab, 23 Nov 2026 (593 ORB+ trades, ~21 days synthetics / ~30 days forex & crypto). Each filter
     // removed trades that lost money in both halves of the data.
+    minOrAtr: 0,            // skip when the opening range is narrower than this × the 15m ATR (0 = off)
+    hours: null,            // { fromUtc, toUtc }: only signal inside these UTC hours (null = always)
+    needH4: false,          // require the 4H trend to agree with the trade
     maxOrAtr: 1.5,          // skip when the opening range is wider than 1.5× the 15m ATR (those breakouts won 38%)
     quiet: { markets: ['forex'], fromUtc: 4, toUtc: 8 },  // no forex/metals ORB+ 06:00–10:00 SAST (London-open fakeouts: 42% win, -9R)
     orbOff: ['frxNZDUSD', 'frxUSDCHF', 'frxEURUSD', '1HZ25V', 'R_75', 'frxUSDJPY', 'frxUSDCAD'],  // ORB+ lost in both halves on these markets
@@ -371,6 +374,10 @@
         const hu = new Date(T * 1000).getUTCHours();
         if (hu >= cfg.quiet.fromUtc && hu < cfg.quiet.toUtc) return reject('Quiet window (London open): breakouts fail more often');
       }
+      // Regime filters (regime lab, 24 Nov 2026): compact ranges in the active session, with the 4H behind the trade
+      if (cfg.minOrAtr && h < cfg.minOrAtr * atr15) return reject('Opening range too tight (' + (h / atr15).toFixed(2) + '× ATR): no clean breakout regime');
+      if (cfg.hours) { const hu = new Date(T * 1000).getUTCHours(); if (hu < cfg.hours.fromUtc || hu >= cfg.hours.toUtc) return reject('Outside the active session (' + cfg.hours.fromUtc + ':00–' + cfg.hours.toUtc + ':00 UTC)'); }
+      if (cfg.needH4 && tH4.dir !== want(dir)) return reject('4H trend not behind the trade');
       const er15 = efficiency(S[G.M15], 16);
       const m1 = S[G.M1];
       const mom1 = m1.n > 21 && (sgn > 0 ? last(m1.bars).c > m1.e(9) && m1.e(9) > m1.e(21) : last(m1.bars).c < m1.e(9) && m1.e(9) < m1.e(21));
