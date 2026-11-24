@@ -222,3 +222,18 @@ A "full stop-out" is the original stop hit with the whole position still open.
 
 Early cuts turn most would-be full stops into smaller losses (about −0.6R); the losing-trade count does not fall.
 Gold lost money on the Ladder in every variant over this window (−5.9R in v1.8), so the gold Ladder is tagged Royalty.
+
+## Dynamic stop (v1.9)
+
+Dynamic-stop lab of 24 Nov 2026 (23 markets, ~20 days, on top of v1.8). Until TP1 the stop trails behind the best price,
+but never past half of the TP1 distance.
+
+| Trail distance | ORB+ wins | ORB+ full stops | ORB+ R | Ladder wins | Ladder full stops | Ladder R | All wins | All R |
+|---|---|---|---|---|---|---|---|---|
+| none (v1.8) | 79% | 9% | +106.3R | 46% | 11% | +40.4R | 72% | +146.7R |
+| **1R (v1.9)** | 78% | **1%** | **+134.4R** | 45% | **1%** | +41.3R | 72% | **+175.7R** |
+| 0.75R | 72% | 1% | +103.6R | 41% | 0% | +34.8R | 66% | +138.4R |
+| 0.5R | 62% | 0% | +97.6R | 36% | 0% | +19.6R | 57% | +117.2R |
+| 1R, cap kept for the whole trade | 78% | 1% | +132.5R | 51% | 1% | +34.7R | 73% | +167.2R |
+
+The win rate shown in the app now counts trades closed in profit and splits it by strategy (ORB+ and Royal Ladder).
