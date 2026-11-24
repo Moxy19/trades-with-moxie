@@ -301,12 +301,17 @@ used to choose any setting.
 | v1.2 (renamed to Royal Trades, original rules) | 1528 | 47% | 1.06 | 37.4R | +45.1R | 43%, PF 0.89, −30.2R |
 | v1.2 entries + v1.10 trade management | 3747 | 86% | 1.92 | 10.4R | +422.7R | 84%, PF 1.71, +119.1R |
 | **v1.10 / v1.11 (live)** | 537 | 88% | **3.51** | 3.1R | +145.0R | 84%, PF 3.05, 2.9R, +45.1R |
-| v1.10 + late-entry filter (score 95+ with 2H and 4H aligned skipped) | 215 | 90% | 5.17 | 3.2R | +78.4R | 83%, PF 2.55, +18.5R: not shipped |
+| **v1.12 (live from 24 Nov): v1.11 + late-entry filter** (score 95+ with 2H and 4H aligned skipped) | 215 | 90% | **5.17** | 3.2R | +78.4R | 83%, PF 2.55, +18.5R |
 
 v1.11.1 adds the drawdown size rule to the terminal: half size from 2R below the equity peak, quarter size from 3R,
 full size again at a new high.
 
-## Royal Robot: automatic execution (v1.12)
+v1.12 turns the late-entry filter on in the live engine (`skipLate: true`, set it to `false` to go back to v1.11.1 entries).
+Over all 60 days it lifts the profit factor from 3.51 to 5.17 and the in-profit rate from 88% to 90%, with about 60% fewer
+trades and less total R (+78.4R vs +145.0R). On the oldest window alone, which was never used to choose settings, it did
+slightly worse than v1.11.1 (PF 2.55 vs 3.05), so watch the live record. The −2R / −3R size rule and the Ladder removal are unchanged.
+
+## Royal Robot: automatic execution
 
 Educational software, not financial advice. Automated trading can lose money fast. Run it in Paper mode or on a demo account first.
 
