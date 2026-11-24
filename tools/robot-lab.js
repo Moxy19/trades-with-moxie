@@ -30,7 +30,7 @@
       }
     }
   };
-  const copy = (s) => ({ id: s.id, symbol: s.symbol, name: s.name, market: s.market, source: 'deriv', dir: s.dir, grade: s.grade, unproven: s.unproven, status: s.status, entry: s.entry, price: s.price, sl: s.sl, slLive: s.slLive, tp1: s.tp1, tp2: s.tp2, risk: s.risk, r1: s.r1, r2: s.r2, createdAt: s.createdAt, filledAt: s.filledAt, result: s.result, exit: s.exit });
+  const copy = (s) => ({ id: s.id, symbol: s.symbol, name: s.name, market: s.market, source: 'deriv', dir: s.dir, grade: s.grade, unproven: s.unproven, status: s.status, entry: s.entry, price: s.price, sl: s.sl, slLive: s.slLive, tp1: s.tp1, tp2: s.tp2, risk: s.risk, r1: s.r1, r2: s.r2, createdAt: s.createdAt, filledAt: s.filledAt, result: s.result, exit: s.exit, sl12: s.sl12, sl3: s.sl3, open12: s.open12, threeR: s.threeR });
 
   // ---------- phase 1a: download (kept in memory so the engine can be replayed with other settings) ----------
   lab.raw = lab.raw || {};
@@ -110,9 +110,11 @@
           robot.tick(sym, p[3]);
           await null;
         } else {
+          const was12 = sigs[p.id] ? sigs[p.id].open12 : undefined;
           const s = sigs[p.id] = Object.assign(sigs[p.id] || {}, p);
           // in a replay the engine's exit happens inside the bar: let the Paper broker see that exit price first (live, the robot acts on the same tick)
-          if (kind === 'U' && p.status === 'TP1_HIT') robot.tick(sym, p.tp1);
+          if (kind === 'U' && p.status === 'TP1_HIT' && p.sl12 != null && p.open12 === false && was12 !== false) robot.tick(sym, p.sl12);
+          else if (kind === 'U' && p.status === 'TP1_HIT') robot.tick(sym, p.tp1);
           else if (kind === 'U' && p.exit != null) robot.tick(sym, p.exit);
           if (kind === 'S') await robot.onSignal(s); else await robot.onUpdate(s, prev);
           const eq = paper.balance + Object.values(robot.pos).reduce((a, x) => a + x.legs.filter((l) => l.open).reduce((b, l) => b + l.stake + (l.profit || 0), 0), 0);

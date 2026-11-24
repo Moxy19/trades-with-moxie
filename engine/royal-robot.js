@@ -29,7 +29,7 @@
     multiplier: 'auto',     // 'auto' (picked so the stop costs exactly the money at risk) or a number such as 100
     maxRiskPct: 3,          // hard cap: never risk more than this % of balance on one trade (a minimum stake can force more)
     maxStake: 5,            // hard cap on stake per trade, $
-    atTp1: 'auto',          // 'half' = two contracts, one closes at TP1 and one runs | 'all' = close everything at TP1 | 'auto' = half when the stake allows
+    atTp1: 'three',         // 'three' = your 3-position plan (3 equal contracts, all aim for TP2; at TP1 two lock TP1, one locks halfway) | 'half' = two contracts, one closes at TP1 and one runs | 'all' = close everything at TP1 | 'auto' = half when the stake allows
     grades: ['A+', 'A'],    // grades to trade
     dirs: 'both',           // 'both' | 'buy' | 'sell'
     markets: ['synthetic'], // 'synthetic' | 'forex' (gold & forex) | 'crypto'
@@ -60,13 +60,15 @@
    * Returns { legs: [{ stake, mult, sl$, tp$ }], risk, exposure, note } or { skip }.
    */
   function sizeTrade(o) {
-    const { price, sl, r1, balance, set, mults, minStake } = o;
+    const { price, sl, r1, balance, set, mults, minStake } = o; const r2 = o.r2 || 2 * (r1 || 1);
+    const three = set.atTp1 === 'three';
     const f = Math.abs(price - sl) / price;
     if (!(f > 0)) return { skip: 'stop is at the entry price' };
     const allowed = (mults && mults.length ? mults : MULTS).filter((m) => m * f < 0.9).sort((a, b) => b - a); // stop must sit well before Deriv's stop-out
     if (!allowed.length) return { skip: 'stop too far for any multiplier' };
     const cap = (balance * set.maxRiskPct) / 100;
     const wantHalf = set.atTp1 === 'half' || set.atTp1 === 'auto';
+    const wantN = three ? 3 : wantHalf ? 2 : 1;
     let stake, mult, note = '';
     if (set.sizing === 'stake') {
       stake = +set.stake;
@@ -76,21 +78,22 @@
     } else {
       const target = set.sizing === 'risk$' ? +set.riskUsd : (balance * set.riskPct) / 100;
       if (!(target > 0)) return { skip: 'risk is 0' };
-      const legsWanted = wantHalf ? 2 : 1;
+      const legsWanted = wantN;
       const tryLegs = (n) => {
         if (set.multiplier !== 'auto') { const m = +set.multiplier; if (!allowed.includes(m)) return null; return { m, s: target / (m * f), n }; }
         for (const m of allowed) { const s = target / (m * f); if (s >= n * minStake) return { m, s, n }; } // largest multiplier that still meets the minimum stake: least money tied up
         const m = allowed[allowed.length - 1]; return { m, s: n * minStake, n, forced: true };
       };
       let t = tryLegs(legsWanted);
-      if (t && t.forced && legsWanted === 2 && set.atTp1 === 'auto') t = tryLegs(1);
+      if (t && t.forced && three) { const t2 = tryLegs(2); t = t2 && !t2.forced ? t2 : tryLegs(1); } // not enough for 3 × the minimum stake: fewer contracts, same risk
+      else if (t && t.forced && legsWanted === 2 && set.atTp1 === 'auto') t = tryLegs(1);
       if (!t) return { skip: 'multiplier ×' + set.multiplier + ' is not allowed for this stop' };
       stake = Math.max(t.s, t.n * minStake); mult = t.m;
       if (t.forced) note = 'minimum stake';
     }
     if (stake > set.maxStake) { stake = set.maxStake; note = 'stake capped at $' + set.maxStake; }
     if (stake > balance) return { skip: `stake $${stake.toFixed(2)} is more than the balance` };
-    let n = set.atTp1 === 'all' ? 1 : set.atTp1 === 'half' ? 2 : stake / 2 >= minStake ? 2 : 1;
+    let n = set.atTp1 === 'all' ? 1 : set.atTp1 === 'half' ? 2 : three ? (stake / 3 >= minStake ? 3 : stake / 2 >= minStake ? 2 : 1) : stake / 2 >= minStake ? 2 : 1;
     if (n === 2 && stake / 2 < minStake) { if (set.atTp1 === 'half') stake = 2 * minStake; else n = 1; }
     const legStake = floorC(stake / n);
     if (legStake < minStake) return { skip: `stake under Deriv's $${minStake} minimum` };
@@ -100,6 +103,10 @@
     if (risk > cap + 1e-9) return { skip: `needs $${risk.toFixed(2)} at risk (${((risk / balance) * 100).toFixed(1)}%), over the ${set.maxRiskPct}% cap` };
     const legs = [];
     for (let i = 0; i < n; i++) {
+      if (three) { // positions 1-2 ('lock': SL to TP1 at TP1), position 3 ('half': SL halfway at TP1); every contract's broker take profit sits at TP2
+        legs.push({ role: n === 1 || i < n - 1 ? 'lock' : 'half', stake: legStake, mult, sl$: legRisk, tp$: cents(Math.max(0.01, legRisk * r2)) });
+        continue;
+      }
       const role = n === 1 ? 'all' : i === 0 ? 'tp1' : 'runner';
       legs.push({ role, stake: legStake, mult, sl$: legRisk, tp$: role === 'runner' ? null : cents(Math.max(0.01, legRisk * r1)) });
     }
@@ -383,7 +390,7 @@
         try { q = await this.broker.quote(sig.symbol); } catch (e) { return skip(e.message); }
         const k = this.sizeFactor();
         const pz = k < 1 ? Object.assign({}, ps, { riskPct: ps.riskPct * k, riskUsd: ps.riskUsd * k, stake: Math.max(q.minStake, ps.stake * k) }) : ps;
-        const sz = sizeTrade({ price, sl: sig.sl, r1: sig.r1 || 1, balance: this.balance || 0, set: pz, mults: q.mults, minStake: q.minStake });
+        const sz = sizeTrade({ price, sl: sig.sl, r1: sig.r1 || 1, r2: sig.r2, balance: this.balance || 0, set: pz, mults: q.mults, minStake: q.minStake });
         if (!sz.skip && k < 1) sz.note = (sz.note ? sz.note + ', ' : '') + (k === 0.5 ? 'half' : 'quarter') + ' size: ' + (this.eq.peak - this.eq.r).toFixed(1) + 'R below peak';
         if (sz.skip) return skip(sz.skip);
         const openRisk = live.reduce((a, p) => a + p.risk, 0);
@@ -399,15 +406,17 @@
         }
         if (!p.legs.length) { delete this.pos[sig.id]; return null; }
         d.trades++;
-        this.note('open', `${sig.dir} ${sig.name} · ${p.legs.length === 2 ? '2 × ' : ''}$${p.legs[0].stake.toFixed(2)} stake ×${p.legs[0].mult} · risk $${p.risk.toFixed(2)}${sz.note ? ' (' + sz.note + ')' : ''} · SL $${p.legs[0].sl$.toFixed(2)}${p.legs[0].tp$ != null ? ' · TP $' + p.legs[0].tp$.toFixed(2) : ''}`, { sym: sig.symbol, sig: sig.id, grade: sig.grade, dir: sig.dir, entry: price });
+        this.note('open', `${sig.dir} ${sig.name} · ${p.legs.length > 1 ? p.legs.length + ' × ' : ''}$${p.legs[0].stake.toFixed(2)} stake ×${p.legs[0].mult} · risk $${p.risk.toFixed(2)}${sz.note ? ' (' + sz.note + ')' : ''} · SL $${p.legs[0].sl$.toFixed(2)}${p.legs[0].tp$ != null ? ' · TP $' + p.legs[0].tp$.toFixed(2) : ''}`, { sym: sig.symbol, sig: sig.id, grade: sig.grade, dir: sig.dir, entry: price });
         if (p.sig.status !== 'ACTIVE') this._manage(p, 'ACTIVE'); // engine moved on while we were buying
         return p;
       } finally { this.busy.delete(sig.id); }
     }
     async _manage(p, prev) {
       const s = p.sig.status;
-      if (s === 'TP1_HIT') await this._closeLegs(p, (l) => l.role === 'tp1' || l.role === 'all', 'TP1 hit');
-      else if (CLOSED.includes(s)) await this._closeLegs(p, () => true, s.replace(/_/g, ' ').toLowerCase());
+      const threeSig = p.sig.sl12 != null; // engine runs the 3-position plan
+      if (CLOSED.includes(s)) await this._closeLegs(p, () => true, s.replace(/_/g, ' ').toLowerCase());
+      else if (s === 'TP1_HIT' && threeSig) { if (p.sig.open12 === false) await this._closeLegs(p, (l) => l.role === 'lock', 'back to TP1: TP1 locked'); } // nothing closes at TP1 itself
+      else if (s === 'TP1_HIT') await this._closeLegs(p, (l) => l.role === 'tp1' || l.role === 'all' || l.role === 'lock', 'TP1 hit');
       this._syncStop(p);
     }
     async _closeLegs(p, which, why) {
@@ -450,7 +459,8 @@
       const sgn = sgnOf(s.dir), t = this.now();
       for (const l of p.legs) {
         if (!l.open || l.closing) continue;
-        const lossPx = Math.max(0, sgn * (l.entry - s.slLive)); // price distance still at risk
+        const stop = s.sl12 != null && s.status === 'TP1_HIT' ? (l.role === 'half' ? s.sl3 : s.sl12) : s.slLive; // 3-position plan: each contract has its own stop
+        const lossPx = Math.max(0, sgn * (l.entry - stop)); // price distance still at risk (a stop in profit leaves only the robot's own close)
         const want = Math.max(0.01, floorC(l.stake * l.mult * lossPx / l.entry));
         if (want >= l.sl$ - 0.01 || (l.syncT && t - l.syncT < 10000)) continue;
         l.syncT = t;
@@ -460,5 +470,5 @@
     }
   }
 
-  return { Robot, PaperBroker, DerivBroker, sizeTrade, ROBOT_DEFAULTS, MULTS, dayKey, version: '1.0.0' };
+  return { Robot, PaperBroker, DerivBroker, sizeTrade, ROBOT_DEFAULTS, MULTS, dayKey, version: '1.1.0' };
 });

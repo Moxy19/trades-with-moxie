@@ -290,7 +290,7 @@ label.f input,label.f select{width:100%}
           <label class="f" id="rbRiskUsdL">Risk per trade ($)<input id="rbRiskUsd" type="number" min="0.01" step="0.01"></label>
           <label class="f" id="rbStakeL">Stake per trade ($)<input id="rbStake" type="number" min="1" step="0.5"></label>
           <label class="f">Multiplier<select id="rbMult"><option value="auto">Auto (stop costs exactly the risk)</option><option>10</option><option>20</option><option>30</option><option>40</option><option>50</option><option>100</option><option>200</option><option>300</option><option>400</option><option>500</option><option>1000</option></select></label>
-          <label class="f">At TP1<select id="rbTp1"><option value="auto">Close half, run half (when the stake allows)</option><option value="half">Always close half, run half</option><option value="all">Close everything at TP1</option></select></label>
+          <label class="f">At TP1<select id="rbTp1"><option value="three">3 positions: all aim for TP2; at TP1 two lock TP1, one locks halfway (your plan)</option><option value="auto">Close half, run half (when the stake allows)</option><option value="half">Always close half, run half</option><option value="all">Close everything at TP1</option></select></label>
           <label class="f">Never risk more than (% of balance)<input id="rbMaxRisk" type="number" min="0.5" max="10" step="0.5"></label>
           <label class="f">Max stake per trade ($)<input id="rbMaxStake" type="number" min="1" step="1"></label>
         </div>
@@ -885,7 +885,9 @@ const tokStore = {
   get() { try { return sessionStorage.getItem('twm.robot.tok') || localStorage.getItem('twm.robot.tok') || ''; } catch (e) { return ''; } },
   set(v, remember) { try { sessionStorage.removeItem('twm.robot.tok'); localStorage.removeItem('twm.robot.tok'); if (v) (remember ? localStorage : sessionStorage).setItem('twm.robot.tok', v); } catch (e) {} },
 };
-const robotSet = Object.assign({}, RB.ROBOT_DEFAULTS, store.get('robot.set', {}));
+const robotSaved = store.get('robot.set', {});
+if (robotSaved.atTp1 && !robotSaved.plan3) { robotSaved.atTp1 = 'three'; robotSaved.plan3 = 1; store.set('robot.set', robotSaved); } // move saved settings to the 3-position plan once
+const robotSet = Object.assign({}, RB.ROBOT_DEFAULTS, { plan3: 1 }, robotSaved);
 if (robotSet.mode === 'real') robotSet.mode = 'off'; // real trading is never resumed silently after a reload
 const robot = new RB.Robot(robotSet, { store: { get: (k) => store.get(k, null), set: (k, v) => store.set(k, v) }, onChange: () => renderRobotSoon(), log: (m) => console.log(m) });
 let rbT = 0; function renderRobotSoon() { if (rbT) return; rbT = setTimeout(() => { rbT = 0; renderRobot(); }, 250); }
@@ -895,7 +897,7 @@ function loadRobotUI() {
   const r = robot.set;
   $('#rbMode').value = r.mode; $('#rbPaperBal').value = r.paperBalance; $('#rbApp').value = store.get('robot.app', '') || DERIV_APP_ID; $('#rbAccId').value = store.get('robot.acc', '');
   $('#rbTok').value = tokStore.get(); $('#rbRemember').checked = !!store.get('robot.remember', false);
-  $('#rbSizing').value = r.sizing; $('#rbRiskPct').value = r.riskPct; $('#rbRiskUsd').value = r.riskUsd; $('#rbStake').value = r.stake; $('#rbMult').value = String(r.multiplier); $('#rbTp1').value = r.atTp1;
+  $('#rbSizing').value = r.sizing; $('#rbRiskPct').value = r.riskPct; $('#rbRiskUsd').value = r.riskUsd; $('#rbStake').value = r.stake; $('#rbMult').value = String(r.multiplier); $('#rbTp1').value = r.atTp1 || 'three';
   $('#rbMaxRisk').value = r.maxRiskPct; $('#rbMaxStake').value = r.maxStake; $('#rbMaxOpen').value = r.maxOpen; $('#rbMaxDay').value = r.maxPerDay; $('#rbDayLoss').value = r.maxDailyLossPct;
   $('#rbConsec').value = r.maxConsecLosses; $('#rbMinBal').value = r.minBalance; $('#rbSlip').value = r.maxSlipR; $('#rbDirs').value = r.dirs; $('#rbRoyal').value = r.skipRoyalty ? '1' : '0';
   $$('#rbGrades input').forEach((x) => (x.checked = r.grades.includes(x.value))); $$('#rbMarkets input').forEach((x) => (x.checked = r.markets.includes(x.value)));
