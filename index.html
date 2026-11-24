@@ -2222,7 +2222,7 @@ function rbSave() { const c = Object.assign({}, robot.set); store.set('robot.set
 function rbMoney(x) { return x == null || isNaN(x) ? '—' : (x < 0 ? '−$' : '$') + Math.abs(x).toFixed(2); }
 function loadRobotUI() {
   const r = robot.set;
-  $('#rbMode').value = r.mode; $('#rbPaperBal').value = r.paperBalance; $('#rbApp').value = store.get('robot.app', ''); $('#rbAccId').value = store.get('robot.acc', '');
+  $('#rbMode').value = r.mode; $('#rbPaperBal').value = r.paperBalance; $('#rbApp').value = store.get('robot.app', '') || DERIV_APP_ID; $('#rbAccId').value = store.get('robot.acc', '');
   $('#rbTok').value = tokStore.get(); $('#rbRemember').checked = !!store.get('robot.remember', false);
   $('#rbSizing').value = r.sizing; $('#rbRiskPct').value = r.riskPct; $('#rbRiskUsd').value = r.riskUsd; $('#rbStake').value = r.stake; $('#rbMult').value = String(r.multiplier); $('#rbTp1').value = r.atTp1;
   $('#rbMaxRisk').value = r.maxRiskPct; $('#rbMaxStake').value = r.maxStake; $('#rbMaxOpen').value = r.maxOpen; $('#rbMaxDay').value = r.maxPerDay; $('#rbDayLoss').value = r.maxDailyLossPct;
@@ -2316,6 +2316,7 @@ $('#v-robot').addEventListener('change', (e) => { if (e.target.id === 'rbRealOk'
 
 // "Log in with Deriv": OAuth 2.0 with PKCE (no token to copy). The App ID must be registered once at developers.deriv.com
 // as an OAuth app with the trade scope and this page's exact address as a redirect URL.
+const DERIV_APP_ID = '3533hZTM3TxsGSi8gV95I'; // Royal Trades Robot (OAuth app, trade scope, registered 24 Nov 2026). Not a secret.
 const DERIV_AUTH = 'https://auth.deriv.com/oauth2/auth', DERIV_TOKEN = 'https://auth.deriv.com/oauth2/token';
 const b64url = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const redirectUri = () => location.origin + location.pathname;
