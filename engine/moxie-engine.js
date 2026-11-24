@@ -50,15 +50,16 @@
     // Stop-out lab, 24 Nov 2026 (23 markets, ~20 days): locking +0.05R at +0.3R and cutting any trade whose 5m candle closes
     // 0.6R against it cut full stop-outs from 26% to 9% of trades and lifted wins from 74% to 79%, for the same profit
     // (+109.9R vs +111.5R; both halves positive). Earlier: trailing lab, 23 Nov 2026 (see README).
-    beAtR: 0.15,            // 0 = off. (0.15: 87–88% of trades closed in profit in both lab windows) Move the stop to entry (+ beLockR) once a trade has been this many R in profit before TP1
-    beLockR: 0.05,          // R locked in by that early stop move (makes "breakeven" a small win)
+    // v1.14 (user rule): no stop move or profit lock before TP1. beAtR/beLockR/dyn off; the stop only moves once TP1 is touched.
+    beAtR: 0,               // 0 = off. (was 0.15; 87–88% of trades closed in profit in both lab windows) Move the stop to entry (+ beLockR) once a trade has been this many R in profit before TP1
+    beLockR: 0,             // R locked in by that early stop move (makes "breakeven" a small win)
     tp1Lock: 0.3,           // at TP1 the stop moves to entry + this many R
     tp1LockAtTp1: false,    // true: at TP1 the runner's stop moves to TP1 itself (3-position plan: 2 close at TP1, 1 runs)
     trail: { mode: 'pips', pips: 20, atr: 0.75, keepTp2: false }, // after TP1: trail 'pips' (forex & metals) or 'atr' (× 15m ATR) behind the best price; keepTp2 false = let the runner go
     slOfTp: null,           // { ref: 'tp1'|'tp2', k }: stop distance as a fraction of a target's distance (tested: worse for ORB+)
     // Dynamic-stop lab, 24 Nov 2026 (23 markets, ~20 days, on top of v1.8): trailing the stop 1R behind the best price,
     // never past half of the TP1 distance, until TP1: ORB+ +134.4R vs +106.3R, full stop-outs 9% -> 1%, wins 78% vs 79%;
-    dyn: { dist: 1, cap: 0.5, whole: false }, // { dist, cap, whole }: dynamic stop that trails dist × risk behind the best price, never past cap × the TP1 distance (whole: for the whole trade, else until TP1)
+    dyn: null,              // was { dist: 1, cap: 0.5, whole: false }. { dist, cap, whole }: dynamic stop that trails dist × risk behind the best price, never past cap × the TP1 distance (whole: for the whole trade, else until TP1)
     softStop: { r: 0.6, tf: 300 }, // before the stop has moved: exit at the close of a 5m candle that closes 0.6R or more against the trade
     lossGuard: true,        // block same-direction re-entry after SL until structure resets
     retest: false,          // ORB retest continuation setups (off: they lost money in real-data tests)
@@ -834,9 +835,9 @@
   // Trade-management presets (management lab, 23 Nov 2026)
   const MANAGEMENT = {
     // Regime lab, 24 Nov 2026: both windows together, ORB+ only
-    quality: { label: 'High quality', beAtR: 0.15, beLockR: 0.05, tp1Lock: 0.3, softStop: { r: 0.6, tf: 300 }, dyn: { dist: 1, cap: 0.5, whole: false }, trail: { mode: 'pips', pips: 20, atr: 0.75, keepTp2: false },
+    quality: { label: 'High quality', beAtR: 0, beLockR: 0, tp1Lock: 0.3, softStop: { r: 0.6, tf: 300 }, dyn: null, trail: { mode: 'pips', pips: 20, atr: 0.75, keepTp2: false },
       minOrAtr: 0.6, maxOrAtr: 0.9, hours: { fromUtc: 6, toUtc: 18 } },   // 89% in profit, PF 3.85, 3.7R DD, +100.1R, ~6 signals a day
-    volume: { label: 'More signals', beAtR: 0.15, beLockR: 0.05, tp1Lock: 0.3, softStop: { r: 0.6, tf: 300 }, dyn: { dist: 1, cap: 0.5, whole: false }, trail: { mode: 'pips', pips: 20, atr: 0.75, keepTp2: false },
+    volume: { label: 'More signals', beAtR: 0, beLockR: 0, tp1Lock: 0.3, softStop: { r: 0.6, tf: 300 }, dyn: null, trail: { mode: 'pips', pips: 20, atr: 0.75, keepTp2: false },
       minOrAtr: 0, maxOrAtr: 1.5, hours: null },                            // 87% in profit, PF 2.37, 7.0R DD, +214.8R, ~23 signals a day
   };
 
@@ -863,5 +864,5 @@
     W('GainX-400'), W('GainX-600'), W('PainX-400'), W('PainX-600'),
   ];
 
-  return { Engine, Series, DerivFeed, BridgeFeed, aggCandles, startLive, backtest, stats, trendOf, efficiency, pivots, fmt, toBar, decimalsOf, G, TF_NAME, DEFAULTS, DEFAULT_SYMBOLS, WELTRADE_SYMBOLS, MANAGEMENT, version: '1.13.1' };
+  return { Engine, Series, DerivFeed, BridgeFeed, aggCandles, startLive, backtest, stats, trendOf, efficiency, pivots, fmt, toBar, decimalsOf, G, TF_NAME, DEFAULTS, DEFAULT_SYMBOLS, WELTRADE_SYMBOLS, MANAGEMENT, version: '1.14' };
 });
