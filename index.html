@@ -406,6 +406,7 @@ label.f input,label.f select{width:100%}
     pendingExpiryMin: 30,   // unfilled limit orders expire
     maxHoldMin: 360,        // time exit after 6h
     partialAtTp1: 0.5,      // fraction closed at TP1 (rest runs to TP2 with SL at entry)
+    three: true,            // v1.14.1 (user plan): 3 equal positions, nothing moves before TP1. At TP1: positions 1-2 SL -> TP1, position 3 SL -> halfway entry/TP1; all 3 aim for TP2
     // Management lab, 23 Nov 2026 (v1.5.1 rules, 24 markets): moving the stop to entry at +0.5R lifted ORB+ from +83.8R to
     // +99.8R (both halves better; stop-outs 44% -> 25%). Partial size, TP2 distance and holding time made no real difference.
     // Stop-out lab, 24 Nov 2026 (23 markets, ~20 days): locking +0.05R at +0.3R and cutting any trade whose 5m candle closes
@@ -847,7 +848,8 @@ label.f input,label.f select{width:100%}
       const rNow = (sgn * (exitPrice - sig.entry)) / sig.risk;
       const p = this.cfg.partialAtTp1;
       let R = 0;
-      if (status === 'SL_HIT') R = -1;
+      if (sig.threeR != null) R = sig.threeR;  // 3-position plan sets its own result
+      else if (status === 'SL_HIT') R = -1;
       else if (status === 'TP2_HIT') R = p * sig.r1 + (1 - p) * sig.r2;
       else if (status === 'BE_HIT' || status === 'TRAIL_EXIT') R = p * sig.r1 + (1 - p) * rNow;
       else if (status === 'BE_EARLY' || status === 'SOFT_EXIT' || status === 'DYN_STOP') R = rNow;  // stopped at entry (or the locked level) before TP1
@@ -897,12 +899,26 @@ label.f input,label.f select{width:100%}
         if (cfg.beAtR && !sig.beArmed && sig.mfeR >= cfg.beAtR && !tp1Hit) { sig.beArmed = true; sig.slLive = this._better(sgn, sig.slLive, sig.entry + sgn * (cfg.beLockR || 0) * sig.risk); this.hooks.onUpdate && this.hooks.onUpdate(sig, 'ACTIVE'); }
         if (cfg.dyn && !tp1Hit) this._dyn(sig, cfg.dyn, sgn);
         if (tp1Hit) {
-          sig.status = 'TP1_HIT'; sig.tp1At = t; sig.slLive = this._better(sgn, sig.dynMoved || sig.beArmed ? sig.slLive : null, cfg.tp1LockAtTp1 ? sig.tp1 : sig.entry + sgn * (cfg.tp1Lock || 0) * sig.risk); sig.peak = sig.tp1;
+          sig.status = 'TP1_HIT'; sig.tp1At = t;
+          if (cfg.three) { sig.sl12 = sig.tp1; sig.sl3 = sig.entry + 0.5 * (sig.tp1 - sig.entry); sig.open12 = true; sig.slLive = sig.sl12; this.hooks.onUpdate && this.hooks.onUpdate(sig, 'ACTIVE');
+            if (sgn > 0 ? fav >= sig.tp2 : fav <= sig.tp2) { sig.threeR = sig.r2; return this._close(sig, st, 'TP2_HIT', sig.tp2, t); }
+            return; } // the new stops apply from the next bar/tick
+          else { sig.slLive = this._better(sgn, sig.dynMoved || sig.beArmed ? sig.slLive : null, cfg.tp1LockAtTp1 ? sig.tp1 : sig.entry + sgn * (cfg.tp1Lock || 0) * sig.risk); sig.peak = sig.tp1;
           if (cfg.dyn && cfg.dyn.whole) sig.slLive = this._better(-sgn, sig.slLive, this._dynCap(sig, cfg.dyn, sgn));
           this.hooks.onUpdate && this.hooks.onUpdate(sig, 'ACTIVE');
           if (sgn > 0 ? fav >= sig.tp2 : fav <= sig.tp2) return this._close(sig, st, 'TP2_HIT', sig.tp2, t);
           if (this.mode === 'backtest') return; // BE can't be ordered inside the same bar; check next bar
+          }
         }
+      }
+      if (sig.status === 'TP1_HIT' && cfg.three) {
+        // stops first (pessimistic): positions 1-2 at TP1, position 3 halfway between entry and TP1
+        if (sig.open12 && (sgn > 0 ? adv <= sig.sl12 : adv >= sig.sl12)) { sig.open12 = false; sig.slLive = sig.sl3; this.hooks.onUpdate && this.hooks.onUpdate(sig, 'TP1_HIT'); }
+        const bank = sig.open12 ? null : 2 * sig.r1;
+        if (!sig.open12 && (sgn > 0 ? adv <= sig.sl3 : adv >= sig.sl3)) { sig.threeR = (bank + 0.5 * sig.r1) / 3; return this._close(sig, st, 'TRAIL_EXIT', sig.sl3, t); }
+        if (sgn > 0 ? fav >= sig.tp2 : fav <= sig.tp2) { sig.threeR = sig.open12 ? sig.r2 : (bank + sig.r2) / 3; return this._close(sig, st, 'TP2_HIT', sig.tp2, t); }
+        if (sig.filledAt && t - sig.filledAt > cfg.maxHoldMin * 60) { const rNow = (sgn * (price - sig.entry)) / sig.risk; sig.threeR = sig.open12 ? rNow : (bank + rNow) / 3; return this._close(sig, st, 'TIME_EXIT', price, t); }
+        return;
       }
       if (sig.status === 'TP1_HIT') {
         const tr = cfg.trail || {}, keepTp2 = tr.mode === 'off' || tr.keepTp2 !== false;
@@ -961,6 +977,7 @@ label.f input,label.f select{width:100%}
       { const c = this.cfg, tr = c.trail || {};
         const pre = [c.beAtR ? `at +${c.beAtR}R move the SL to entry${c.beLockR ? ' +' + c.beLockR + 'R' : ''}` : '', c.softStop ? `close early if a ${c.softStop.tf / 60}m candle closes ${c.softStop.r}R against you` : '', c.dyn ? `trail the SL ${c.dyn.dist}R behind the best price, but never past ${fmt(sig.entry + dirSign(sig.dir) * (c.dyn.cap == null ? 0.5 : c.dyn.cap) * Math.abs(sig.tp1 - sig.entry), sig.dec)} (halfway to TP1)` : ''].filter(Boolean).join('; ');
         const post = tr.mode && tr.mode !== 'off' ? `trail the rest ${sig.market === 'forex' && tr.mode === 'pips' ? tr.pips + ' pips' : tr.atr + '× the 15m ATR'} behind price${tr.keepTp2 === false ? ' (TP2 is a guide)' : ''}` : 'let the rest run to TP2';
+        if (c.three) lines.push(`Management: open 3 equal positions with the same SL. ${pre ? 'Before TP1, ' + pre + '. ' : 'Nothing moves before TP1. '}At TP1, move the SL of positions 1 and 2 to TP1 (${fmt(sig.tp1, d)}) and the SL of position 3 halfway, to ${fmt(sig.entry + 0.5 * (sig.tp1 - sig.entry), d)}. All 3 aim for TP2.`); else
         lines.push(`Management: ${pre ? 'before TP1, ' + pre + '. ' : ''}Close ${Math.round(c.partialAtTp1 * 100)}% at TP1 and move the SL to entry${c.tp1Lock ? ' +' + c.tp1Lock + 'R' : ''}, then ${post}.`); }
       return lines.join(' ');
     }
@@ -1225,7 +1242,7 @@ label.f input,label.f select{width:100%}
     W('GainX-400'), W('GainX-600'), W('PainX-400'), W('PainX-600'),
   ];
 
-  return { Engine, Series, DerivFeed, BridgeFeed, aggCandles, startLive, backtest, stats, trendOf, efficiency, pivots, fmt, toBar, decimalsOf, G, TF_NAME, DEFAULTS, DEFAULT_SYMBOLS, WELTRADE_SYMBOLS, MANAGEMENT, version: '1.14' };
+  return { Engine, Series, DerivFeed, BridgeFeed, aggCandles, startLive, backtest, stats, trendOf, efficiency, pivots, fmt, toBar, decimalsOf, G, TF_NAME, DEFAULTS, DEFAULT_SYMBOLS, WELTRADE_SYMBOLS, MANAGEMENT, version: '1.14.1' };
 });
 
 </script>
@@ -1899,8 +1916,8 @@ function cardHTML(s) {
         s.result != null ? `<div class="p ${s.result >= 0 ? 'pos' : 'neg'}">${s.result > 0 ? '+' : ''}${s.result}R</div><div class="r" style="color:var(--muted)">final</div>` : ''}</div></div>
     <div class="lv">
       <div>Entry <span class="tag">${s.entryType === 'CONFIRM' ? (s.status === 'PENDING' ? 'zone · enter on 5m close' : '5m confirmed') : s.entryType}</span></div><div>${fmt(s.entry, d)}</div>
-      ${`<div>Stop loss ${s.status === 'TP1_HIT' ? `<span class="tag">${S.cfg.trail && S.cfg.trail.mode !== 'off' ? 'trailing' : 'locked'} · now ${fmt(s.slLive, d)}</span>` : s.beArmed || s.dynMoved ? `<span class="tag">${s.beArmed ? 'locked' : 'trailing'} · now ${fmt(s.slLive, d)}</span>` : S.cfg.beAtR ? `<span class="tag">locks +${S.cfg.beLockR || 0}R at +${S.cfg.beAtR}R${S.cfg.softStop ? ' · cut on a 5m close −' + S.cfg.softStop.r + 'R' : ''}${S.cfg.dyn ? ' · trails ' + S.cfg.dyn.dist + 'R behind, max halfway to TP1' : ''}</span>` : ''}</div><div class="neg">${fmt(s.sl, d)}</div>
-      <div>Take profit 1 <span class="tag">${s.r1.toFixed(2)}R · close ${Math.round((S.cfg.partialAtTp1 || .5) * 100)}%</span></div><div class="pos">${fmt(s.tp1, d)}</div>
+      ${`<div>Stop loss ${s.status === 'TP1_HIT' && s.sl3 != null ? `<span class="tag">${s.open12 ? '2 at TP1 · 1 at ' + fmt(s.sl3, d) : '1 left · SL ' + fmt(s.sl3, d)}</span>` : s.status === 'TP1_HIT' ? `<span class="tag">${S.cfg.trail && S.cfg.trail.mode !== 'off' ? 'trailing' : 'locked'} · now ${fmt(s.slLive, d)}</span>` : s.beArmed || s.dynMoved ? `<span class="tag">${s.beArmed ? 'locked' : 'trailing'} · now ${fmt(s.slLive, d)}</span>` : S.cfg.beAtR ? `<span class="tag">locks +${S.cfg.beLockR || 0}R at +${S.cfg.beAtR}R${S.cfg.softStop ? ' · cut on a 5m close −' + S.cfg.softStop.r + 'R' : ''}${S.cfg.dyn ? ' · trails ' + S.cfg.dyn.dist + 'R behind, max halfway to TP1' : ''}</span>` : ''}</div><div class="neg">${fmt(s.sl, d)}</div>
+      <div>Take profit 1 <span class="tag">${s.r1.toFixed(2)}R · ${S.cfg.three ? 'SL of 2 of 3 moves here' : 'close ' + Math.round((S.cfg.partialAtTp1 || .5) * 100) + '%'}</span></div><div class="pos">${fmt(s.tp1, d)}</div>
       <div>Take profit 2 <span class="tag">${S.cfg.trail && S.cfg.trail.mode !== 'off' && S.cfg.trail.keepTp2 === false ? 'guide · runner trails ' + (s.market === 'forex' && S.cfg.trail.mode === 'pips' ? S.cfg.trail.pips + ' pips' : S.cfg.trail.atr + '× ATR') : s.r2.toFixed(2) + 'R'}</span></div><div class="pos">${fmt(s.tp2, d)}</div>`}
     </div>
     <div class="track" style="--z:${z}%;--p:${p}%;--t1:${pct(s.tp1)}%"><span class="t"></span><span class="m"></span></div>
