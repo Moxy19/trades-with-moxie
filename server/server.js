@@ -16,18 +16,26 @@
  *   MIN_SCORE            62 (B+) | 74 (A+) | 85 (A+ only)
  *   TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID   optional broadcast of new signals and results
  *   DATA_DIR             where signals.json is kept (default ./data)
+ *
+ * Robot (auto-execution, optional; educational, not financial advice):
+ *   ROBOT_MODE           paper | demo | real (default off). real also needs ROBOT_REAL_CONFIRM=I_UNDERSTAND
+ *   DERIV_APP_ID / DERIV_TOKEN   Deriv App ID and Personal Access Token (trade scope only). Never logged.
+ *   DERIV_ACCOUNT        optional options account ID (default: the first demo or real account on the token)
+ *   ROBOT_SETTINGS       optional JSON overriding the robot defaults, e.g. {"riskPct":1,"maxOpen":2,"grades":["A+","A"]}
  */
 'use strict';
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const M = require('../engine/moxie-engine.js');
+const RB = require('../engine/royal-robot.js');
 
 const PORT = +process.env.PORT || 8080;
 const KEY = process.env.ACCESS_KEY || '';
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const WEB_DIR = path.join(__dirname, '..', 'web');
 const ENGINE_FILE = path.join(__dirname, '..', 'engine', 'moxie-engine.js');
+const ROBOT_FILE = path.join(__dirname, '..', 'engine', 'royal-robot.js');
 const TG_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '', TG_CHAT = process.env.TELEGRAM_CHAT_ID || '';
 fs.mkdirSync(DATA_DIR, { recursive: true });
 const SIG_FILE = path.join(DATA_DIR, 'signals.json');
@@ -53,10 +61,29 @@ function broadcast(event, data) { const msg = `event: ${event}\ndata: ${JSON.str
 let saveT = null;
 function save() { clearTimeout(saveT); saveT = setTimeout(() => fs.writeFile(SIG_FILE, JSON.stringify(engine.signals.slice(-3000)), () => {}), 500); }
 
+// ---------- robot (optional auto-execution) ----------
+let robot = null;
+const ROBOT_MODE = (process.env.ROBOT_MODE || 'off').toLowerCase();
+if (['paper', 'demo', 'real'].includes(ROBOT_MODE)) {
+  if (ROBOT_MODE === 'real' && process.env.ROBOT_REAL_CONFIRM !== 'I_UNDERSTAND') { console.error('ROBOT_MODE=real needs ROBOT_REAL_CONFIRM=I_UNDERSTAND. Robot not started.'); }
+  else {
+    let extra = {}; try { extra = JSON.parse(process.env.ROBOT_SETTINGS || '{}'); } catch (e) { console.error('ROBOT_SETTINGS is not valid JSON, using defaults'); }
+    const rstore = { get: (k) => { try { return JSON.parse(fs.readFileSync(path.join(DATA_DIR, k + '.json'), 'utf8')); } catch (e) { return null; } }, set: (k, v) => fs.writeFile(path.join(DATA_DIR, k + '.json'), JSON.stringify(v), () => {}) };
+    robot = new RB.Robot(Object.assign({}, extra, { mode: ROBOT_MODE }), { store: rstore, log: (m) => console.log(new Date().toISOString(), m) });
+  }
+}
+async function startRobot() {
+  if (!robot) return;
+  const broker = ROBOT_MODE === 'paper' ? new RB.PaperBroker({ balance: robot.set.paperBalance })
+    : new RB.DerivBroker({ token: process.env.DERIV_TOKEN, appId: process.env.DERIV_APP_ID, accountType: ROBOT_MODE, accountId: process.env.DERIV_ACCOUNT || '' });
+  try { await robot.start(broker); } catch (e) { console.error('robot not started:', e.message); }
+}
+
 const engine = new M.Engine(cfg, {
-  onSignal(sig) { save(); broadcast('signal', sig); telegram(signalText(sig)); console.log(new Date().toISOString(), 'SIGNAL', sig.dir, sig.symbol, sig.grade, sig.entry); },
+  onSignal(sig) { if (robot) Promise.resolve().then(() => robot.onSignal(sig)).catch((e) => console.error('robot', e.message)); save(); broadcast('signal', sig); telegram(signalText(sig)); console.log(new Date().toISOString(), 'SIGNAL', sig.dir, sig.symbol, sig.grade, sig.entry); },
   onUpdate(sig, prev) {
     save(); broadcast('update', { sig, prev });
+    if (robot) Promise.resolve().then(() => robot.onUpdate(sig, prev)).catch((e) => console.error('robot', e.message));
     if (prev !== sig.status && ['TP1_HIT', 'TP2_HIT', 'SL_HIT', 'BE_HIT'].includes(sig.status)) {
       telegram(`${sig.name} ${sig.dir} → ${sig.status.replace('_', ' ')}${sig.result != null ? ` (${sig.result > 0 ? '+' : ''}${sig.result}R)` : ''}`);
       console.log(new Date().toISOString(), 'UPDATE', sig.symbol, prev, '->', sig.status, sig.result ?? '');
@@ -83,7 +110,8 @@ const BRIDGE_KEY = process.env.BRIDGE_KEY || KEY;
 let lastTick = 0;
 async function start() {
   await feeds.deriv.connect().catch((e) => console.error('deriv connect', e.message));
-  await M.startLive(engine, feeds, SYMBOLS, { concurrency: 3, log: console.log, onTick: () => (lastTick = Date.now()) });
+  startRobot();
+  await M.startLive(engine, feeds, SYMBOLS, { concurrency: 3, log: console.log, onTick: (sym) => { lastTick = Date.now(); if (robot && robot.running) { const sn = engine.sym[sym]; if (sn && sn.price) robot.tick(sym, sn.price); } } });
   console.log('engine live on', SYMBOLS.length, 'markets');
 }
 function scanner() { const o = {}; for (const s of SYMBOLS) { const x = engine.snapshot(s.symbol); if (x) o[s.symbol] = x; } return o; }
@@ -117,6 +145,13 @@ const server = http.createServer(async (req, res) => {
     if (u.pathname === '/api/signals') return send(res, 200, engine.signals.slice(-600));
     if (u.pathname === '/api/scanner') return send(res, 200, scanner());
     if (u.pathname === '/api/stats') return send(res, 200, M.stats(engine.signals));
+    // flat feed for the MT5 robot EA (MQL5 has no JSON parser): one signal per line, fields separated by |
+    if (u.pathname === '/api/robot/feed') {
+      const since = Date.now() / 1000 - 6 * 3600, n = (x) => (x == null ? '' : String(x));
+      const rows = engine.signals.filter((x) => (x.lastT || x.createdAt) >= since).map((x) => [x.id, x.symbol, x.source || 'deriv', x.market, x.dir, x.status, x.grade, x.unproven ? 1 : 0, x.entry, x.sl, x.slLive ?? x.sl, x.tp1, x.tp2, x.createdAt, x.filledAt ?? '', x.price ?? ''].map(n).join('|'));
+      return send(res, 200, rows.join('\n'), 'text/plain; charset=utf-8');
+    }
+    if (u.pathname === '/api/robot') { if (!robot) return send(res, 200, { mode: 'off' }); const st = robot.state(); return send(res, 200, Object.assign(st, { journal: st.journal.slice(-50) })); }
     if (u.pathname === '/api/bridge/status') return send(res, 200, feeds.mt5.status());
     if (u.pathname === '/api/candles') {
       const sym = u.searchParams.get('symbol'), g = +u.searchParams.get('g') || 60, count = Math.min(10000, +u.searchParams.get('count') || 600), end = u.searchParams.get('end') || 'latest';
@@ -135,8 +170,8 @@ const server = http.createServer(async (req, res) => {
     return send(res, 404, { error: 'not found' });
   }
   // static: terminal + engine
-  let file = u.pathname === '/' ? path.join(WEB_DIR, 'index.html') : u.pathname === '/moxie-engine.js' ? ENGINE_FILE : path.join(WEB_DIR, path.normalize(u.pathname).replace(/^(\.\.[/\\])+/, ''));
-  if (!file.startsWith(WEB_DIR) && file !== ENGINE_FILE) return send(res, 403, 'forbidden', 'text/plain');
+  let file = u.pathname === '/' ? path.join(WEB_DIR, 'index.html') : u.pathname === '/moxie-engine.js' ? ENGINE_FILE : u.pathname === '/royal-robot.js' ? ROBOT_FILE : path.join(WEB_DIR, path.normalize(u.pathname).replace(/^(\.\.[/\\])+/, ''));
+  if (!file.startsWith(WEB_DIR) && file !== ENGINE_FILE && file !== ROBOT_FILE) return send(res, 403, 'forbidden', 'text/plain');
   fs.readFile(file, (err, buf) => err ? send(res, 404, 'not found', 'text/plain') : send(res, 200, buf, MIME[path.extname(file)] || 'application/octet-stream'));
 });
 server.listen(PORT, () => { console.log(`Royal Trades server on :${PORT}`); start(); });
