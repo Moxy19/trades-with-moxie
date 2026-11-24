@@ -269,3 +269,21 @@ Adding a 4H-trend requirement looked better on the recent window but worse on th
 Entry lab (ICT order blocks, fair value gaps, OTE Fibonacci, OB+Fib confluence, S/R flips, liquidity sweeps; 23 markets, ~28 days):
 TP1 was reached on 45–59% of trades at best, profit factor 1.1–1.5 overall (1.7–2.1 on forex for 5m-confirmed OB, FVG and S/R entries).
 None beat ORB+ yet, so none are live.
+
+## v1.11: Royal Ladder removed
+
+All-strategies lab, 24 Nov 2026 (`tools/all-lab.js`): 23 Deriv markets, ~21 days of synthetics, BTC and ETH, ~31 days of gold, silver and forex, run on the v1.10 engine.
+Stop first on ties, no spread.
+
+| Strategy | Trades | Closed in profit | Reached TP1 | Net | Profit factor | Max DD |
+|---|---|---|---|---|---|---|
+| **ORB+ v1.10 (live)** | 167 | **92%** | 19% | **+55.1R** | **5.58** | 2.4R |
+| ORB+ classic (half at TP1, stop to entry, TP2) | 525 | 52% | 52% | +67.1R | 1.27 | 15.8R |
+| Royal Ladder | 390 | 40% | 73% | +35.5R | 1.26 | 18.1R |
+| EMA 9/21 cross + Fib | 140 | 45% | 43% | +20.5R | 1.27 | 6.6R |
+| EMA layers | 590 | 43% | 42% | +37.5R | 1.11 | 25.3R |
+
+The Royal Ladder lost money on synthetics (−9.9R, PF 0.84) and on gold (18% wins, −5.0R), and closed only 40% of trades in profit overall.
+It can't meet a 75% win-rate floor, so v1.11 removes it from the engine and the terminal, and drops its old trades from the stored record.
+ORB+ signals are unchanged: replayed on the same data, v1.10 and v1.11 produce identical trades.
+The lab's "Royal Ladder" variant needs the v1.10 engine (`git show 0f130f5:engine/moxie-engine.js`).

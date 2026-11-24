@@ -80,7 +80,7 @@ input:focus,select:focus{border-color:var(--violet)}
 .status{font-family:var(--mono);font-size:10px;letter-spacing:1px;padding:4px 8px;border-radius:999px;border:1px solid}
 .st-ACTIVE{color:var(--buy);border-color:rgba(34,197,94,.45)}.st-PENDING{color:var(--blue);border-color:rgba(96,165,250,.45)}
 .st-TP1_HIT{color:var(--gold);border-color:rgba(245,185,66,.5)}.st-TP2_HIT{color:#0b0d12;background:var(--buy);border-color:var(--buy)}
-.st-TP5_HIT{color:#0b0d12;background:var(--buy);border-color:var(--buy)}.st-BE_EARLY{color:var(--muted);border-color:var(--line)}.st-SL_HIT{color:#fff;background:var(--sell);border-color:var(--sell)}.st-BE_HIT{color:var(--gold);border-color:rgba(245,185,66,.5)}
+.st-TP5_HIT{color:#0b0d12;background:var(--buy);border-color:var(--buy)}.st-BE_EARLY{color:var(--buy);border-color:var(--buy)}.st-DYN_STOP{color:#f59e0b;border-color:#f59e0b}.st-SOFT_EXIT{color:#f59e0b;border-color:#f59e0b}.st-TRAIL_EXIT{color:#0b0d12;background:var(--buy);border-color:var(--buy)}.st-SL_HIT{color:#fff;background:var(--sell);border-color:var(--sell)}.st-BE_HIT{color:var(--gold);border-color:rgba(245,185,66,.5)}
 .st-EXPIRED,.st-CANCELLED,.st-TIME_EXIT{color:var(--muted);border-color:var(--line2)}
 .dir{display:flex;align-items:center;gap:10px;margin:10px 0 6px}
 .dir b{font-size:26px;letter-spacing:-.5px}.buy .dir b{color:var(--buy)}.sell .dir b{color:var(--sell)}
@@ -238,7 +238,7 @@ label.f input,label.f select{width:100%}
       <div class="panel"><h3>Strategy</h3>
         <div class="two">
           <label class="f">1H trend rule<select id="sMode"><option value="adaptive">Adaptive (counter-1H scalps when 1H is weak)</option><option value="strict">Strict (never against 1H)</option></select></label>
-          <label class="f">Trade management<select id="sMgmt"><option value="profit">Max profit: stop to entry at +0.5R (Ladder after TP3)</option><option value="winrate">High win rate: lock +0.2R at +0.7R (Ladder after TP1)</option></select></label>
+          <label class="f">Trade management<select id="sMgmt"><option value="quality">High quality: compact ranges, 08:00–20:00 SAST only (about 6 signals a day)</option><option value="volume">More signals: every session and range size (about 23 a day, deeper drawdowns)</option></select></label>
           <label class="f">Minimum grade to publish<select id="sGrade"><option value="62">B and above</option><option value="74">A and above</option><option value="85">A+ only</option></select></label>
           <label class="f">Opening range resets every<select id="sBlock"><option value="3600">1 hour</option><option value="7200">2 hours</option><option value="14400">4 hours</option><option value="86400">Day (00:00 UTC)</option></select></label>
           <label class="f">Opening range length<select id="sOrm"><option value="5">5 minutes</option><option value="10">10 minutes</option><option value="15">15 minutes</option><option value="30">30 minutes</option></select></label>
@@ -288,10 +288,11 @@ const S = {
   server: store.get('server', ''), key: store.get('key', ''),
 };
 delete S.cfg.signalsEnabledFrom;
-S.cfg.unproven = M.DEFAULTS.unproven; S.cfg.overrides = M.DEFAULTS.overrides; S.cfg.ladder = M.DEFAULTS.ladder; S.cfg.ladderRoyalty = M.DEFAULTS.ladderRoyalty;
-S.cfg.maxOrAtr = M.DEFAULTS.maxOrAtr; S.cfg.quiet = M.DEFAULTS.quiet; S.cfg.orbOff = M.DEFAULTS.orbOff; S.cfg.ladderOff = M.DEFAULTS.ladderOff;
-function applyMgmt(k) { const m = M.MANAGEMENT[k] || M.MANAGEMENT.profit; S.cfg.beAtR = m.beAtR; S.cfg.beLockR = m.beLockR; S.cfg.ladder = Object.assign({}, M.DEFAULTS.ladder, { beAt: m.ladderBeAt }); }
-applyMgmt(store.get('mgmt', 'profit'));
+S.cfg.unproven = M.DEFAULTS.unproven; S.cfg.overrides = M.DEFAULTS.overrides;
+S.cfg.maxOrAtr = M.DEFAULTS.maxOrAtr; S.cfg.quiet = M.DEFAULTS.quiet; S.cfg.orbOff = M.DEFAULTS.orbOff;
+function applyMgmt(k) { const m = M.MANAGEMENT[k] || M.MANAGEMENT.quality; S.cfg.minOrAtr = m.minOrAtr; S.cfg.maxOrAtr = m.maxOrAtr; S.cfg.hours = m.hours ? Object.assign({}, m.hours) : null; S.cfg.beAtR = m.beAtR; S.cfg.beLockR = m.beLockR; S.cfg.tp1Lock = m.tp1Lock; S.cfg.softStop = m.softStop ? Object.assign({}, m.softStop) : null; S.cfg.dyn = m.dyn ? Object.assign({}, m.dyn) : null; S.cfg.trail = Object.assign({}, m.trail); }
+if (!M.MANAGEMENT[store.get('mgmt', 'quality')]) store.set('mgmt', 'quality'); // old preset names (profit/winrate) move to the v1.10 default
+applyMgmt(store.get('mgmt', 'quality'));
 if (store.get('cfgVer', 0) < 2) { S.cfg.minScore = Math.max(S.cfg.minScore || 0, M.DEFAULTS.minScore); S.cfg.minScalpScore = Math.max(S.cfg.minScalpScore || 0, M.DEFAULTS.minScalpScore); store.set('cfgVer', 2); } // research-driven, not user settings
 S.symbols = S.symbols.map((x) => Object.assign({ source: 'deriv' }, x, x.source === 'weltrade' ? { source: 'mt5' } : {}));
 // v1.3 (Royal Trades): Deriv only for now, plus gold, forex and crypto. Runs once per browser.
@@ -323,14 +324,8 @@ function notify(title, body) {
 }
 // keep the tab's engine awake-ish: warn when the page is hidden on phones
 document.addEventListener('visibilitychange', () => { if (document.hidden && /Android|iPhone|iPad/i.test(navigator.userAgent) && S.mode === 'local') store.set('hiddenAt', Date.now()); });
-const STATUS_TXT = { BE_EARLY: 'BREAKEVEN', ACTIVE: 'LIVE', PENDING: 'LIMIT SET', TP1_HIT: 'TP1 · SL→BE', TP2_HIT: 'TP2 HIT', TP5_HIT: 'ALL TPs HIT', SL_HIT: 'SL HIT', BE_HIT: 'TP1 · BE', EXPIRED: 'EXPIRED', CANCELLED: 'MISSED', TIME_EXIT: 'TIME EXIT' };
-// Royal Ladder signals carry five targets; describe their status by how many were hit
+const STATUS_TXT = { BE_EARLY: 'LOCKED PROFIT', TRAIL_EXIT: 'TP1 · TRAILED OUT', SOFT_EXIT: 'CUT EARLY', DYN_STOP: 'TRAILED STOP', ACTIVE: 'LIVE', PENDING: 'LIMIT SET', TP1_HIT: 'TP1 · SL→BE', TP2_HIT: 'TP2 HIT', TP5_HIT: 'ALL TPs HIT', SL_HIT: 'SL HIT', BE_HIT: 'TP1 · BE', EXPIRED: 'EXPIRED', CANCELLED: 'MISSED', TIME_EXIT: 'TIME EXIT' };
 function statusTxt(s) {
-  if (s.strategy !== 'LADDER') return STATUS_TXT[s.status] || s.status;
-  if (s.status === 'PENDING' && s.confirm) return s.touched ? 'AT ZONE · WAIT 5m' : 'WAITING FOR ZONE';
-  if (s.status === 'TP1_HIT') return 'TP' + s.stage + ' HIT' + (s.stage >= s.beAt ? ' · SL→BE' : '');
-  if (s.status === 'BE_HIT') return 'TP' + s.stage + ' · BE';
-  if (s.status === 'SL_HIT' && s.stage) return 'TP' + s.stage + ' · SL';
   return STATUS_TXT[s.status] || s.status;
 }
 
@@ -342,7 +337,7 @@ function onSignal(sig) {
 }
 function onUpdate(sig, prev) {
   upsert(sig); save();
-  if ((prev !== sig.status || (sig.strategy === 'LADDER' && /^TP\d$/.test(prev || ''))) && ['TP1_HIT', 'TP2_HIT', 'TP5_HIT', 'SL_HIT', 'BE_HIT', 'BE_EARLY'].includes(sig.status)) {
+  if (prev !== sig.status && ['TP1_HIT', 'TP2_HIT', 'TP5_HIT', 'SL_HIT', 'BE_HIT', 'BE_EARLY', 'TRAIL_EXIT', 'SOFT_EXIT', 'DYN_STOP'].includes(sig.status)) {
     toast(`${esc(sig.name)} ${sig.dir}: <b>${statusTxt(sig)}</b>${sig.result != null ? ` (${sig.result > 0 ? '+' : ''}${sig.result}R)` : ''}`);
     notify(`${sig.name} ${statusTxt(sig)}`, sig.result != null ? `${sig.result}R` : '');
   }
@@ -357,7 +352,8 @@ function setStatus(s) { S.status = s; renderStrip(); }
 async function bootLocal() {
   S.mode = 'local';
   engine = new M.Engine(S.cfg, { onSignal, onUpdate });
-  S.signals = store.get('signals', []);
+  S.signals = store.get('signals', []).filter((s) => s.strategy !== 'LADDER'); // v1.11: Royal Ladder removed, its trades leave the record
+  store.set('signals', S.signals);
   engine.restoreSignals(S.signals); S.signals = engine.signals;
   feed = makeFeeds(setStatus);
   try { await feed.deriv.connect(); } catch (e) { setStatus('error'); toast('Could not reach the Deriv feed. Check your connection; the terminal keeps retrying.'); }
@@ -433,7 +429,9 @@ function renderStrip() {
 function kpiHTML(st, extra) {
   const pf = st.profitFactor === Infinity ? '∞' : st.profitFactor.toFixed(2);
   return `<div class="kpi"><div class="l">${extra ? 'Active now' : 'Signals'}</div><div class="v">${extra ? st.open : st.total}</div><div class="s">${extra ? st.total + ' total captured' : st.open + ' open'}</div></div>
-  <div class="kpi"><div class="l">Win rate (TP1+)</div><div class="v">${st.closed ? Math.round(st.winRate * 100) + '%' : '—'}</div><div class="s">${st.wins} of ${st.closed} closed</div></div>
+  ${(() => { const o = (st.byStrategy || {})['ORB+']; const pc = (g) => Math.round((100 * g.w) / Math.max(1, g.n)) + '%';
+    const t1 = (g) => Math.round((100 * g.t1) / Math.max(1, g.n)) + '%';
+    return `<div class="kpi"><div class="l">Win rate (closed in profit) · ORB+</div><div class="v">${o && o.n ? pc(o) : '—'}</div><div class="s">${o ? o.w + ' of ' + o.n + ' in profit · ' + t1(o) + ' reached TP1' : 'no closed ORB+ trades'} · all ${st.closed ? Math.round(st.tp1Rate * 100) + '%' : '—'} TP1</div></div>`; })()}
   <div class="kpi"><div class="l">Net result</div><div class="v ${st.totalR >= 0 ? 'pos' : 'neg'}">${st.totalR > 0 ? '+' : ''}${st.totalR}R</div><div class="s">avg ${st.avgR.toFixed(2)}R / trade</div></div>
   <div class="kpi"><div class="l">Profit factor</div><div class="v">${st.closed ? pf : '—'}</div><div class="s">${st.tp2} TP2 · ${st.be} BE · ${st.sl} SL</div></div>
   <div class="kpi"><div class="l">Max drawdown</div><div class="v">${st.maxDD}R</div><div class="s">peak-to-trough</div></div>`;
@@ -460,11 +458,9 @@ function cardHTML(s) {
         s.result != null ? `<div class="p ${s.result >= 0 ? 'pos' : 'neg'}">${s.result > 0 ? '+' : ''}${s.result}R</div><div class="r" style="color:var(--muted)">final</div>` : ''}</div></div>
     <div class="lv">
       <div>Entry <span class="tag">${s.entryType === 'CONFIRM' ? (s.status === 'PENDING' ? 'zone · enter on 5m close' : '5m confirmed') : s.entryType}</span></div><div>${fmt(s.entry, d)}</div>
-      ${s.strategy === 'LADDER' ? `<div>Stop loss ${s.stage >= s.beAt ? '<span class="tag">moved to entry</span>' : `<span class="tag">to entry after TP${s.beAt}</span>`}</div><div class="neg">${fmt(s.sl, d)}</div>
-      ${s.tps.map((x, k) => `<div>Take profit ${k + 1} <span class="tag">${s.rs[k].toFixed(2)}R · close 20%${s.stage > k ? ' · ✓' : ''}</span></div><div class="pos">${fmt(x, d)}</div>`).join('')}` :
-      `<div>Stop loss ${s.status === 'TP1_HIT' || s.beArmed ? '<span class="tag">moved to entry</span>' : S.cfg.beAtR ? `<span class="tag">to entry at +${S.cfg.beAtR}R</span>` : ''}</div><div class="neg">${fmt(s.sl, d)}</div>
+      ${`<div>Stop loss ${s.status === 'TP1_HIT' ? `<span class="tag">${S.cfg.trail && S.cfg.trail.mode !== 'off' ? 'trailing' : 'locked'} · now ${fmt(s.slLive, d)}</span>` : s.beArmed || s.dynMoved ? `<span class="tag">${s.beArmed ? 'locked' : 'trailing'} · now ${fmt(s.slLive, d)}</span>` : S.cfg.beAtR ? `<span class="tag">locks +${S.cfg.beLockR || 0}R at +${S.cfg.beAtR}R${S.cfg.softStop ? ' · cut on a 5m close −' + S.cfg.softStop.r + 'R' : ''}${S.cfg.dyn ? ' · trails ' + S.cfg.dyn.dist + 'R behind, max halfway to TP1' : ''}</span>` : ''}</div><div class="neg">${fmt(s.sl, d)}</div>
       <div>Take profit 1 <span class="tag">${s.r1.toFixed(2)}R · close ${Math.round((S.cfg.partialAtTp1 || .5) * 100)}%</span></div><div class="pos">${fmt(s.tp1, d)}</div>
-      <div>Take profit 2 <span class="tag">${s.r2.toFixed(2)}R</span></div><div class="pos">${fmt(s.tp2, d)}</div>`}
+      <div>Take profit 2 <span class="tag">${S.cfg.trail && S.cfg.trail.mode !== 'off' && S.cfg.trail.keepTp2 === false ? 'guide · runner trails ' + (s.market === 'forex' && S.cfg.trail.mode === 'pips' ? S.cfg.trail.pips + ' pips' : S.cfg.trail.atr + '× ATR') : s.r2.toFixed(2) + 'R'}</span></div><div class="pos">${fmt(s.tp2, d)}</div>`}
     </div>
     <div class="track" style="--z:${z}%;--p:${p}%;--t1:${pct(s.tp1)}%"><span class="t"></span><span class="m"></span></div>
     <div class="biasrow">${['H4', 'H2', 'H1', 'M15', 'M5'].filter((k) => s.bias[k]).map((k) => `<span class="b ${s.bias[k]}">${{ H4: '4H', H2: '2H', H1: '1H', M15: '15m', M5: '5m' }[k]} ${s.bias[k] === 'UP' ? '▲' : s.bias[k] === 'DOWN' ? '▼' : '•'}</span>`).join('')}<span class="b">score ${s.score}</span></div>
@@ -514,14 +510,6 @@ $('#cards').addEventListener('click', (e) => {
 });
 function signalText(s) {
   const d = s.dec;
-  if (s.strategy === 'LADDER') return `${s.dir === 'BUY' ? '🟢 BUY' : '🔴 SELL'} — ${s.name} · Royal Ladder${s.unproven ? ' · 👑 Royalty' : ''}
-Grade ${s.grade} (${s.score}/100)
-Entry: ${s.confirm ? (s.status === 'PENDING' ? `zone ${fmt(s.entry, d)}, enter when a 5m candle closes back ${s.dir === 'BUY' ? 'up' : 'down'} through it` : `${fmt(s.entry, d)} (5m confirmed)`) : `${fmt(s.entry, d)} (limit)`}
-SL: ${fmt(s.sl, d)} (to entry after TP${s.beAt})
-${s.tps.map((x, k) => `TP${k + 1}: ${fmt(x, d)} (${s.rs[k].toFixed(2)}R)`).join('\n')}
-Close 20% at each TP. Cancelled if the stop is hit first or nothing confirms within ${Math.round((s.expiresAt - s.createdAt) / 3600)}h.
-Bias: 4H ${s.bias.H4} · 1H ${s.bias.H1} · 15m ${s.bias.M15}
-— Royal Trades · educational, not financial advice`;
   return `${s.dir === 'BUY' ? '🟢 BUY' : '🔴 SELL'} — ${s.name} · ${s.tf} · ${s.setup}${s.kind === 'SCALP' ? ' (scalp)' : ''}
 Grade ${s.grade} (${s.score}/100)
 Entry: ${fmt(s.entry, d)}${s.entryType === 'LIMIT' ? ' (limit)' : ''}
@@ -602,7 +590,7 @@ function drawOverlays() {
   const open = sigs.find((s) => ['PENDING', 'ACTIVE', 'TP1_HIT'].includes(s.status));
   if (open) {
     const L = (p, c, t) => plines.push(cs.createPriceLine({ price: p, color: c, lineWidth: 1, lineStyle: 0, title: t }));
-    L(open.entry, '#e2e8f0', 'Entry'); L(open.strategy === 'LADDER' || open.beArmed ? open.slLive : open.status === 'TP1_HIT' ? open.entry : open.sl, '#f43f5e', 'SL'); (open.tps || [open.tp1, open.tp2]).forEach((x, k) => L(x, '#22c55e', 'TP' + (k + 1)));
+    L(open.entry, '#e2e8f0', 'Entry'); L(open.beArmed || open.dynMoved || open.status === 'TP1_HIT' ? open.slLive : open.sl, '#f43f5e', 'SL'); (open.tps || [open.tp1, open.tp2]).forEach((x, k) => L(x, '#22c55e', 'TP' + (k + 1)));
   }
   const t0 = chartBars.length ? chartBars[0].time : 0;
   const marks = sigs.filter((s) => s.createdAt >= t0).map((s) => ({ time: Math.floor(s.createdAt / chTf) * chTf, position: s.dir === 'BUY' ? 'belowBar' : 'aboveBar', color: s.dir === 'BUY' ? '#22c55e' : '#f43f5e', shape: s.dir === 'BUY' ? 'arrowUp' : 'arrowDown', text: s.dir === 'BUY' ? 'B' : 'S' }));
@@ -736,7 +724,7 @@ function chall() { const b = +$('#chBal').value, d = +$('#chDd').value, l = +$('
 // ---------- settings ----------
 function saveCfg() { const c = Object.assign({}, S.cfg); delete c.signalsEnabledFrom; store.set('cfg', c); if (engine) engine.setConfig(S.cfg); renderStrip(); }
 function loadSettingsUI() {
-  $('#sMgmt').value = store.get('mgmt', 'profit'); $('#sMode').value = S.cfg.trendMode; $('#sGrade').value = String(S.cfg.minScore >= 85 ? 85 : S.cfg.minScore >= 74 ? 74 : 62);
+  $('#sMgmt').value = store.get('mgmt', 'quality'); $('#sMode').value = S.cfg.trendMode; $('#sGrade').value = String(S.cfg.minScore >= 85 ? 85 : S.cfg.minScore >= 74 ? 74 : 62);
   $('#sBlock').value = String(S.cfg.orBlock); $('#sOrm').value = String(S.cfg.orMinutes); $('#sChop').value = String(S.cfg.chopMin); $('#sGuard').value = S.cfg.lossGuard ? '1' : '0'; $('#sM5').value = S.cfg.m5Filter || 'momentum';
   $('#sServer').value = S.server; $('#sKey').value = S.key;
   $('#connInfo').textContent = S.mode === 'local' ? 'The engine is running in this browser and reading Deriv\'s public live feed. Keep this tab open for live capture, or point it at a Royal Trades server so signals run 24/7.' : 'Connected to a Royal Trades server. Signals are generated 24/7 even when this page is closed.';

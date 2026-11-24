@@ -4,6 +4,7 @@
 // Fill rules: 1m bars decide fills; stop counts first when a stop and a target share a bar; no spread is charged.
 // Engine strategies run through the real engine's backtest(). Results are saved per market in localStorage
 // (resumable) and on window.__all as per-trade logs [fillTime, R, reachedTP1]. Usage: (0,eval)(src)({ m1Bars: 30000 })
+// The "Royal Ladder" variant needs the v1.10 engine; the Ladder was removed in v1.11.
 (async (opts = {}) => {
   const M = window.MoxieEngine;
   if (!M) throw new Error('Royal Trades engine not loaded');
