@@ -28,7 +28,13 @@
     minScalpScore: 80,      // counter-1H scalps need more confluence
     // Stop-loss lab, 23 Nov 2026 (593 ORB+ trades, ~21 days synthetics / ~30 days forex & crypto). Each filter
     // removed trades that lost money in both halves of the data.
-    maxOrAtr: 1.5,          // skip when the opening range is wider than 1.5× the 15m ATR (those breakouts won 38%)
+    // Regime lab, 24 Nov 2026 (ORB+ only, two separate ~20-trading-day windows): compact opening ranges (0.6–0.9× the 15m ATR)
+    // in the active session (06:00–18:00 UTC) gave 89% of trades in profit, profit factor 3.85, 3.7R max drawdown and +100.1R
+    // over both windows (unseen window alone: 87%, PF 2.80, 3.7R, +43.8R), against PF 2.37 and 7.0R drawdown without them.
+    minOrAtr: 0.6,          // skip when the opening range is narrower than this × the 15m ATR (0 = off)
+    hours: { fromUtc: 6, toUtc: 18 }, // only signal inside these UTC hours (08:00–20:00 SAST); null = always
+    needH4: false,          // require the 4H trend to agree with the trade
+    maxOrAtr: 0.9,          // skip when the opening range is wider than this × the 15m ATR (regime lab; was 1.5)
     quiet: { markets: ['forex'], fromUtc: 4, toUtc: 8 },  // no forex/metals ORB+ 06:00–10:00 SAST (London-open fakeouts: 42% win, -9R)
     orbOff: ['frxNZDUSD', 'frxUSDCHF', 'frxEURUSD', '1HZ25V', 'R_75', 'frxUSDJPY', 'frxUSDCAD'],  // ORB+ lost in both halves on these markets
     ladderOff: ['frxEURGBP', 'frxUSDCHF', 'frxXAUUSD'],                                       // Royal Ladder lost in both halves on these
@@ -44,7 +50,7 @@
     // Stop-out lab, 24 Nov 2026 (23 markets, ~20 days): locking +0.05R at +0.3R and cutting any trade whose 5m candle closes
     // 0.6R against it cut full stop-outs from 26% to 9% of trades and lifted wins from 74% to 79%, for the same profit
     // (+109.9R vs +111.5R; both halves positive). Earlier: trailing lab, 23 Nov 2026 (see README).
-    beAtR: 0.3,             // 0 = off. Move the stop to entry (+ beLockR) once a trade has been this many R in profit before TP1
+    beAtR: 0.15,            // 0 = off. (0.15: 87–88% of trades closed in profit in both lab windows) Move the stop to entry (+ beLockR) once a trade has been this many R in profit before TP1
     beLockR: 0.05,          // R locked in by that early stop move (makes "breakeven" a small win)
     tp1Lock: 0.3,           // at TP1 the stop moves to entry + this many R
     tp1LockAtTp1: false,    // true: at TP1 the runner's stop moves to TP1 itself (3-position plan: 2 close at TP1, 1 runs)
@@ -371,6 +377,10 @@
         const hu = new Date(T * 1000).getUTCHours();
         if (hu >= cfg.quiet.fromUtc && hu < cfg.quiet.toUtc) return reject('Quiet window (London open): breakouts fail more often');
       }
+      // Regime filters (regime lab, 24 Nov 2026): compact ranges in the active session, with the 4H behind the trade
+      if (cfg.minOrAtr && h < cfg.minOrAtr * atr15) return reject('Opening range too tight (' + (h / atr15).toFixed(2) + '× ATR): no clean breakout regime');
+      if (cfg.hours) { const hu = new Date(T * 1000).getUTCHours(); if (hu < cfg.hours.fromUtc || hu >= cfg.hours.toUtc) return reject('Outside the active session (' + cfg.hours.fromUtc + ':00–' + cfg.hours.toUtc + ':00 UTC)'); }
+      if (cfg.needH4 && tH4.dir !== want(dir)) return reject('4H trend not behind the trade');
       const er15 = efficiency(S[G.M15], 16);
       const m1 = S[G.M1];
       const mom1 = m1.n > 21 && (sgn > 0 ? last(m1.bars).c > m1.e(9) && m1.e(9) > m1.e(21) : last(m1.bars).c < m1.e(9) && m1.e(9) < m1.e(21));
@@ -980,12 +990,13 @@
 
   // Trade-management presets (management lab, 23 Nov 2026)
   const MANAGEMENT = {
-    // ORB+ +112.5R (74% win) with a trailing runner; Ladder +34.7R (63% win), stop to entry after TP3
-    // v1.8 (stop-out lab, 24 Nov 2026): ORB+ +109.9R, 79% win, 9% full stops; Ladder +41.1R, 10% full stops
-    profit: { label: 'Max profit', beAtR: 0.3, beLockR: 0.05, tp1Lock: 0.3, softStop: { r: 0.6, tf: 300 }, dyn: { dist: 1, cap: 0.5, whole: false }, trail: { mode: 'pips', pips: 20, atr: 0.75, keepTp2: false }, ladder: { beAt: 3, stepTrail: false, dyn: { dist: 1, cap: 0.5, whole: false } } },
-    // ORB+ +101R (74% win) with a fixed TP2; Ladder +13.2R (86% win): stop steps up one TP behind price from TP1, locking +0.1R
-    winrate: { label: 'High win rate', beAtR: 0.3, beLockR: 0.05, tp1Lock: 0.3, softStop: { r: 0.6, tf: 300 }, dyn: { dist: 1, cap: 0.5, whole: false }, trail: { mode: 'off', pips: 20, atr: 0.75, keepTp2: true }, ladder: { sl: 1.63, softStop: null, dyn: null, beAt: 99, stepTrail: true, stepFrom: 1, stepLock: 0.1 } },
+    // Regime lab, 24 Nov 2026: both windows together, ORB+ only
+    quality: { label: 'High quality', beAtR: 0.15, beLockR: 0.05, tp1Lock: 0.3, softStop: { r: 0.6, tf: 300 }, dyn: { dist: 1, cap: 0.5, whole: false }, trail: { mode: 'pips', pips: 20, atr: 0.75, keepTp2: false },
+      minOrAtr: 0.6, maxOrAtr: 0.9, hours: { fromUtc: 6, toUtc: 18 }, ladder: {} },   // 89% in profit, PF 3.85, 3.7R DD, +100.1R, ~6 signals a day
+    volume: { label: 'More signals', beAtR: 0.15, beLockR: 0.05, tp1Lock: 0.3, softStop: { r: 0.6, tf: 300 }, dyn: { dist: 1, cap: 0.5, whole: false }, trail: { mode: 'pips', pips: 20, atr: 0.75, keepTp2: false },
+      minOrAtr: 0, maxOrAtr: 1.5, hours: null, ladder: {} },                            // 87% in profit, PF 2.37, 7.0R DD, +214.8R, ~23 signals a day
   };
+
   const D = (symbol, name, market = 'synthetic') => ({ symbol, name, market, source: 'deriv' });
   // Weltrade SyntX pairs arrive through your MT5 terminal (source 'mt5'), the same bridge model Aurum uses.
   const W = (symbol) => ({ symbol, name: symbol.replace(/-/g, ' '), market: 'synthetic', source: 'mt5', broker: 'Weltrade' });
@@ -1009,5 +1020,5 @@
     W('GainX-400'), W('GainX-600'), W('PainX-400'), W('PainX-600'),
   ];
 
-  return { Engine, Series, DerivFeed, BridgeFeed, aggCandles, startLive, backtest, stats, trendOf, efficiency, pivots, fmt, toBar, decimalsOf, G, TF_NAME, DEFAULTS, DEFAULT_SYMBOLS, WELTRADE_SYMBOLS, MANAGEMENT, version: '1.9.3' };
+  return { Engine, Series, DerivFeed, BridgeFeed, aggCandles, startLive, backtest, stats, trendOf, efficiency, pivots, fmt, toBar, decimalsOf, G, TF_NAME, DEFAULTS, DEFAULT_SYMBOLS, WELTRADE_SYMBOLS, MANAGEMENT, version: '1.10.0' };
 });

@@ -248,3 +248,24 @@ Same lab data as v1.9. Gold on the Royal Ladder (−5.0R) and USD/CAD on ORB+ (�
 | **v1.9.1** | 909 | 78% | 48% | 73% | **+183.0R** | 96.5 | 86.6 |
 
 The headline win rate in the app is now ORB+ only; the Royal Ladder is shown beside it as the Royalty stream, with the overall figure.
+
+## v1.10: regime filters, ORB+ only
+
+The Royal Ladder is off. ORB+ now only signals when the opening range is compact (0.6–0.9× the 15m ATR) and inside the active
+session (06:00–18:00 UTC, 08:00–20:00 SAST). The stop locks +0.05R once a trade is +0.15R in profit.
+
+Tested on two separate windows of about 20 trading days each (the earlier window was not used to choose anything):
+
+| ORB+ | Trades | In profit | Profit factor | Max drawdown | Net |
+|---|---|---|---|---|---|
+| Earlier window, no regime filter | 694 | 87% | 2.31 | 7.0R | +101.8R |
+| **Earlier window, regime filter (unseen data)** | 210 | 87% | 2.80 | 3.7R | +43.8R |
+| Recent window, regime filter | 165 | 93% | 6.23 | 2.2R | +56.3R |
+| **Both windows, regime filter** | 375 | 89% | 3.85 | 3.7R | +100.1R |
+
+Average win +0.40R, average loss −0.88R: most wins are the early profit lock, not TP1 (about 20% of trades reach TP1).
+Adding a 4H-trend requirement looked better on the recent window but worse on the unseen one, so it is not used.
+
+Entry lab (ICT order blocks, fair value gaps, OTE Fibonacci, OB+Fib confluence, S/R flips, liquidity sweeps; 23 markets, ~28 days):
+TP1 was reached on 45–59% of trades at best, profit factor 1.1–1.5 overall (1.7–2.1 on forex for 5m-confirmed OB, FVG and S/R entries).
+None beat ORB+ yet, so none are live.
