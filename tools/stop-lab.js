@@ -44,7 +44,12 @@
       for (let k = 1; k <= 5; k++) if (st >= k) r['t' + k]++;
       if (st >= 1 && s.result < 0) r.lossAfterT1++;
       if (s.result > 0) r.gw += s.result; else r.gl -= s.result;
-      r.tr.push([s.closedAt, s.result]);
+      if (opts.rich && s.strategy !== 'LADDER') {
+        const er = ((s.reasons || []).find((x) => x.label === '15m trend quality') || {}).detail || '';
+        const want = s.dir === 'BUY' ? 'UP' : 'DOWN', b = s.bias || {};
+        r.tr.push([s.closedAt, s.result, s.createdAt, s.score, s.kind === 'TREND' ? 1 : 0, +(er.split(' ')[1] || 0), s.or && s.atr15 ? +((s.or.hi - s.or.lo) / s.atr15).toFixed(2) : 0,
+          b.H4 === want ? 1 : b.H4 === 'FLAT' ? 0 : -1, b.H2 === want ? 1 : b.H2 === 'FLAT' ? 0 : -1, b.M5 === want ? 1 : 0, s.tp1At ? 1 : 0, s.status]);
+      } else r.tr.push([s.closedAt, s.result]);
       r.R += s.result; if (s.createdAt < mid) r.h1 += s.result; else r.h2 += s.result;
     }
     for (const k of ['R', 'h1', 'h2', 'gw', 'gl']) r[k] = Math.round(r[k] * 100) / 100;
