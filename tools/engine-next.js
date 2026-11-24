@@ -47,6 +47,7 @@
     beAtR: 0.3,             // 0 = off. Move the stop to entry (+ beLockR) once a trade has been this many R in profit before TP1
     beLockR: 0.05,          // R locked in by that early stop move (makes "breakeven" a small win)
     tp1Lock: 0.3,           // at TP1 the stop moves to entry + this many R
+    tp1LockAtTp1: false,    // true: at TP1 the runner's stop moves to TP1 itself (3-position plan: 2 close at TP1, 1 runs)
     trail: { mode: 'pips', pips: 20, atr: 0.75, keepTp2: false }, // after TP1: trail 'pips' (forex & metals) or 'atr' (× 15m ATR) behind the best price; keepTp2 false = let the runner go
     slOfTp: null,           // { ref: 'tp1'|'tp2', k }: stop distance as a fraction of a target's distance (tested: worse for ORB+)
     // Dynamic-stop lab, 24 Nov 2026 (23 markets, ~20 days, on top of v1.8): trailing the stop 1R behind the best price,
@@ -546,7 +547,7 @@
         if (cfg.beAtR && !sig.beArmed && sig.mfeR >= cfg.beAtR && !tp1Hit) { sig.beArmed = true; sig.slLive = this._better(sgn, sig.slLive, sig.entry + sgn * (cfg.beLockR || 0) * sig.risk); this.hooks.onUpdate && this.hooks.onUpdate(sig, 'ACTIVE'); }
         if (cfg.dyn && !tp1Hit) this._dyn(sig, cfg.dyn, sgn);
         if (tp1Hit) {
-          sig.status = 'TP1_HIT'; sig.tp1At = t; sig.slLive = this._better(sgn, sig.dynMoved || sig.beArmed ? sig.slLive : null, sig.entry + sgn * (cfg.tp1Lock || 0) * sig.risk); sig.peak = sig.tp1;
+          sig.status = 'TP1_HIT'; sig.tp1At = t; sig.slLive = this._better(sgn, sig.dynMoved || sig.beArmed ? sig.slLive : null, cfg.tp1LockAtTp1 ? sig.tp1 : sig.entry + sgn * (cfg.tp1Lock || 0) * sig.risk); sig.peak = sig.tp1;
           if (cfg.dyn && cfg.dyn.whole) sig.slLive = this._better(-sgn, sig.slLive, this._dynCap(sig, cfg.dyn, sgn));
           this.hooks.onUpdate && this.hooks.onUpdate(sig, 'ACTIVE');
           if (sgn > 0 ? fav >= sig.tp2 : fav <= sig.tp2) return this._close(sig, st, 'TP2_HIT', sig.tp2, t);
@@ -623,7 +624,7 @@
         const sig = {
           id: uid(), symbol: st.symbol, name: st.name, market: st.market, source: st.source, dec: st.dec,
           strategy: 'LADDER', setup: 'Royal Ladder', kind: bias.H1 === want ? 'TREND' : 'SCALP', dir, tf: '15m', entryType: L.confirm ? 'CONFIRM' : 'LIMIT', confirm: !!L.confirm, touched: null, level: lvl, zone: entry,
-          entry, sl, slLive: sl, tp1: tps[0], tp2: tps[1], tps, rs, risk, r1: rs[0], r2: rs[1], stage: 0, beAt: L.beAt, stepTrail: !!L.stepTrail, stepFrom: L.stepFrom || 1, stepLock: L.stepLock || 0, tp1Stop: L.tp1Stop == null ? null : L.tp1Stop, beLock: L.beLock || 0,
+          entry, sl, slLive: sl, tp1: tps[0], tp2: tps[1], tps, rs, risk, r1: rs[0], r2: rs[1], stage: 0, beAt: L.beAt, stepTrail: !!L.stepTrail, stepFrom: L.stepFrom || 1, stepLock: L.stepLock || 0, tp1Stop: L.tp1Stop == null ? null : L.tp1Stop, beLock: L.beLock || 0, split3: !!L.split3,
           expiresAt: T + L.expH * 3600, maxHold: L.holdH * 3600, atr,
           score, grade, reasons, unproven: (this.cfg.ladderRoyalty || []).includes(st.symbol),
           bias, or: null, status: 'PENDING', createdAt: T, filledAt: null, tp1At: null, closedAt: null, lastT: T,
@@ -669,6 +670,7 @@
         if (sig.stage === 1) sig.tp1At = t;
         if (sig.stage === 1 && sig.tp1Stop != null) sig.slLive = this._better(d, sig.slLive, sig.entry - d * sig.tp1Stop * sig.risk);  // cut the open risk at TP1
         if (sig.stage === sig.beAt) sig.slLive = this._better(d, sig.slLive, sig.entry + d * (sig.beLock || 0) * sig.risk);
+        if (sig.split3) sig.slLive = this._better(d, sig.slLive, sig.tps[Math.max(0, sig.stage - 2)]); // runner: stop at TP1, then one target behind
         if (sig.stepTrail && sig.stage >= sig.stepFrom) sig.slLive = sig.stage === sig.stepFrom ? sig.entry + d * (sig.stepLock || 0) * sig.risk : sig.tps[sig.stage - sig.stepFrom - 1];
       }
       const LD = (this.cfg.ladder || {}).dyn;
@@ -696,8 +698,11 @@
       const prev = sig.status, d = dirSign(sig.dir), n = sig.tps.length;
       let R = 0;
       if (status !== 'EXPIRED' && status !== 'CANCELLED') {
-        for (let k = 0; k < sig.stage; k++) R += sig.rs[k] / n;
-        const rem = (n - sig.stage) / n;
+        // split3: 2 of 3 positions close at TP1, the third runs to TP5; otherwise one fifth closes at each target
+        const w = sig.split3 ? [2 / 3, 0, 0, 0, 1 / 3] : sig.tps.map(() => 1 / n);
+        let used = 0;
+        for (let k = 0; k < sig.stage; k++) { R += sig.rs[k] * w[k]; used += w[k]; }
+        const rem = 1 - used;
         R += ((d * (exitPrice - sig.entry)) / sig.risk) * rem;
       }
       sig.status = status; sig.closedAt = t; sig.exit = exitPrice; sig.result = Math.round(R * 100) / 100; sig.lastT = t;
@@ -759,7 +764,7 @@
     const count = (st) => closed.filter((s) => s.status === st).length;
     const group = (key) => {
       const o = {};
-      for (const s of closed) { const k = key(s); o[k] = o[k] || { n: 0, w: 0, R: 0 }; o[k].n++; o[k].R += s.result; if (s.result > 0) o[k].w++; }
+      for (const s of closed) { const k = key(s); o[k] = o[k] || { n: 0, w: 0, t1: 0, R: 0 }; o[k].n++; o[k].R += s.result; if (s.result > 0) o[k].w++; if (s.tp1At) o[k].t1++; }
       for (const k in o) o[k].R = Math.round(o[k].R * 100) / 100;
       return o;
     };
@@ -767,6 +772,7 @@
       total: list.length, closed: closed.length, open: list.filter((s) => ['PENDING', 'ACTIVE', 'TP1_HIT'].includes(s.status)).length,
       expired: list.filter((s) => s.status === 'EXPIRED' || s.status === 'CANCELLED').length,
       wins: wins.length, winRate: closed.length ? wins.length / closed.length : 0,
+      tp1Hits: closed.filter((s) => s.tp1At).length, tp1Rate: closed.length ? closed.filter((s) => s.tp1At).length / closed.length : 0,
       sl: count('SL_HIT'), tp2: count('TP2_HIT') + count('TP5_HIT'), be: count('BE_HIT'), timeExit: count('TIME_EXIT'),
       totalR: Math.round(sumR * 100) / 100, avgR: closed.length ? sumR / closed.length : 0,
       profitFactor: loss ? gross / loss : gross ? Infinity : 0, maxDD: Math.round(dd * 100) / 100, curve,
