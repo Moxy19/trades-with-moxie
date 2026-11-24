@@ -380,8 +380,6 @@ label.f input,label.f select{width:100%}
   const TF_NAME = { 60: '1m', 120: '2m', 300: '5m', 900: '15m', 3600: '1H', 7200: '2H', 14400: '4H' };
   const EMA_LENS = [9, 21, 50, 200];
 
-  const BOOM_CRASH_SYMBOLS = ['BOOM300N', 'BOOM500', 'BOOM600', 'BOOM900', 'BOOM1000', 'CRASH300N', 'CRASH500', 'CRASH600', 'CRASH900', 'CRASH1000'];
-  const BOOM_CRASH = { minScore: 40, minScalpScore: 50, hours: null, quiet: null, orbOff: [], minOrAtr: 0, maxOrAtr: 9, minRoomR: 0 }; // v1.13: loose settings on Boom/Crash only
   const DEFAULTS = {
     orBlock: 3600,          // session block in seconds (3600 = new opening range every hour)
     orMinutes: 15,          // opening range length
@@ -429,10 +427,7 @@ label.f input,label.f select{width:100%}
     m5Filter: 'momentum',   // 5m gate (default momentum: best in real-data tests, both halves): 'off' | 'aligned' (5m trend with trade) | 'notAgainst' | 'side' (5m close on right side of EMA21) | 'momentum' (last 5m candle with trade)
     m5Score: true,          // add +5 score when the 5m trend agrees
     // Per-market profiles from real-data backtests (22 Nov 2026). Keys: a symbol, or a source ('mt5' = Weltrade via MT5 bridge).
-    // Volume lab, 24 Nov 2026 (3 x ~20-day windows): Boom/Crash breakouts keep their edge with loose filters. All 10 Boom/Crash
-    // indices with these settings: ~50 trades a day, 80% in profit, PF 3.26 (oldest window alone 4.33), 6.2R max drawdown.
-    overrides: Object.assign({ mt5: { m5Filter: 'off', m5Score: false } },     // 5m gate hurt Weltrade SyntX (34% vs 43% win)
-      Object.fromEntries(BOOM_CRASH_SYMBOLS.map((s) => [s, BOOM_CRASH]))),
+    overrides: { mt5: { m5Filter: 'off', m5Score: false } },     // 5m gate hurt Weltrade SyntX (34% vs 43% win)
     // "Royalty" markets: ORB+ lost money in the 23 Nov 2026 strategy lab (20,000 1m bars each: ~14 days synthetics,
     // ~20 days forex/crypto) or, for Weltrade SyntX, in the 7-day test. Signals carry a Royalty tag: watch or minimum size.
     unproven: ['mt5', 'stpRNG', 'R_75', '1HZ25V', 'frxEURUSD', 'frxUSDJPY', 'frxUSDCHF', 'frxNZDUSD', 'frxGBPJPY', 'frxEURGBP', 'cryETHUSD'],
@@ -1213,8 +1208,6 @@ label.f input,label.f select{width:100%}
     // Deriv synthetics
     D('stpRNG', 'Step Index 100'), D('R_25', 'Volatility 25'), D('R_50', 'Volatility 50'), D('R_75', 'Volatility 75'), D('R_100', 'Volatility 100'),
     D('1HZ25V', 'Volatility 25 (1s)'), D('1HZ75V', 'Volatility 75 (1s)'), D('BOOM1000', 'Boom 1000'), D('CRASH1000', 'Crash 1000'),
-    D('BOOM300N', 'Boom 300'), D('BOOM500', 'Boom 500'), D('BOOM600', 'Boom 600'), D('BOOM900', 'Boom 900'),
-    D('CRASH300N', 'Crash 300'), D('CRASH500', 'Crash 500'), D('CRASH600', 'Crash 600'), D('CRASH900', 'Crash 900'),
     // Deriv gold & metals
     D('frxXAUUSD', 'Gold (XAU/USD)', 'forex'), D('frxXAGUSD', 'Silver (XAG/USD)', 'forex'),
     // Deriv forex
@@ -1231,7 +1224,7 @@ label.f input,label.f select{width:100%}
     W('GainX-400'), W('GainX-600'), W('PainX-400'), W('PainX-600'),
   ];
 
-  return { Engine, Series, DerivFeed, BridgeFeed, aggCandles, startLive, backtest, stats, trendOf, efficiency, pivots, fmt, toBar, decimalsOf, G, TF_NAME, DEFAULTS, DEFAULT_SYMBOLS, WELTRADE_SYMBOLS, MANAGEMENT, version: '1.13.0' };
+  return { Engine, Series, DerivFeed, BridgeFeed, aggCandles, startLive, backtest, stats, trendOf, efficiency, pivots, fmt, toBar, decimalsOf, G, TF_NAME, DEFAULTS, DEFAULT_SYMBOLS, WELTRADE_SYMBOLS, MANAGEMENT, version: '1.13.1' };
 });
 
 </script>
@@ -1730,8 +1723,10 @@ delete S.cfg.signalsEnabledFrom;
 S.cfg.unproven = M.DEFAULTS.unproven; S.cfg.overrides = M.DEFAULTS.overrides;
 S.cfg.maxOrAtr = M.DEFAULTS.maxOrAtr; S.cfg.quiet = M.DEFAULTS.quiet; S.cfg.orbOff = M.DEFAULTS.orbOff;
 function applyMgmt(k) { const m = M.MANAGEMENT[k] || M.MANAGEMENT.quality; S.cfg.minOrAtr = m.minOrAtr; S.cfg.maxOrAtr = m.maxOrAtr; S.cfg.hours = m.hours ? Object.assign({}, m.hours) : null; S.cfg.beAtR = m.beAtR; S.cfg.beLockR = m.beLockR; S.cfg.tp1Lock = m.tp1Lock; S.cfg.softStop = m.softStop ? Object.assign({}, m.softStop) : null; S.cfg.dyn = m.dyn ? Object.assign({}, m.dyn) : null; S.cfg.trail = Object.assign({}, m.trail); }
-if (!M.MANAGEMENT[store.get('mgmt', 'quality')]) store.set('mgmt', 'quality'); // old preset names (profit/winrate) move to the v1.10 default
-applyMgmt(store.get('mgmt', 'quality'));
+if (!M.MANAGEMENT[store.get('mgmt', 'volume')]) store.set('mgmt', 'quality'); // old preset names (profit/winrate) move to the v1.10 default
+// v1.13.1: back to yesterday's signal flow (pre-v1.10 entry filters, ~23 signals a day) once per browser; drop v1.13's extra Boom/Crash markets
+if (store.get('mgmtVer', 0) < 1) { store.set('mgmt', 'volume'); store.set('mgmtVer', 1); }
+applyMgmt(store.get('mgmt', 'volume'));
 if (store.get('cfgVer', 0) < 2) { S.cfg.minScore = Math.max(S.cfg.minScore || 0, M.DEFAULTS.minScore); S.cfg.minScalpScore = Math.max(S.cfg.minScalpScore || 0, M.DEFAULTS.minScalpScore); store.set('cfgVer', 2); } // research-driven, not user settings
 S.symbols = S.symbols.map((x) => Object.assign({ source: 'deriv' }, x, x.source === 'weltrade' ? { source: 'mt5' } : {}));
 // v1.3 (Royal Trades): Deriv only for now, plus gold, forex and crypto. Runs once per browser.
@@ -1740,10 +1735,9 @@ if (store.get('symVer', 0) < 3) {
   for (const d of M.DEFAULT_SYMBOLS) if (!S.symbols.find((x) => x.symbol === d.symbol)) S.symbols.push(d);
   store.set('symbols', S.symbols); store.set('symVer', 3);
 }
-// v1.13: add the new Boom/Crash indices once per browser
-if (store.get('symVer', 0) < 4) {
-  for (const d of M.DEFAULT_SYMBOLS) if (/^(BOOM|CRASH)/.test(d.symbol) && !S.symbols.find((x) => x.symbol === d.symbol)) S.symbols.push(d);
-  store.set('symbols', S.symbols); store.set('symVer', 4);
+if (store.get('symVer', 0) < 5) {
+  const extra = ['BOOM300N', 'BOOM500', 'BOOM600', 'BOOM900', 'CRASH300N', 'CRASH500', 'CRASH600', 'CRASH900'];
+  S.symbols = S.symbols.filter((x) => !extra.includes(x.symbol)); store.set('symbols', S.symbols); store.set('symVer', 5);
 }
 let engine = null, feed = null, es = null;
 
@@ -2170,7 +2164,7 @@ function chall() { const b = +$('#chBal').value, d = +$('#chDd').value, l = +$('
 // ---------- settings ----------
 function saveCfg() { const c = Object.assign({}, S.cfg); delete c.signalsEnabledFrom; store.set('cfg', c); if (engine) engine.setConfig(S.cfg); renderStrip(); }
 function loadSettingsUI() {
-  $('#sMgmt').value = store.get('mgmt', 'quality'); $('#sMode').value = S.cfg.trendMode; $('#sGrade').value = String(S.cfg.minScore >= 85 ? 85 : S.cfg.minScore >= 74 ? 74 : 62);
+  $('#sMgmt').value = store.get('mgmt', 'volume'); $('#sMode').value = S.cfg.trendMode; $('#sGrade').value = String(S.cfg.minScore >= 85 ? 85 : S.cfg.minScore >= 74 ? 74 : 62);
   $('#sBlock').value = String(S.cfg.orBlock); $('#sOrm').value = String(S.cfg.orMinutes); $('#sChop').value = String(S.cfg.chopMin); $('#sGuard').value = S.cfg.lossGuard ? '1' : '0'; $('#sM5').value = S.cfg.m5Filter || 'momentum';
   $('#sServer').value = S.server; $('#sKey').value = S.key;
   $('#connInfo').textContent = S.mode === 'local' ? 'The engine is running in this browser and reading Deriv\'s public live feed. Keep this tab open for live capture, or point it at a Royal Trades server so signals run 24/7.' : 'Connected to a Royal Trades server. Signals are generated 24/7 even when this page is closed.';
