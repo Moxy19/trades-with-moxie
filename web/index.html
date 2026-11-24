@@ -80,7 +80,7 @@ input:focus,select:focus{border-color:var(--violet)}
 .status{font-family:var(--mono);font-size:10px;letter-spacing:1px;padding:4px 8px;border-radius:999px;border:1px solid}
 .st-ACTIVE{color:var(--buy);border-color:rgba(34,197,94,.45)}.st-PENDING{color:var(--blue);border-color:rgba(96,165,250,.45)}
 .st-TP1_HIT{color:var(--gold);border-color:rgba(245,185,66,.5)}.st-TP2_HIT{color:#0b0d12;background:var(--buy);border-color:var(--buy)}
-.st-TP5_HIT{color:#0b0d12;background:var(--buy);border-color:var(--buy)}.st-BE_EARLY{color:var(--buy);border-color:var(--buy)}.st-DYN_STOP{color:#f59e0b;border-color:#f59e0b}.st-SOFT_EXIT{color:#f59e0b;border-color:#f59e0b}.st-TRAIL_EXIT{color:#0b0d12;background:var(--buy);border-color:var(--buy)}.st-SL_HIT{color:#fff;background:var(--sell);border-color:var(--sell)}.st-BE_HIT{color:var(--gold);border-color:rgba(245,185,66,.5)}
+.st-TP5_HIT{color:#0b0d12;background:var(--buy);border-color:var(--buy)}.st-SL_HIT{color:#fff;background:var(--sell);border-color:var(--sell)}.st-BE_HIT{color:var(--gold);border-color:rgba(245,185,66,.5)}
 .st-EXPIRED,.st-CANCELLED,.st-TIME_EXIT{color:var(--muted);border-color:var(--line2)}
 .dir{display:flex;align-items:center;gap:10px;margin:10px 0 6px}
 .dir b{font-size:26px;letter-spacing:-.5px}.buy .dir b{color:var(--buy)}.sell .dir b{color:var(--sell)}
@@ -128,22 +128,6 @@ label.f input,label.f select{width:100%}
 .disc{text-align:center;color:var(--dim);font-size:12px;padding:20px 0 40px}
 .progress{height:4px;background:var(--line);border-radius:4px;overflow:hidden;margin:10px 0}.progress i{display:block;height:100%;background:var(--brand);width:0}
 @media (max-width:900px){.kpis{grid-template-columns:repeat(2,1fr)}.two,.three{grid-template-columns:1fr}.hero h1{font-size:24px}.top .row{height:auto;flex-wrap:wrap;padding:10px 0}nav.tabs{width:100%;margin:0}}
-
-/* robot */
-.rb-hero{display:grid;grid-template-columns:auto 1fr;gap:22px;align-items:center;background:radial-gradient(600px 240px at 0% 0%,rgba(217,70,239,.22),transparent 70%),var(--panel);border:1px solid var(--line);border-radius:22px;padding:22px;margin:18px 0}
-.rb-go{width:132px;height:132px;border-radius:50%;border:0;color:#fff;font-weight:700;font-size:20px;letter-spacing:1px;background:var(--brand);box-shadow:0 0 0 8px rgba(217,70,239,.12),0 12px 40px rgba(217,70,239,.35)}
-.rb-go.on{background:linear-gradient(135deg,#f43f5e,#be123c);box-shadow:0 0 0 8px rgba(244,63,94,.14),0 12px 40px rgba(244,63,94,.35);animation:rbpulse 2.2s infinite}
-.rb-go small{display:block;font-size:11px;font-weight:500;letter-spacing:.5px;opacity:.85;margin-top:4px}
-@keyframes rbpulse{50%{box-shadow:0 0 0 14px rgba(244,63,94,.06),0 12px 40px rgba(244,63,94,.35)}}
-.rb-line{font-family:var(--mono);font-size:13px;color:var(--muted);margin:6px 0 12px}
-.rb-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
-.rb-stats div{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
-.rb-stats b{display:block;font-family:var(--mono);font-size:18px;margin-top:2px}.rb-stats span{font-size:11px;color:var(--muted)}
-.rb-j{max-height:420px;overflow:auto}.rb-j td{font-size:12px}.rb-j .t{font-family:var(--mono);color:var(--muted);white-space:nowrap}
-.rb-warn{border:1px solid rgba(245,158,11,.4);background:rgba(245,158,11,.08);color:#fcd34d;border-radius:12px;padding:10px 12px;font-size:12px;margin-top:10px}
-.rb-pairs td{padding:6px 10px}.rb-pairs select,.rb-pairs input{padding:5px 8px}
-.chk{display:flex;flex-wrap:wrap;gap:12px;font-size:13px}.chk label{display:flex;gap:6px;align-items:center}
-@media (max-width:900px){.rb-hero{grid-template-columns:1fr;justify-items:center;text-align:center}.rb-stats{grid-template-columns:repeat(2,1fr)}}
 </style>
 </head>
 <body>
@@ -155,7 +139,6 @@ label.f input,label.f select{width:100%}
     <button data-v="chart">Chart</button>
     <button data-v="perf">Performance</button>
     <button data-v="backtest">Backtest</button>
-    <button data-v="robot">🤖 Robot</button>
     <button data-v="risk">Risk tools</button>
     <button data-v="settings">Settings</button>
   </nav>
@@ -191,7 +174,7 @@ label.f input,label.f select{width:100%}
 
   <!-- CHART -->
   <section class="view" id="v-chart">
-    <div class="bar"><select id="chSym"></select><div class="seg" id="chTf"></div><span class="pill" id="chInfo">—</span><button class="btn sm" id="chReset" title="Fit the price axis and jump to the latest candle (or double-click the chart)">Reset view</button></div>
+    <div class="bar"><select id="chSym"></select><div class="seg" id="chTf"></div><span class="pill" id="chInfo">—</span></div>
     <div id="chart"></div>
     <div class="note">Shows candles with EMA 9, 21, 50 and 200, the current opening range (dashed), B/S tags for every signal on this pair, and the entry, SL and TP lines of the open trade.</div>
   </section>
@@ -248,85 +231,6 @@ label.f input,label.f select{width:100%}
     </div>
   </section>
 
-
-  <!-- ROBOT -->
-  <section class="view" id="v-robot">
-    <div class="rb-hero">
-      <button class="rb-go" id="rbGo">START<small id="rbGoSub">Paper</small></button>
-      <div>
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><h2 style="margin:0;font-size:22px">👑 Royal Robot</h2><span class="pill" id="rbPill"><span class="dot"></span>stopped</span><span class="pill" id="rbAcct">no account</span></div>
-        <div class="rb-line" id="rbLine">Takes Royal Trades signals and places the trades for you. Start in Paper or on a Deriv demo account.</div>
-        <div class="rb-stats">
-          <div><span>Balance</span><b id="rbBal">—</b></div>
-          <div><span>Today's trades</span><b id="rbDay">0/8</b></div>
-          <div><span>Today's P/L</span><b id="rbPnl">$0.00</b></div>
-          <div><span>Open now</span><b id="rbOpenN">0</b></div>
-        </div>
-        <div class="bar" style="margin-top:12px"><button class="btn sm" id="rbCloseAll">Close all positions</button><button class="btn sm" id="rbResume" style="display:none">Lift today's pause</button><button class="btn sm" id="rbCopy">Copy history</button></div>
-      </div>
-    </div>
-    <div class="two">
-      <div class="panel"><h3>Account</h3>
-        <div class="two">
-          <label class="f">Mode<select id="rbMode"><option value="off">Off</option><option value="paper">Paper: no money, simulated</option><option value="demo">Deriv demo account</option><option value="real">Deriv REAL account</option></select></label>
-          <label class="f">Paper starting balance ($)<input id="rbPaperBal" type="number" min="1" step="1"></label>
-        </div>
-        <div id="rbDerivBox">
-          <div class="two" style="margin-top:10px">
-            <label class="f">Deriv App ID<input id="rbApp" autocomplete="off" placeholder="from developers.deriv.com"></label>
-            <label class="f">Account ID (optional)<input id="rbAccId" autocomplete="off" placeholder="first demo/real account"></label>
-          </div>
-          <div class="bar" style="margin-top:10px"><button class="btn primary" id="rbLogin">Log in with Deriv</button><span class="sub" id="rbLoginInfo" style="margin:0"></span></div>
-          <label class="f" style="margin-top:10px">Or paste an API token (Personal Access Token with the trade scope)<input id="rbTok" type="password" autocomplete="off" spellcheck="false" placeholder="paste token"></label>
-          <div class="chk" style="margin-top:8px"><label><input type="checkbox" id="rbRemember"> Remember the token on this device</label></div>
-          <div class="sub" style="margin-top:6px">"Log in with Deriv" needs only the App ID: sign in at Deriv and the robot connects, with no token to copy. The app must be registered once at developers.deriv.com as an OAuth app with the <b>trade</b> scope and this page's address as its redirect URL. For a token instead, make the App ID and token at <a href="https://developers.deriv.com" target="_blank" rel="noopener">developers.deriv.com</a>. Give the token the <b>trade</b> scope only, never payments. The token stays in this browser and goes only to Deriv. Without "remember" it is forgotten when you close the tab.</div>
-          <div id="rbRealBox" class="rb-warn" style="display:none">Real money. Signals lose too: even the best ORB+ backtest has losing days. Type <b>REAL</b> to confirm: <input id="rbRealOk" style="width:90px;margin-left:6px"></div>
-        </div>
-      </div>
-      <div class="panel"><h3>Money per trade</h3>
-        <div class="two">
-          <label class="f">Size trades by<select id="rbSizing"><option value="risk%">% of balance at risk</option><option value="risk$">Fixed $ at risk</option><option value="stake">Fixed stake (lot size)</option></select></label>
-          <label class="f" id="rbRiskPctL">Risk per trade (%)<input id="rbRiskPct" type="number" min="0.1" max="5" step="0.1"></label>
-          <label class="f" id="rbRiskUsdL">Risk per trade ($)<input id="rbRiskUsd" type="number" min="0.01" step="0.01"></label>
-          <label class="f" id="rbStakeL">Stake per trade ($)<input id="rbStake" type="number" min="1" step="0.5"></label>
-          <label class="f">Multiplier<select id="rbMult"><option value="auto">Auto (stop costs exactly the risk)</option><option>10</option><option>20</option><option>30</option><option>40</option><option>50</option><option>100</option><option>200</option><option>300</option><option>400</option><option>500</option><option>1000</option></select></label>
-          <label class="f">At TP1<select id="rbTp1"><option value="three">3 positions: all aim for TP2; at TP1 two lock TP1, one locks halfway (your plan)</option><option value="auto">Close half, run half (when the stake allows)</option><option value="half">Always close half, run half</option><option value="all">Close everything at TP1</option></select></label>
-          <label class="f">Never risk more than (% of balance)<input id="rbMaxRisk" type="number" min="0.5" max="10" step="0.5"></label>
-          <label class="f">Max stake per trade ($)<input id="rbMaxStake" type="number" min="1" step="1"></label>
-        </div>
-        <div class="sub" id="rbSizeNote" style="margin-top:8px"></div>
-      </div>
-    </div>
-    <div class="two" style="margin-top:14px">
-      <div class="panel"><h3>Safety limits</h3>
-        <div class="three">
-          <label class="f">Max open trades<input id="rbMaxOpen" type="number" min="1" max="10"></label>
-          <label class="f">Max trades a day<input id="rbMaxDay" type="number" min="1" max="50"></label>
-          <label class="f">Daily loss limit (%)<input id="rbDayLoss" type="number" min="1" max="50" step="0.5"></label>
-          <label class="f">Pause after losses in a row<input id="rbConsec" type="number" min="1" max="10"></label>
-          <label class="f">Stop below balance ($)<input id="rbMinBal" type="number" min="0" step="1"></label>
-          <label class="f">Skip if price ran (R)<input id="rbSlip" type="number" min="0" max="1" step="0.05"></label>
-        </div>
-      </div>
-      <div class="panel"><h3>Which signals</h3>
-        <div class="sub">Grades</div><div class="chk" id="rbGrades"><label><input type="checkbox" value="A+"> A+</label><label><input type="checkbox" value="A"> A</label><label><input type="checkbox" value="B"> B</label></div>
-        <div class="sub" style="margin-top:10px">Markets</div><div class="chk" id="rbMarkets"><label><input type="checkbox" value="synthetic"> Synthetics</label><label><input type="checkbox" value="forex"> Gold &amp; forex</label><label><input type="checkbox" value="crypto"> Crypto</label></div>
-        <div class="two" style="margin-top:10px">
-          <label class="f">Direction<select id="rbDirs"><option value="both">Buy and sell</option><option value="buy">Buy only</option><option value="sell">Sell only</option></select></label>
-          <label class="f">👑 Royalty markets<select id="rbRoyal"><option value="1">Skip (no proven edge)</option><option value="0">Trade them too</option></select></label>
-        </div>
-      </div>
-    </div>
-    <div class="panel" style="margin-top:14px"><h3>Pairs</h3><div class="sub">Per-pair settings override the ones above. Leave a box empty to use the main setting.</div>
-      <div style="overflow:auto"><table class="rb-pairs"><thead><tr><th>Pair</th><th>Trade</th><th>Direction</th><th>Stake ($)</th><th>Max a day</th></tr></thead><tbody id="rbPairs"></tbody></table></div>
-    </div>
-    <div class="two" style="margin-top:14px">
-      <div class="panel"><h3>Open positions</h3><table><thead><tr><th>Pair</th><th>Side</th><th class="n">Stake</th><th class="n">Risk</th><th class="n">P/L</th></tr></thead><tbody id="rbOpen"></tbody></table></div>
-      <div class="panel"><h3>Robot history</h3><div class="rb-j"><table><tbody id="rbJournal"></tbody></table></div></div>
-    </div>
-    <div class="disc">The robot is educational software, not financial advice. Automated trading can lose money fast. Results in backtests and Paper mode leave out spreads, commission and slippage. Run it on a demo account first, keep risk at 1–2% per trade, and only trade money you can afford to lose. On Deriv, trades use Multipliers: the stop loss and take profit sit at Deriv, so they still work if this tab closes. The robot's early exits (locking profit, trailing, cutting early) only happen while the tab or server is running.</div>
-  </section>
-
   <!-- SETTINGS -->
   <section class="view" id="v-settings">
     <div class="hero"><div><h1>Engine <span>settings</span></h1><p>Settings apply immediately and are saved in this browser.</p></div></div>
@@ -334,7 +238,6 @@ label.f input,label.f select{width:100%}
       <div class="panel"><h3>Strategy</h3>
         <div class="two">
           <label class="f">1H trend rule<select id="sMode"><option value="adaptive">Adaptive (counter-1H scalps when 1H is weak)</option><option value="strict">Strict (never against 1H)</option></select></label>
-          <label class="f">Trade management<select id="sMgmt"><option value="quality">High quality: compact ranges, 08:00–20:00 SAST only (about 6 signals a day)</option><option value="volume">More signals: every session and range size (about 23 a day, deeper drawdowns)</option></select></label>
           <label class="f">Minimum grade to publish<select id="sGrade"><option value="62">B and above</option><option value="74">A and above</option><option value="85">A+ only</option></select></label>
           <label class="f">Opening range resets every<select id="sBlock"><option value="3600">1 hour</option><option value="7200">2 hours</option><option value="14400">4 hours</option><option value="86400">Day (00:00 UTC)</option></select></label>
           <label class="f">Opening range length<select id="sOrm"><option value="5">5 minutes</option><option value="10">10 minutes</option><option value="15">15 minutes</option><option value="30">30 minutes</option></select></label>
@@ -359,7 +262,6 @@ label.f input,label.f select{width:100%}
 <div class="toast" id="toast"></div>
 
 <script src="moxie-engine.js"></script>
-<script src="royal-robot.js"></script>
 <script>
 (() => {
 'use strict';
@@ -385,26 +287,13 @@ const S = {
   server: store.get('server', ''), key: store.get('key', ''),
 };
 delete S.cfg.signalsEnabledFrom;
-S.cfg.unproven = M.DEFAULTS.unproven; S.cfg.overrides = M.DEFAULTS.overrides;
-S.cfg.maxOrAtr = M.DEFAULTS.maxOrAtr; S.cfg.quiet = M.DEFAULTS.quiet; S.cfg.orbOff = M.DEFAULTS.orbOff;
-function applyMgmt(k) { const m = M.MANAGEMENT[k] || M.MANAGEMENT.quality; S.cfg.minOrAtr = m.minOrAtr; S.cfg.maxOrAtr = m.maxOrAtr; S.cfg.hours = m.hours ? Object.assign({}, m.hours) : null; S.cfg.beAtR = m.beAtR; S.cfg.beLockR = m.beLockR; S.cfg.tp1Lock = m.tp1Lock; S.cfg.softStop = m.softStop ? Object.assign({}, m.softStop) : null; S.cfg.dyn = m.dyn ? Object.assign({}, m.dyn) : null; S.cfg.trail = Object.assign({}, m.trail); }
-if (!M.MANAGEMENT[store.get('mgmt', 'volume')]) store.set('mgmt', 'quality'); // old preset names (profit/winrate) move to the v1.10 default
-// v1.13.1: back to yesterday's signal flow (pre-v1.10 entry filters, ~23 signals a day) once per browser; drop v1.13's extra Boom/Crash markets
-if (store.get('mgmtVer', 0) < 1) { store.set('mgmt', 'volume'); store.set('mgmtVer', 1); }
-applyMgmt(store.get('mgmt', 'volume'));
-if (store.get('cfgVer', 0) < 2) { S.cfg.minScore = Math.max(S.cfg.minScore || 0, M.DEFAULTS.minScore); S.cfg.minScalpScore = Math.max(S.cfg.minScalpScore || 0, M.DEFAULTS.minScalpScore); store.set('cfgVer', 2); } // research-driven, not user settings
-// v1.15: TP1 0.3R, golden rule (no trades against 4H/2H, no counter-1H scalps), early 5m cut off. Research-driven, applied once.
-if (store.get('cfgVer', 0) < 3) { Object.assign(S.cfg, { r1Min: M.DEFAULTS.r1Min, r1Max: M.DEFAULTS.r1Max, trendMode: M.DEFAULTS.trendMode, htfNoAgainst: M.DEFAULTS.htfNoAgainst, softStop: null }); { const c = Object.assign({}, S.cfg); delete c.signalsEnabledFrom; store.set('cfg', c); } store.set('cfgVer', 3); }
+S.cfg.unproven = M.DEFAULTS.unproven; S.cfg.overrides = M.DEFAULTS.overrides; S.cfg.ladder = M.DEFAULTS.ladder; S.cfg.ladderRoyalty = M.DEFAULTS.ladderRoyalty; // research-driven, not user settings
 S.symbols = S.symbols.map((x) => Object.assign({ source: 'deriv' }, x, x.source === 'weltrade' ? { source: 'mt5' } : {}));
 // v1.3 (Royal Trades): Deriv only for now, plus gold, forex and crypto. Runs once per browser.
 if (store.get('symVer', 0) < 3) {
   S.symbols = S.symbols.filter((x) => x.source !== 'mt5');
   for (const d of M.DEFAULT_SYMBOLS) if (!S.symbols.find((x) => x.symbol === d.symbol)) S.symbols.push(d);
   store.set('symbols', S.symbols); store.set('symVer', 3);
-}
-if (store.get('symVer', 0) < 5) {
-  const extra = ['BOOM300N', 'BOOM500', 'BOOM600', 'BOOM900', 'CRASH300N', 'CRASH500', 'CRASH600', 'CRASH900'];
-  S.symbols = S.symbols.filter((x) => !extra.includes(x.symbol)); store.set('symbols', S.symbols); store.set('symVer', 5);
 }
 let engine = null, feed = null, es = null;
 
@@ -429,22 +318,25 @@ function notify(title, body) {
 }
 // keep the tab's engine awake-ish: warn when the page is hidden on phones
 document.addEventListener('visibilitychange', () => { if (document.hidden && /Android|iPhone|iPad/i.test(navigator.userAgent) && S.mode === 'local') store.set('hiddenAt', Date.now()); });
-const STATUS_TXT = { BE_EARLY: 'LOCKED PROFIT', TRAIL_EXIT: 'TP1 · TRAILED OUT', SOFT_EXIT: 'CUT EARLY', DYN_STOP: 'TRAILED STOP', ACTIVE: 'LIVE', PENDING: 'LIMIT SET', TP1_HIT: 'TP1 · SL→BE', TP2_HIT: 'TP2 HIT', TP5_HIT: 'ALL TPs HIT', SL_HIT: 'SL HIT', BE_HIT: 'TP1 · BE', EXPIRED: 'EXPIRED', CANCELLED: 'MISSED', TIME_EXIT: 'TIME EXIT' };
+const STATUS_TXT = { ACTIVE: 'LIVE', PENDING: 'LIMIT SET', TP1_HIT: 'TP1 · SL→BE', TP2_HIT: 'TP2 HIT', TP5_HIT: 'ALL TPs HIT', SL_HIT: 'SL HIT', BE_HIT: 'TP1 · BE', EXPIRED: 'EXPIRED', CANCELLED: 'MISSED', TIME_EXIT: 'TIME EXIT' };
+// Royal Ladder signals carry five targets; describe their status by how many were hit
 function statusTxt(s) {
+  if (s.strategy !== 'LADDER') return STATUS_TXT[s.status] || s.status;
+  if (s.status === 'TP1_HIT') return 'TP' + s.stage + ' HIT' + (s.stage >= s.beAt ? ' · SL→BE' : '');
+  if (s.status === 'BE_HIT') return 'TP' + s.stage + ' · BE';
+  if (s.status === 'SL_HIT' && s.stage) return 'TP' + s.stage + ' · SL';
   return STATUS_TXT[s.status] || s.status;
 }
 
 function onSignal(sig) {
   upsert(sig); save();
-  Promise.resolve().then(() => robot.onSignal(sig)).catch((e) => console.warn('robot', e));
   toast(`<b style="color:${sig.dir === 'BUY' ? 'var(--buy)' : 'var(--sell)'}">${sig.dir}</b> ${esc(sig.name)} · grade ${sig.grade}<br><span style="color:var(--muted);font-family:var(--mono);font-size:12px">Entry ${fmt(sig.entry, sig.dec)} · SL ${fmt(sig.sl, sig.dec)} · TP1 ${fmt(sig.tp1, sig.dec)}</span>`);
   beep(sig.dir === 'BUY'); notify(`${sig.dir} ${sig.name} (${sig.grade})`, `Entry ${fmt(sig.entry, sig.dec)} SL ${fmt(sig.sl, sig.dec)} TP1 ${fmt(sig.tp1, sig.dec)}`);
   render();
 }
 function onUpdate(sig, prev) {
   upsert(sig); save();
-  Promise.resolve().then(() => robot.onUpdate(sig, prev)).catch((e) => console.warn('robot', e));
-  if (prev !== sig.status && ['TP1_HIT', 'TP2_HIT', 'TP5_HIT', 'SL_HIT', 'BE_HIT', 'BE_EARLY', 'TRAIL_EXIT', 'SOFT_EXIT', 'DYN_STOP'].includes(sig.status)) {
+  if ((prev !== sig.status || (sig.strategy === 'LADDER' && /^TP\d$/.test(prev || ''))) && ['TP1_HIT', 'TP2_HIT', 'TP5_HIT', 'SL_HIT', 'BE_HIT'].includes(sig.status)) {
     toast(`${esc(sig.name)} ${sig.dir}: <b>${statusTxt(sig)}</b>${sig.result != null ? ` (${sig.result > 0 ? '+' : ''}${sig.result}R)` : ''}`);
     notify(`${sig.name} ${statusTxt(sig)}`, sig.result != null ? `${sig.result}R` : '');
   }
@@ -459,8 +351,7 @@ function setStatus(s) { S.status = s; renderStrip(); }
 async function bootLocal() {
   S.mode = 'local';
   engine = new M.Engine(S.cfg, { onSignal, onUpdate });
-  S.signals = store.get('signals', []).filter((s) => s.strategy !== 'LADDER'); // v1.11: Royal Ladder removed, its trades leave the record
-  store.set('signals', S.signals);
+  S.signals = store.get('signals', []);
   engine.restoreSignals(S.signals); S.signals = engine.signals;
   feed = makeFeeds(setStatus);
   try { await feed.deriv.connect(); } catch (e) { setStatus('error'); toast('Could not reach the Deriv feed. Check your connection; the terminal keeps retrying.'); }
@@ -536,12 +427,10 @@ function renderStrip() {
 function kpiHTML(st, extra) {
   const pf = st.profitFactor === Infinity ? '∞' : st.profitFactor.toFixed(2);
   return `<div class="kpi"><div class="l">${extra ? 'Active now' : 'Signals'}</div><div class="v">${extra ? st.open : st.total}</div><div class="s">${extra ? st.total + ' total captured' : st.open + ' open'}</div></div>
-  ${(() => { const o = (st.byStrategy || {})['ORB+']; const pc = (g) => Math.round((100 * g.w) / Math.max(1, g.n)) + '%';
-    const t1 = (g) => Math.round((100 * g.t1) / Math.max(1, g.n)) + '%';
-    return `<div class="kpi"><div class="l">Win rate (closed in profit) · ORB+</div><div class="v">${o && o.n ? pc(o) : '—'}</div><div class="s">${o ? o.w + ' of ' + o.n + ' in profit · ' + t1(o) + ' reached TP1' : 'no closed ORB+ trades'} · all ${st.closed ? Math.round(st.tp1Rate * 100) + '%' : '—'} TP1</div></div>`; })()}
+  <div class="kpi"><div class="l">Win rate (TP1+)</div><div class="v">${st.closed ? Math.round(st.winRate * 100) + '%' : '—'}</div><div class="s">${st.wins} of ${st.closed} closed</div></div>
   <div class="kpi"><div class="l">Net result</div><div class="v ${st.totalR >= 0 ? 'pos' : 'neg'}">${st.totalR > 0 ? '+' : ''}${st.totalR}R</div><div class="s">avg ${st.avgR.toFixed(2)}R / trade</div></div>
   <div class="kpi"><div class="l">Profit factor</div><div class="v">${st.closed ? pf : '—'}</div><div class="s">${st.tp2} TP2 · ${st.be} BE · ${st.sl} SL</div></div>
-  <div class="kpi"><div class="l">Max drawdown</div><div class="v">${st.maxDD}R</div><div class="s">${st.sizeNow < 1 ? `<b class="neg">Now ${st.ddNow}R below peak: trade ${st.sizeNow === 0.5 ? 'half' : 'quarter'} size until a new high</b>` : 'peak-to-trough · now ' + (st.ddNow || 0) + 'R below peak'}</div></div>`;
+  <div class="kpi"><div class="l">Max drawdown</div><div class="v">${st.maxDD}R</div><div class="s">peak-to-trough</div></div>`;
 }
 
 // ---------- signal cards ----------
@@ -564,10 +453,12 @@ function cardHTML(s) {
       <div class="live">${open && s.price != null ? `<div class="p">${fmt(s.price, d)}</div><div class="r ${r >= 0 ? 'pos' : 'neg'}">${r == null ? 'awaiting fill' : (r >= 0 ? '+' : '') + r.toFixed(2) + 'R'}</div>` :
         s.result != null ? `<div class="p ${s.result >= 0 ? 'pos' : 'neg'}">${s.result > 0 ? '+' : ''}${s.result}R</div><div class="r" style="color:var(--muted)">final</div>` : ''}</div></div>
     <div class="lv">
-      <div>Entry <span class="tag">${s.entryType === 'CONFIRM' ? (s.status === 'PENDING' ? 'zone · enter on 5m close' : '5m confirmed') : s.entryType}</span></div><div>${fmt(s.entry, d)}</div>
-      ${`<div>Stop loss ${s.status === 'TP1_HIT' && s.sl3 != null ? `<span class="tag">${s.open12 ? '2 at TP1 · 1 at ' + fmt(s.sl3, d) : '1 left · SL ' + fmt(s.sl3, d)}</span>` : s.status === 'TP1_HIT' ? `<span class="tag">${S.cfg.trail && S.cfg.trail.mode !== 'off' ? 'trailing' : 'locked'} · now ${fmt(s.slLive, d)}</span>` : s.beArmed || s.dynMoved ? `<span class="tag">${s.beArmed ? 'locked' : 'trailing'} · now ${fmt(s.slLive, d)}</span>` : S.cfg.beAtR ? `<span class="tag">locks +${S.cfg.beLockR || 0}R at +${S.cfg.beAtR}R${S.cfg.softStop ? ' · cut on a 5m close −' + S.cfg.softStop.r + 'R' : ''}${S.cfg.dyn ? ' · trails ' + S.cfg.dyn.dist + 'R behind, max halfway to TP1' : ''}</span>` : ''}</div><div class="neg">${fmt(s.sl, d)}</div>
-      <div>Take profit 1 <span class="tag">${s.r1.toFixed(2)}R · ${S.cfg.three ? 'SL of 2 of 3 moves here' : 'close ' + Math.round((S.cfg.partialAtTp1 || .5) * 100) + '%'}</span></div><div class="pos">${fmt(s.tp1, d)}</div>
-      <div>Take profit 2 <span class="tag">${S.cfg.trail && S.cfg.trail.mode !== 'off' && S.cfg.trail.keepTp2 === false ? 'guide · runner trails ' + (s.market === 'forex' && S.cfg.trail.mode === 'pips' ? S.cfg.trail.pips + ' pips' : S.cfg.trail.atr + '× ATR') : s.r2.toFixed(2) + 'R'}</span></div><div class="pos">${fmt(s.tp2, d)}</div>`}
+      <div>Entry <span class="tag">${s.entryType}</span></div><div>${fmt(s.entry, d)}</div>
+      ${s.strategy === 'LADDER' ? `<div>Stop loss ${s.stage >= s.beAt ? '<span class="tag">moved to entry</span>' : `<span class="tag">to entry after TP${s.beAt}</span>`}</div><div class="neg">${fmt(s.sl, d)}</div>
+      ${s.tps.map((x, k) => `<div>Take profit ${k + 1} <span class="tag">${s.rs[k].toFixed(2)}R · close 20%${s.stage > k ? ' · ✓' : ''}</span></div><div class="pos">${fmt(x, d)}</div>`).join('')}` :
+      `<div>Stop loss ${s.status === 'TP1_HIT' ? '<span class="tag">moved to entry</span>' : ''}</div><div class="neg">${fmt(s.sl, d)}</div>
+      <div>Take profit 1 <span class="tag">${s.r1.toFixed(2)}R · close ${Math.round((S.cfg.partialAtTp1 || .5) * 100)}%</span></div><div class="pos">${fmt(s.tp1, d)}</div>
+      <div>Take profit 2 <span class="tag">${s.r2.toFixed(2)}R</span></div><div class="pos">${fmt(s.tp2, d)}</div>`}
     </div>
     <div class="track" style="--z:${z}%;--p:${p}%;--t1:${pct(s.tp1)}%"><span class="t"></span><span class="m"></span></div>
     <div class="biasrow">${['H4', 'H2', 'H1', 'M15', 'M5'].filter((k) => s.bias[k]).map((k) => `<span class="b ${s.bias[k]}">${{ H4: '4H', H2: '2H', H1: '1H', M15: '15m', M5: '5m' }[k]} ${s.bias[k] === 'UP' ? '▲' : s.bias[k] === 'DOWN' ? '▼' : '•'}</span>`).join('')}<span class="b">score ${s.score}</span></div>
@@ -617,6 +508,14 @@ $('#cards').addEventListener('click', (e) => {
 });
 function signalText(s) {
   const d = s.dec;
+  if (s.strategy === 'LADDER') return `${s.dir === 'BUY' ? '🟢 BUY' : '🔴 SELL'} — ${s.name} · Royal Ladder${s.unproven ? ' · 👑 Royalty' : ''}
+Grade ${s.grade} (${s.score}/100)
+Entry: ${fmt(s.entry, d)} (limit)
+SL: ${fmt(s.sl, d)} (to entry after TP${s.beAt})
+${s.tps.map((x, k) => `TP${k + 1}: ${fmt(x, d)} (${s.rs[k].toFixed(2)}R)`).join('\n')}
+Close 20% at each TP. Order expires if not filled within ${Math.round((s.expiresAt - s.createdAt) / 3600)}h.
+Bias: 4H ${s.bias.H4} · 1H ${s.bias.H1} · 15m ${s.bias.M15}
+— Royal Trades · educational, not financial advice`;
   return `${s.dir === 'BUY' ? '🟢 BUY' : '🔴 SELL'} — ${s.name} · ${s.tf} · ${s.setup}${s.kind === 'SCALP' ? ' (scalp)' : ''}
 Grade ${s.grade} (${s.score}/100)
 Entry: ${fmt(s.entry, d)}${s.entryType === 'LIMIT' ? ' (limit)' : ''}
@@ -675,13 +574,6 @@ function ensureChart() {
   emaS = [[9, '#f8fafc'], [21, '#60a5fa'], [50, '#22c55e'], [200, '#f43f5e']].map(([n, c]) => ({ n, s: chart.addLineSeries({ color: c, lineWidth: n === 200 ? 2 : 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false }) }));
   new ResizeObserver(() => chart.applyOptions({ width: $('#chart').clientWidth })).observe($('#chart'));
 }
-function resetView() {
-  if (!chart) return;
-  chart.priceScale('right').applyOptions({ autoScale: true });
-  chart.timeScale().scrollToRealTime();
-}
-$('#chReset').addEventListener('click', resetView);
-$('#chart').addEventListener('dblclick', resetView);
 function ema(vals, n) { const k = 2 / (n + 1); let p = null; return vals.map((v) => (p = p == null ? v : p + k * (v - p))); }
 function drawOverlays() {
   if (!cs) return;
@@ -697,7 +589,7 @@ function drawOverlays() {
   const open = sigs.find((s) => ['PENDING', 'ACTIVE', 'TP1_HIT'].includes(s.status));
   if (open) {
     const L = (p, c, t) => plines.push(cs.createPriceLine({ price: p, color: c, lineWidth: 1, lineStyle: 0, title: t }));
-    L(open.entry, '#e2e8f0', 'Entry'); L(open.beArmed || open.dynMoved || open.status === 'TP1_HIT' ? open.slLive : open.sl, '#f43f5e', 'SL'); (open.tps || [open.tp1, open.tp2]).forEach((x, k) => L(x, '#22c55e', 'TP' + (k + 1)));
+    L(open.entry, '#e2e8f0', 'Entry'); L(open.strategy === 'LADDER' ? open.slLive : open.status === 'TP1_HIT' ? open.entry : open.sl, '#f43f5e', 'SL'); (open.tps || [open.tp1, open.tp2]).forEach((x, k) => L(x, '#22c55e', 'TP' + (k + 1)));
   }
   const t0 = chartBars.length ? chartBars[0].time : 0;
   const marks = sigs.filter((s) => s.createdAt >= t0).map((s) => ({ time: Math.floor(s.createdAt / chTf) * chTf, position: s.dir === 'BUY' ? 'belowBar' : 'aboveBar', color: s.dir === 'BUY' ? '#22c55e' : '#f43f5e', shape: s.dir === 'BUY' ? 'arrowUp' : 'arrowDown', text: s.dir === 'BUY' ? 'B' : 'S' }));
@@ -713,18 +605,12 @@ async function openChart(sym) {
   $('#chInfo').textContent = 'loading…';
   const mySym = chSym, myTf = chTf;
   const meta = S.symbols.find((x) => x.symbol === mySym) || {};
-  // each market gets its own price precision, and the price axis is re-fitted so a range left over from another market can't hide the candles
-  const sn0 = S.snaps[mySym], dec = sn0 && sn0.dec != null ? sn0.dec : meta.dec != null ? meta.dec : 2;
-  const pf = { type: 'price', precision: dec, minMove: +(1 / Math.pow(10, dec)).toFixed(dec) };
-  cs.applyOptions({ priceFormat: pf }); emaS.forEach(({ s }) => s.applyOptions({ priceFormat: pf }));
-  resetView();
-  chartBars = []; cs.setData([]); emaS.forEach(({ s }) => s.setData([]));
   if (meta.source === 'mt5') {
     if (!S.serverBase) { chartBars = []; cs.setData([]); $('#chInfo').textContent = 'MT5-bridge pair: charts load from the Royal Trades server'; return; }
     const sf = serverCandles(S.serverBase);
     const load = async (n) => (await sf.candles(mySym, myTf, n)).candles.map((c) => ({ time: c.epoch, open: +c.open, high: +c.high, low: +c.low, close: +c.close }));
     try {
-      chartBars = await load(600); cs.setData(chartBars); drawOverlays(); resetView();
+      chartBars = await load(600); cs.setData(chartBars); drawOverlays(); chart.timeScale().scrollToRealTime();
       $('#chInfo').textContent = `${mySym} · ${CH_TF.find((x) => x[0] === myTf)[1]} · via MT5 bridge`;
       chartPoll = setInterval(async () => { if (mySym !== chSym || myTf !== chTf) return clearInterval(chartPoll); try { for (const b of await load(3)) { const lb = chartBars[chartBars.length - 1]; if (lb && lb.time === b.time) chartBars[chartBars.length - 1] = b; else if (!lb || b.time > lb.time) chartBars.push(b); else continue; cs.update(b); } } catch (e) {} }, 5000);
     } catch (e) { $('#chInfo').textContent = 'could not load: ' + e.message; }
@@ -736,11 +622,11 @@ async function openChart(sym) {
       const b = { time: +o.open_time, open: +o.open, high: +o.high, low: +o.low, close: +o.close };
       const lb = chartBars[chartBars.length - 1];
       if (lb && lb.time === b.time) chartBars[chartBars.length - 1] = b; else if (!lb || b.time > lb.time) chartBars.push(b);
-      cs.update(b); $('#chInfo').textContent = `${mySym} · ${CH_TF.find((x) => x[0] === myTf)[1]} · ${fmt(b.close, dec)}`;
+      cs.update(b); $('#chInfo').textContent = `${mySym} · ${CH_TF.find((x) => x[0] === myTf)[1]} · ${b.close}`;
     }, 600);
     chartSub = first.subscription && first.subscription.id;
     chartBars = (first.candles || []).map((c) => ({ time: c.epoch, open: +c.open, high: +c.high, low: +c.low, close: +c.close }));
-    cs.setData(chartBars); drawOverlays(); resetView();
+    cs.setData(chartBars); drawOverlays(); chart.timeScale().scrollToRealTime();
     $('#chInfo').textContent = `${mySym} · ${CH_TF.find((x) => x[0] === myTf)[1]}`;
   } catch (e) { $('#chInfo').textContent = 'could not load: ' + e.message; }
 }
@@ -831,13 +717,12 @@ function chall() { const b = +$('#chBal').value, d = +$('#chDd').value, l = +$('
 // ---------- settings ----------
 function saveCfg() { const c = Object.assign({}, S.cfg); delete c.signalsEnabledFrom; store.set('cfg', c); if (engine) engine.setConfig(S.cfg); renderStrip(); }
 function loadSettingsUI() {
-  $('#sMgmt').value = store.get('mgmt', 'volume'); $('#sMode').value = S.cfg.trendMode; $('#sGrade').value = String(S.cfg.minScore >= 85 ? 85 : S.cfg.minScore >= 74 ? 74 : 62);
+  $('#sMode').value = S.cfg.trendMode; $('#sGrade').value = String(S.cfg.minScore >= 85 ? 85 : S.cfg.minScore >= 74 ? 74 : 62);
   $('#sBlock').value = String(S.cfg.orBlock); $('#sOrm').value = String(S.cfg.orMinutes); $('#sChop').value = String(S.cfg.chopMin); $('#sGuard').value = S.cfg.lossGuard ? '1' : '0'; $('#sM5').value = S.cfg.m5Filter || 'momentum';
   $('#sServer').value = S.server; $('#sKey').value = S.key;
   $('#connInfo').textContent = S.mode === 'local' ? 'The engine is running in this browser and reading Deriv\'s public live feed. Keep this tab open for live capture, or point it at a Royal Trades server so signals run 24/7.' : 'Connected to a Royal Trades server. Signals are generated 24/7 even when this page is closed.';
 }
 $('#sMode').onchange = (e) => { S.cfg.trendMode = e.target.value; saveCfg(); };
-$('#sMgmt').onchange = (e) => { store.set('mgmt', e.target.value); applyMgmt(e.target.value); saveCfg(); toast('Trade management: ' + M.MANAGEMENT[e.target.value].label + '. Applies from now on.'); };
 $('#sGrade').onchange = (e) => { S.cfg.minScore = +e.target.value; S.cfg.minScalpScore = Math.max(+e.target.value, 72); saveCfg(); };
 $('#sBlock').onchange = (e) => { S.cfg.orBlock = +e.target.value; saveCfg(); toast('The new range setting applies from the next block.'); };
 $('#sOrm').onchange = (e) => { S.cfg.orMinutes = +e.target.value; saveCfg(); };
@@ -867,7 +752,7 @@ function fillChartSyms() { $('#chSym').innerHTML = S.symbols.map((s) => `<option
 function show(v) {
   $$('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.v === v));
   $$('.view').forEach((x) => x.classList.toggle('on', x.id === 'v-' + v));
-  if (v === 'chart') openChart(); if (v === 'perf') renderPerf(); if (v === 'scanner') renderScanner(); if (v === 'settings') { loadSettingsUI(); renderSymList(); } if (v === 'robot') { loadRobotUI(); renderRobot(); }
+  if (v === 'chart') openChart(); if (v === 'perf') renderPerf(); if (v === 'scanner') renderScanner(); if (v === 'settings') { loadSettingsUI(); renderSymList(); }
   if (location.hash !== '#' + v) history.replaceState(null, '', '#' + v);
 }
 $('#tabs').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) show(b.dataset.v); });
@@ -880,163 +765,11 @@ function renderLive() {
 let ovT = 0; function drawOverlaysThrottled() { if (ovT) return; ovT = setTimeout(() => { ovT = 0; drawOverlays(); }, 3000); }
 function render() { renderCards(); if ($('#v-perf').classList.contains('on')) renderPerf(); if ($('#v-scanner').classList.contains('on')) renderScanner(); if ($('#v-chart').classList.contains('on')) drawOverlays(); renderStrip(); }
 
-
-// ---------- Robot (auto-execution) ----------
-const RB = window.RoyalRobot;
-const tokStore = {
-  get() { try { return sessionStorage.getItem('twm.robot.tok') || localStorage.getItem('twm.robot.tok') || ''; } catch (e) { return ''; } },
-  set(v, remember) { try { sessionStorage.removeItem('twm.robot.tok'); localStorage.removeItem('twm.robot.tok'); if (v) (remember ? localStorage : sessionStorage).setItem('twm.robot.tok', v); } catch (e) {} },
-};
-const robotSaved = store.get('robot.set', {});
-if (robotSaved.atTp1 && !robotSaved.plan3) { robotSaved.atTp1 = 'three'; robotSaved.plan3 = 1; store.set('robot.set', robotSaved); } // move saved settings to the 3-position plan once
-const robotSet = Object.assign({}, RB.ROBOT_DEFAULTS, { plan3: 1 }, robotSaved);
-if (robotSet.mode === 'real') robotSet.mode = 'off'; // real trading is never resumed silently after a reload
-const robot = new RB.Robot(robotSet, { store: { get: (k) => store.get(k, null), set: (k, v) => store.set(k, v) }, onChange: () => renderRobotSoon(), log: (m) => console.log(m) });
-let rbT = 0; function renderRobotSoon() { if (rbT) return; rbT = setTimeout(() => { rbT = 0; renderRobot(); }, 250); }
-function rbSave() { const c = Object.assign({}, robot.set); store.set('robot.set', c); }
-function rbMoney(x) { return x == null || isNaN(x) ? '—' : (x < 0 ? '−$' : '$') + Math.abs(x).toFixed(2); }
-function loadRobotUI() {
-  const r = robot.set;
-  $('#rbMode').value = r.mode; $('#rbPaperBal').value = r.paperBalance; $('#rbApp').value = store.get('robot.app', '') || DERIV_APP_ID; $('#rbAccId').value = store.get('robot.acc', '');
-  $('#rbTok').value = tokStore.get(); $('#rbRemember').checked = !!store.get('robot.remember', false);
-  $('#rbSizing').value = r.sizing; $('#rbRiskPct').value = r.riskPct; $('#rbRiskUsd').value = r.riskUsd; $('#rbStake').value = r.stake; $('#rbMult').value = String(r.multiplier); $('#rbTp1').value = r.atTp1 || 'three';
-  $('#rbMaxRisk').value = r.maxRiskPct; $('#rbMaxStake').value = r.maxStake; $('#rbMaxOpen').value = r.maxOpen; $('#rbMaxDay').value = r.maxPerDay; $('#rbDayLoss').value = r.maxDailyLossPct;
-  $('#rbConsec').value = r.maxConsecLosses; $('#rbMinBal').value = r.minBalance; $('#rbSlip').value = r.maxSlipR; $('#rbDirs').value = r.dirs; $('#rbRoyal').value = r.skipRoyalty ? '1' : '0';
-  $$('#rbGrades input').forEach((x) => (x.checked = r.grades.includes(x.value))); $$('#rbMarkets input').forEach((x) => (x.checked = r.markets.includes(x.value)));
-  rbFormState(); renderRobotPairs(); if (typeof renderLoginInfo === 'function') renderLoginInfo();
-}
-function rbFormState() {
-  const m = $('#rbMode').value, z = $('#rbSizing').value;
-  $('#rbDerivBox').style.display = m === 'demo' || m === 'real' ? '' : 'none';
-  $('#rbRealBox').style.display = m === 'real' ? '' : 'none';
-  $('#rbRiskPctL').style.display = z === 'risk%' ? '' : 'none'; $('#rbRiskUsdL').style.display = z === 'risk$' ? '' : 'none'; $('#rbStakeL').style.display = z === 'stake' ? '' : 'none';
-  const bal = robot.balance != null ? robot.balance : m === 'paper' ? +$('#rbPaperBal').value : null;
-  $('#rbSizeNote').innerHTML = z === 'risk%' && bal ? `At ${$('#rbRiskPct').value}% on ${rbMoney(bal)}, a stopped-out trade loses about <b>${rbMoney(bal * $('#rbRiskPct').value / 100)}</b>. Deriv's minimum stake is $1, so on small accounts the robot picks a lower multiplier, or skips the trade if even the minimum would risk more than your cap.` : z === 'stake' ? 'A fixed stake is the Deriv version of a lot size. The money lost at the stop depends on the multiplier and how far the stop is, so the robot shows the real risk for every trade in its history.' : '';
-}
-function readRobotUI() {
-  const num = (id, d) => { const v = parseFloat($(id).value); return isNaN(v) ? d : v; };
-  const r = robot.set;
-  const pairs = {};
-  $$('#rbPairs tr').forEach((tr) => {
-    const sym = tr.dataset.s, o = {};
-    if (!tr.querySelector('.pOn').checked) o.off = true;
-    const d = tr.querySelector('.pDir').value; if (d) o.dirs = d;
-    const st = parseFloat(tr.querySelector('.pStake').value); if (st > 0) { o.stake = st; o.sizing = 'stake'; }
-    const mx = parseInt(tr.querySelector('.pMax').value, 10); if (mx > 0) o.maxTrades = mx;
-    if (Object.keys(o).length) pairs[sym] = o;
-  });
-  robot.setSettings({
-    mode: $('#rbMode').value, paperBalance: num('#rbPaperBal', 10), sizing: $('#rbSizing').value,
-    riskPct: Math.min(5, num('#rbRiskPct', 1)), riskUsd: num('#rbRiskUsd', 0.2), stake: Math.max(1, num('#rbStake', 1)), multiplier: $('#rbMult').value === 'auto' ? 'auto' : +$('#rbMult').value, atTp1: $('#rbTp1').value,
-    maxRiskPct: num('#rbMaxRisk', 3), maxStake: num('#rbMaxStake', 5), maxOpen: Math.max(1, num('#rbMaxOpen', 2)), maxPerDay: Math.max(1, num('#rbMaxDay', 8)), maxDailyLossPct: num('#rbDayLoss', 6),
-    maxConsecLosses: Math.max(1, num('#rbConsec', 3)), minBalance: num('#rbMinBal', 3), maxSlipR: num('#rbSlip', 0.3), dirs: $('#rbDirs').value, skipRoyalty: $('#rbRoyal').value === '1',
-    grades: $$('#rbGrades input').filter((x) => x.checked).map((x) => x.value), markets: $$('#rbMarkets input').filter((x) => x.checked).map((x) => x.value), pairs,
-  });
-  store.set('robot.app', $('#rbApp').value.trim()); store.set('robot.acc', $('#rbAccId').value.trim()); store.set('robot.remember', $('#rbRemember').checked);
-  tokStore.set($('#rbTok').value.trim(), $('#rbRemember').checked);
-  rbSave(); rbFormState();
-}
-function renderRobotPairs() {
-  const P = robot.set.pairs || {};
-  $('#rbPairs').innerHTML = S.symbols.filter((x) => (x.source || 'deriv') === 'deriv').map((x) => { const o = P[x.symbol] || {};
-    return `<tr data-s="${esc(x.symbol)}"><td>${esc(x.name)}</td><td><input type="checkbox" class="pOn" ${o.off ? '' : 'checked'}></td><td><select class="pDir"><option value="">Main setting</option><option value="both" ${o.dirs === 'both' ? 'selected' : ''}>Both</option><option value="buy" ${o.dirs === 'buy' ? 'selected' : ''}>Buy</option><option value="sell" ${o.dirs === 'sell' ? 'selected' : ''}>Sell</option></select></td><td><input class="pStake" type="number" min="1" step="0.5" style="width:80px" value="${o.stake || ''}"></td><td><input class="pMax" type="number" min="1" style="width:70px" value="${o.maxTrades || ''}"></td></tr>`; }).join('');
-}
-function renderRobot() {
-  const st = robot.state(), on = robot.running;
-  $('#rbGo').classList.toggle('on', on); $('#rbGo').firstChild.nodeValue = on ? 'STOP' : 'START';
-  $('#rbGoSub').textContent = { off: 'choose a mode', paper: 'Paper', demo: 'Deriv demo', real: 'REAL money' }[robot.set.mode] || '';
-  const dot = st.status === 'running' ? (st.halt ? 'warn' : 'live') : st.status === 'error' ? 'err' : st.status === 'reconnecting' || st.status === 'connecting' ? 'warn' : '';
-  $('#rbPill').innerHTML = `<span class="dot ${dot}"></span>${st.halt ? 'paused' : st.status}`;
-  $('#rbAcct').textContent = st.account ? (st.account.accountType === 'paper' ? 'Paper account' : `Deriv ${st.account.accountType} · ${st.account.accountId}`) : 'no account';
-  const lastE = st.journal[st.journal.length - 1];
-  $('#rbLine').textContent = !on ? 'Takes Royal Trades signals and places the trades for you. Start in Paper or on a Deriv demo account.'
-    : st.halt ? 'Paused for today: ' + st.halt.why
-    : st.open.length ? `In ${st.open.length} trade${st.open.length > 1 ? 's' : ''} · ${st.open.map((o) => o.dir + ' ' + o.name).join(', ')}`
-    : (st.sizeFactor < 1 ? `${st.sizeFactor === 0.5 ? 'Half' : 'Quarter'} size: ${st.ddR}R below the robot's peak · ` : '') + `Watching ${S.symbols.length} markets for ${robot.set.grades.join('/')} signals${lastE ? ' · last: ' + lastE.msg : ''}`;
-  $('#rbBal').textContent = st.balance == null ? '—' : rbMoney(+st.balance);
-  $('#rbDay').textContent = `${st.today.trades}/${st.today.max}`;
-  $('#rbPnl').innerHTML = `<span class="${st.today.realized > 0 ? 'pos' : st.today.realized < 0 ? 'neg' : ''}">${rbMoney(st.today.realized)}</span>`;
-  $('#rbOpenN').textContent = st.open.length;
-  $('#rbResume').style.display = st.halt ? '' : 'none';
-  $('#rbOpen').innerHTML = st.open.length ? st.open.map((o) => `<tr><td>${esc(o.name)}</td><td class="${o.dir === 'BUY' ? 'pos' : 'neg'}">${o.dir}</td><td class="n">${rbMoney(o.stake)} ×${o.mult}${o.legs > 1 ? ' (2)' : ''}</td><td class="n">${rbMoney(o.risk)}</td><td class="n ${o.profit >= 0 ? 'pos' : 'neg'}">${rbMoney(o.profit)}</td></tr>`).join('') : '<tr><td colspan="5" style="color:var(--muted)">No open positions</td></tr>';
-  const ic = { open: '🟢', close: '🏁', skip: '⏭', error: '⚠️', halt: '⛔', info: 'ℹ️' };
-  $('#rbJournal').innerHTML = st.journal.length ? st.journal.slice().reverse().map((j) => `<tr><td class="t">${new Date(j.t).toLocaleString('en-ZA', { timeZone: 'Africa/Johannesburg', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</td><td>${ic[j.type] || ''}</td><td>${esc(j.msg)}${j.pnl != null ? ` <b class="${j.pnl >= 0 ? 'pos' : 'neg'}">${rbMoney(j.pnl)}</b>` : ''}</td></tr>`).join('') : '<tr><td style="color:var(--muted)">Nothing yet.</td></tr>';
-}
-async function robotStart() {
-  readRobotUI();
-  const m = robot.set.mode;
-  if (m === 'off') { toast('Choose a robot mode first: Paper, Deriv demo or Deriv real.'); return; }
-  if (!robot.set.grades.length || !robot.set.markets.length) { toast('Pick at least one grade and one market for the robot.'); return; }
-  if (m === 'real' && $('#rbRealOk').value.trim() !== 'REAL') { toast('Type REAL in the box to confirm trading with real money.'); $('#rbRealOk').focus(); return; }
-  let broker;
-  if (m === 'paper') broker = new RB.PaperBroker({ balance: robot.set.paperBalance });
-  else {
-    const tok = $('#rbTok').value.trim(), app = $('#rbApp').value.trim();
-    if (!tok || !app) { toast('Enter your Deriv App ID and API token first.'); return; }
-    broker = new RB.DerivBroker({ token: tok, appId: app, accountType: m, accountId: $('#rbAccId').value.trim() });
-  }
-  try { await robot.start(broker); toast(`🤖 Robot started: ${m === 'paper' ? 'Paper, no real money' : 'Deriv ' + m + ' account ' + robot.account.accountId}`); }
-  catch (e) { toast('Robot could not start: ' + esc(e.message) + (/fetch|network|Failed/i.test(e.message) ? '. Deriv may block this page from calling its API. Run the robot on the Royal Trades server instead (see README).' : ''), 12000); }
-  $('#rbRealOk').value = '';
-  renderRobot();
-}
-$('#rbGo').addEventListener('click', async () => {
-  if (robot.running) { await robot.stop(false); toast('Robot stopped. Open positions keep their stop loss and take profit at the broker.'); renderRobot(); return; }
-  robotStart();
-});
-$('#rbCloseAll').addEventListener('click', async () => { if (!robot.running) { toast('Start the robot to manage positions.'); return; } await robot.closeAll('closed by you'); toast('Closing all robot positions.'); });
-$('#rbResume').addEventListener('click', () => robot.resume());
-$('#rbCopy').addEventListener('click', () => copyText(robot.journal.map((j) => `${new Date(j.t).toISOString()} ${j.type.toUpperCase()} ${j.msg}${j.pnl != null ? ' ' + j.pnl : ''}`).join('\n')));
-$('#v-robot').addEventListener('change', (e) => { if (e.target.id === 'rbRealOk') return; if (robot.running && e.target.id === 'rbMode') { toast('Stop the robot before changing its mode.'); $('#rbMode').value = robot.set.mode; return; } readRobotUI(); renderRobot(); });
-
-// "Log in with Deriv": OAuth 2.0 with PKCE (no token to copy). The App ID must be registered once at developers.deriv.com
-// as an OAuth app with the trade scope and this page's exact address as a redirect URL.
-const DERIV_APP_ID = '3533hZTM3TxsGSi8gV95I'; // Royal Trades Robot (OAuth app, trade scope, registered 24 Nov 2026). Not a secret.
-const DERIV_AUTH = 'https://auth.deriv.com/oauth2/auth', DERIV_TOKEN = 'https://auth.deriv.com/oauth2/token';
-const b64url = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-const redirectUri = () => location.origin + location.pathname;
-async function derivLogin() {
-  readRobotUI();
-  const app = $('#rbApp').value.trim();
-  if (!app) { toast('Enter the Deriv App ID first. Register it once at developers.deriv.com as an OAuth app with the trade scope and this redirect URL: ' + esc(redirectUri()), 12000); return; }
-  if (!crypto || !crypto.subtle) { toast('This browser cannot do a secure Deriv login here. Open the site over https.'); return; }
-  const verifier = b64url(crypto.getRandomValues(new Uint8Array(48))), state = b64url(crypto.getRandomValues(new Uint8Array(16)));
-  const challenge = b64url(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)));
-  try { sessionStorage.setItem('twm.oauth', JSON.stringify({ verifier, state, app, t: Date.now() })); } catch (e) {}
-  const q = new URLSearchParams({ response_type: 'code', client_id: app, redirect_uri: redirectUri(), scope: 'trade', state, code_challenge: challenge, code_challenge_method: 'S256' });
-  location.href = DERIV_AUTH + '?' + q.toString();
-}
-async function derivLoginReturn() {
-  const u = new URL(location.href), code = u.searchParams.get('code'), state = u.searchParams.get('state'), err = u.searchParams.get('error');
-  if (!code && !err) return;
-  let saved = null; try { saved = JSON.parse(sessionStorage.getItem('twm.oauth') || 'null'); sessionStorage.removeItem('twm.oauth'); } catch (e) {}
-  history.replaceState(null, '', u.pathname + '#robot'); // the code never stays in the address bar
-  if (err) { toast('Deriv login cancelled: ' + esc(u.searchParams.get('error_description') || err)); return; }
-  if (!saved || saved.state !== state) { toast('Deriv login did not match this browser session. Please try again.'); return; }
-  try {
-    const r = await fetch(DERIV_TOKEN, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ grant_type: 'authorization_code', client_id: saved.app, code, code_verifier: saved.verifier, redirect_uri: redirectUri() }) });
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok || !j.access_token) throw new Error(j.error_description || j.error || 'HTTP ' + r.status);
-    tokStore.set(j.access_token, false); // session only: a fresh login per browser session
-    store.set('robot.app', saved.app); store.set('robot.oauthExp', Date.now() + (j.expires_in || 3600) * 1000);
-    toast('Logged in with Deriv. Choose Deriv demo and press START.'); loadRobotUI(); show('robot');
-  } catch (e) { toast('Deriv login failed: ' + esc(e.message) + '. Deriv may only allow this step from a server; paste an API token instead for now.', 12000); }
-}
-function renderLoginInfo() {
-  const exp = store.get('robot.oauthExp', 0), has = !!tokStore.get();
-  $('#rbLoginInfo').textContent = has && exp > Date.now() ? 'Logged in (until ' + new Date(exp).toLocaleDateString('en-ZA') + ')' : '';
-}
-$('#rbLogin').addEventListener('click', derivLogin);
-derivLoginReturn();
-function robotTicks() { if (!robot.running) return; for (const o of robot.state().open) { const sn = S.snaps[o.symbol]; if (sn && sn.price) robot.tick(o.symbol, sn.price); } }
-setInterval(robotTicks, 1500);
-
-fillChartSyms(); renderAlertBtn(); calcLot(); growth(); chall(); render(); loadRobotUI(); renderRobot();
-const start = (location.hash || '').slice(1); if (['signals', 'scanner', 'chart', 'perf', 'backtest', 'risk', 'robot', 'settings'].includes(start)) show(start);
+fillChartSyms(); renderAlertBtn(); calcLot(); growth(); chall(); render();
+const start = (location.hash || '').slice(1); if (['signals', 'scanner', 'chart', 'perf', 'backtest', 'risk', 'settings'].includes(start)) show(start);
 setInterval(renderStrip, 15000);
 boot();
-window.TWM = S; window.RoyalBot = robot; // for debugging in the console
-S.__hooks = { onSignal, onUpdate };
+window.TWM = S; // for debugging in the console
 window.addEventListener('unhandledrejection', (e) => { e.preventDefault(); console.warn('feed:', e.reason && (e.reason.message || e.reason.code || e.reason)); });
 })();
 </script>

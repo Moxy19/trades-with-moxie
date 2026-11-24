@@ -23,24 +23,9 @@
     orBlock: 3600,          // session block in seconds (3600 = new opening range every hour)
     orMinutes: 15,          // opening range length
     bufferFrac: 0.15,       // breakout must clear the edge by this fraction of range height (tuned on 7d real data)
-    amd: false,             // lab: true = add AMD setups (range sweep, then a 2m close back through the midpoint); 'only' = AMD setups only
-    smc: null,              // lab: { bos: block if 1H structure (BOS/CHoCH) is against, zone: block if an opposing OB/FVG sits before TP1, needZone: entry must sit at a demand/supply OB or FVG }
-    htfNoAgainst: true,     // v1.15 golden rule (user): block any trade with 4H or 2H against it (lab): block any trade with 4H or 2H against it
-    trendMode: 'strict',    // v1.15 golden rule: no counter-1H scalps. 'strict' = only with 1H trend; 'adaptive' = also counter-1H scalps when 1H is weak
-    minScore: 74,           // publish threshold (A grade). SL lab 23 Nov: scores under 74 won 37% (-0.28R each)
-    minScalpScore: 80,      // counter-1H scalps need more confluence
-    // Stop-loss lab, 23 Nov 2026 (593 ORB+ trades, ~21 days synthetics / ~30 days forex & crypto). Each filter
-    // removed trades that lost money in both halves of the data.
-    // Regime lab, 24 Nov 2026 (ORB+ only, two separate ~20-trading-day windows): compact opening ranges (0.6–0.9× the 15m ATR)
-    // in the active session (06:00–18:00 UTC) gave 89% of trades in profit, profit factor 3.85, 3.7R max drawdown and +100.1R
-    // over both windows (unseen window alone: 87%, PF 2.80, 3.7R, +43.8R), against PF 2.37 and 7.0R drawdown without them.
-    minOrAtr: 0.6,          // skip when the opening range is narrower than this × the 15m ATR (0 = off)
-    hours: { fromUtc: 6, toUtc: 18 }, // only signal inside these UTC hours (08:00–20:00 SAST); null = always
-    needH4: false,          // require the 4H trend to agree with the trade
-    skipLate: false,        // late-entry filter (score 95+ with 2H and 4H aligned). v1.12 had it on; v1.12.1 turns it off at the user's request (more trades, more total R; it also did worse on the unseen window)
-    maxOrAtr: 0.9,          // skip when the opening range is wider than this × the 15m ATR (regime lab; was 1.5)
-    quiet: { markets: ['forex'], fromUtc: 4, toUtc: 8 },  // no forex/metals ORB+ 06:00–10:00 SAST (London-open fakeouts: 42% win, -9R)
-    orbOff: ['frxNZDUSD', 'frxUSDCHF', 'frxEURUSD', '1HZ25V', 'R_75', 'frxUSDJPY', 'frxUSDCAD'],  // ORB+ lost in both halves on these markets
+    trendMode: 'adaptive',  // 'strict' = only with 1H trend; 'adaptive' = also counter-1H scalps when 1H is weak
+    minScore: 62,           // publish threshold (B grade)
+    minScalpScore: 72,      // counter-1H scalps need more confluence
     chopMin: 0,             // optional 15m efficiency floor (0..1). Off by default: in walk-forward tests it removed more winners than losers
     maxRiskAtr: 1.8,        // stop distance cap in 15m ATRs
     minRiskAtr: 0.35,       // stop distance floor in 15m ATRs (avoid noise stops)
@@ -48,23 +33,6 @@
     pendingExpiryMin: 30,   // unfilled limit orders expire
     maxHoldMin: 360,        // time exit after 6h
     partialAtTp1: 0.5,      // fraction closed at TP1 (rest runs to TP2 with SL at entry)
-    three: true,            // v1.14.1 (user plan): 3 equal positions, nothing moves before TP1. At TP1: positions 1-2 SL -> TP1, position 3 SL -> halfway entry/TP1; all 3 aim for TP2
-    // Management lab, 23 Nov 2026 (v1.5.1 rules, 24 markets): moving the stop to entry at +0.5R lifted ORB+ from +83.8R to
-    // +99.8R (both halves better; stop-outs 44% -> 25%). Partial size, TP2 distance and holding time made no real difference.
-    // Stop-out lab, 24 Nov 2026 (23 markets, ~20 days): locking +0.05R at +0.3R and cutting any trade whose 5m candle closes
-    // 0.6R against it cut full stop-outs from 26% to 9% of trades and lifted wins from 74% to 79%, for the same profit
-    // (+109.9R vs +111.5R; both halves positive). Earlier: trailing lab, 23 Nov 2026 (see README).
-    // v1.14 (user rule): no stop move or profit lock before TP1. beAtR/beLockR/dyn off; the stop only moves once TP1 is touched.
-    beAtR: 0,               // 0 = off. (was 0.15; 87–88% of trades closed in profit in both lab windows) Move the stop to entry (+ beLockR) once a trade has been this many R in profit before TP1
-    beLockR: 0,             // R locked in by that early stop move (makes "breakeven" a small win)
-    tp1Lock: 0.3,           // at TP1 the stop moves to entry + this many R
-    tp1LockAtTp1: false,    // true: at TP1 the runner's stop moves to TP1 itself (3-position plan: 2 close at TP1, 1 runs)
-    trail: { mode: 'pips', pips: 20, atr: 0.75, keepTp2: false }, // after TP1: trail 'pips' (forex & metals) or 'atr' (× 15m ATR) behind the best price; keepTp2 false = let the runner go
-    slOfTp: null,           // { ref: 'tp1'|'tp2', k }: stop distance as a fraction of a target's distance (tested: worse for ORB+)
-    // Dynamic-stop lab, 24 Nov 2026 (23 markets, ~20 days, on top of v1.8): trailing the stop 1R behind the best price,
-    // never past half of the TP1 distance, until TP1: ORB+ +134.4R vs +106.3R, full stop-outs 9% -> 1%, wins 78% vs 79%;
-    dyn: null,              // was { dist: 1, cap: 0.5, whole: false }. { dist, cap, whole }: dynamic stop that trails dist × risk behind the best price, never past cap × the TP1 distance (whole: for the whole trade, else until TP1)
-    softStop: null,         // v1.15: off (it cut 197 trades for -141R; lab 24 Nov). Was { r: 0.6, tf: 300 }: before the stop has moved: exit at the close of a 5m candle that closes 0.6R or more against the trade
     lossGuard: true,        // block same-direction re-entry after SL until structure resets
     retest: false,          // ORB retest continuation setups (off: they lost money in real-data tests)
     triggerTf: 120,         // candle that must close beyond the range: 120 = 2m, 300 = 5m
@@ -76,8 +44,14 @@
     // ~20 days forex/crypto) or, for Weltrade SyntX, in the 7-day test. Signals carry a Royalty tag: watch or minimum size.
     unproven: ['mt5', 'stpRNG', 'R_75', '1HZ25V', 'frxEURUSD', 'frxUSDJPY', 'frxUSDCHF', 'frxNZDUSD', 'frxGBPJPY', 'frxEURGBP', 'cryETHUSD'],
     entryMode: 'auto',      // 'auto' = limit back at the edge when the trigger candle over-extends; 'market' = always market; 'skip' = skip over-extended breaks
-    r1Min: 0.3, r1Max: 0.3, // v1.15 (user's pick, 24 Nov lab: 79% wins, 78% unseen, ~20/day, +232R, PF 1.89). Was 1.0-1.5. // TP1 bounds in R (measured move = range height; tuned: losers often reached 0.5-0.9R first)
+    r1Min: 1.0, r1Max: 1.5, // TP1 bounds in R (measured move = range height; tuned: losers often reached 0.5-0.9R first)
     r2Min: 1.8, r2Max: 3,   // TP2 bounds in R (2x range height)
+    // Royal Ladder: the decoded + refined gold-signal strategy (limit at fresh 15m swing points, 5-TP ladder).
+    // Distances are 15m-ATR multiples calibrated on gold (median ATR $7.37: $3 front-run, $12 SL, $4/$8/$13/$18/$28 TPs).
+    ladder: { on: true, markets: ['forex', 'crypto'], symbols: [], units: { frxXAUUSD: 7.37 }, w: 5, front: 0.41, sl: 1.63, tps: [0.54, 1.09, 1.76, 2.44, 3.80], beAt: 2, expH: 4, holdH: 24, away: 0.41 },
+    // Ladder lab, 23 Nov 2026 (20,000 1m bars each; gold uses fixed $ distances: 41 days, 48 trades, 85% TP1, +12.5R):
+    // losing or flat markets carry the Royalty tag.
+    ladderRoyalty: ['frxEURUSD', 'frxUSDCHF', 'frxEURGBP', 'cryBTCUSD', 'cryETHUSD'],
     signalsEnabledFrom: 0,  // epoch; used by backtests to warm up
   };
 
@@ -165,45 +139,6 @@
     return { highs, lows };
   }
 
-
-  // ---------- smart-money structure (v1.15 lab) ----------
-  // Reads one timeframe: market structure from swing breaks (BOS = break with the current structure, CHoCH = first
-  // break against it), unmitigated order blocks (last opposite candle before a displacement that broke a swing) and
-  // fair value gaps (3-candle imbalance). Zones are { dir: 'UP'|'DOWN', lo, hi, kind } and stay live until price
-  // closes through them.
-  function smcRead(s, lookback = 200) {
-    const b = s.bars, n = b.length, out = { dir: 'FLAT', last: null, zones: [] };
-    if (n < 30) return out;
-    const start = Math.max(3, n - lookback), atr = s.atr;
-    const pv = pivots(s, lookback, 2);
-    let hi = null, lo = null, hiK = 0, loK = 0, dir = 'FLAT';
-    const H = pv.highs, L = pv.lows;
-    for (let i = start; i < n; i++) {
-      while (hiK < H.length && H[hiK].i + 2 <= i - 1) hi = H[hiK++];   // swing confirmed 2 bars after it
-      while (loK < L.length && L[loK].i + 2 <= i - 1) lo = L[loK++];
-      const x = b[i], a = atr[i] || (x.h - x.l) || 1e-9;
-      if (hi && x.c > hi.p) {
-        out.last = { kind: dir === 'DOWN' ? 'CHoCH' : 'BOS', dir: 'UP', t: x.t }; dir = 'UP';
-        for (let k = i; k > Math.max(start, i - 8); k--) if (b[k].c < b[k].o) { out.zones.push({ dir: 'UP', lo: b[k].l, hi: Math.max(b[k].o, b[k].h), kind: 'OB', i: k }); break; }
-        hi = null;
-      } else if (lo && x.c < lo.p) {
-        out.last = { kind: dir === 'UP' ? 'CHoCH' : 'BOS', dir: 'DOWN', t: x.t }; dir = 'DOWN';
-        for (let k = i; k > Math.max(start, i - 8); k--) if (b[k].c > b[k].o) { out.zones.push({ dir: 'DOWN', lo: Math.min(b[k].o, b[k].l), hi: b[k].h, kind: 'OB', i: k }); break; }
-        lo = null;
-      }
-      // fair value gaps with a displacement middle candle
-      const m = b[i - 1], p2 = b[i - 2];
-      if (Math.abs(m.c - m.o) >= 0.8 * a) {
-        if (x.l > p2.h) out.zones.push({ dir: 'UP', lo: p2.h, hi: x.l, kind: 'FVG', i });
-        if (x.h < p2.l) out.zones.push({ dir: 'DOWN', lo: x.h, hi: p2.l, kind: 'FVG', i });
-      }
-    }
-    out.dir = dir;
-    // drop mitigated zones (a later close through the far side)
-    out.zones = out.zones.filter((z) => { for (let k = z.i + 1; k < n; k++) { if (z.dir === 'UP' && b[k].c < z.lo) return false; if (z.dir === 'DOWN' && b[k].c > z.hi) return false; } return true; });
-    return out;
-  }
-
   // Trend read for one timeframe (closed bars only)
   function trendOf(s) {
     const out = { dir: 'FLAT', score: 0, strength: 0, parts: {} };
@@ -289,7 +224,7 @@
       st.ready = true;
       // replay closed 1m history through open signals restored from storage
       for (const sig of this.openSignals(symbol)) {
-        for (const x of st.series[60].bars) if (x.t >= (sig.lastT || sig.createdAt)) this._track(sig, st, x.h, x.l, x.t + 60, x.c, true);
+        for (const x of st.series[60].bars) if (x.t >= (sig.lastT || sig.createdAt)) { if (sig.strategy === 'LADDER') this._trackLadder(sig, st, x.h, x.l, x.t + 60, x.c); else this._track(sig, st, x.h, x.l, x.t + 60, x.c, true); }
       }
     }
 
@@ -316,6 +251,7 @@
       // 2) strategy on closed 2m bar
       const trig = this.cfg.triggerTf === G.M5 ? G.M5 : G.M2;
       if (closed[trig] && st.ready) this._evaluate(st, closed[trig], trig);
+      if (closed[G.M15] && st.ready && this._ladderOn(st)) this._ladder(st, closed[G.M15]);
       // 3) track open signals with the newest data
       const isNewMinute = !prevForming || bar.t > prevForming.t;
       let hi = bar.c, lo = bar.c;
@@ -323,19 +259,8 @@
       const now = this.mode === 'backtest' ? bar.t + 60 : Math.max(bar.t, Math.floor(Date.now() / 1000));
       for (const sig of this.openSignals(symbol)) {
         if (sig.createdAt > now) continue;
-        this._track(sig, st, hi, lo, now, bar.c, isNewMinute);
-      }
-      for (const g of [G.M5, G.M15]) if (closed[g]) this._softStops(st, closed[g], g);
-    }
-    // Soft stops: a candle that closes against the trade cuts it at that close instead of waiting for the full stop.
-    _softStops(st, cb, g) {
-      const cfg = this.cfg, T = cb.t + g;
-      for (const sig of this.openSignals(st.symbol)) {
-        if (!sig.filledAt || sig.filledAt > cb.t) continue;      // only candles that opened after the fill
-        const d = dirSign(sig.dir), rNow = (d * (cb.c - sig.entry)) / sig.risk;
-        const ss = cfg.softStop;
-        if (!ss || ss.tf !== g || sig.status !== 'ACTIVE' || sig.beArmed) continue;
-        if (rNow <= -ss.r) this._close(sig, st, 'SOFT_EXIT', cb.c, T);
+        if (sig.strategy === 'LADDER') this._trackLadder(sig, st, hi, lo, now, bar.c);
+        else this._track(sig, st, hi, lo, now, bar.c, isNewMinute);
       }
     }
 
@@ -375,15 +300,6 @@
           b.retestDn = true; cands.push({ dir: 'SELL', setup: 'ORB Retest' });
         }
       }
-      // AMD (lab): the opening range is the accumulation; a run beyond one side is the manipulation (sweep); a 2m close
-      // back through the range midpoint is the change of character that starts the distribution the other way.
-      if (cfg.amd) {
-        if (cfg.amd === 'only') cands.length = 0;
-        if (bar2.l < b.lo - buf) { b.amdLo = Math.min(b.amdLo == null ? Infinity : b.amdLo, bar2.l); }
-        if (bar2.h > b.hi + buf) { b.amdHi = Math.max(b.amdHi == null ? -Infinity : b.amdHi, bar2.h); }
-        if (b.amdLo != null && !b.amdBuy && bar2.c > mid && bar2.c > bar2.o && bar2.l > b.amdLo) { b.amdBuy = true; cands.push({ dir: 'BUY', setup: 'AMD (sweep + CHoCH)', sl: b.amdLo }); }
-        if (b.amdHi != null && !b.amdSell && bar2.c < mid && bar2.c < bar2.o && bar2.h < b.amdHi) { b.amdSell = true; cands.push({ dir: 'SELL', setup: 'AMD (sweep + CHoCH)', sl: b.amdHi }); }
-      }
       for (const c of cands) this._consider(st, c, bar2, T, h, mid);
     }
 
@@ -395,20 +311,10 @@
       const cfg = this._cfgFor(st), b = st.block, dir = cand.dir, sgn = dirSign(dir);
       const S = st.series;
       const reject = (why) => { this.hooks.onReject && this.hooks.onReject({ symbol: st.symbol, dir, setup: cand.setup, t: T, why }); return null; };
-      if (this.openSignals(st.symbol).length) return reject('Trade already open on this pair');
+      if (this.openSignals(st.symbol).some((x) => x.strategy !== 'LADDER')) return reject('Trade already open on this pair');
 
       const tH4 = trendOf(S[G.H4]), tH2 = trendOf(S[G.H2]), tH1 = trendOf(S[G.H1]), t15 = trendOf(S[G.M15]);
       const atr15 = S[G.M15].atrv || h;
-      if ((cfg.orbOff || []).includes(st.symbol)) return reject('ORB+ is off on this market (it lost money in testing)');
-      if (cfg.maxOrAtr && h > cfg.maxOrAtr * atr15) return reject('Opening range too wide (' + (h / atr15).toFixed(1) + '× ATR): breakouts from wide ranges usually fail');
-      if (cfg.quiet && (cfg.quiet.markets || []).includes(st.market)) {
-        const hu = new Date(T * 1000).getUTCHours();
-        if (hu >= cfg.quiet.fromUtc && hu < cfg.quiet.toUtc) return reject('Quiet window (London open): breakouts fail more often');
-      }
-      // Regime filters (regime lab, 24 Nov 2026): compact ranges in the active session, with the 4H behind the trade
-      if (cfg.minOrAtr && h < cfg.minOrAtr * atr15) return reject('Opening range too tight (' + (h / atr15).toFixed(2) + '× ATR): no clean breakout regime');
-      if (cfg.hours) { const hu = new Date(T * 1000).getUTCHours(); if (hu < cfg.hours.fromUtc || hu >= cfg.hours.toUtc) return reject('Outside the active session (' + cfg.hours.fromUtc + ':00–' + cfg.hours.toUtc + ':00 UTC)'); }
-      if (cfg.needH4 && tH4.dir !== want(dir)) return reject('4H trend not behind the trade');
       const er15 = efficiency(S[G.M15], 16);
       const m1 = S[G.M1];
       const mom1 = m1.n > 21 && (sgn > 0 ? last(m1.bars).c > m1.e(9) && m1.e(9) > m1.e(21) : last(m1.bars).c < m1.e(9) && m1.e(9) < m1.e(21));
@@ -439,8 +345,6 @@
       if (!m15ok) return reject('15m not aligned');
       // --- higher-TF veto: 2H and 4H both against ---
       if (tH4.dir === against(dir) && tH2.dir === against(dir)) return reject('2H and 4H both against');
-      // golden rule (user): never against the higher timeframe. htfNoAgainst blocks a trade when 4H or 2H is against it
-      if (cfg.htfNoAgainst && (tH4.dir === against(dir) || tH2.dir === against(dir))) return reject('Golden rule: 4H or 2H against the trade');
       // --- chop filter ---
       if (er15 < cfg.chopMin) return reject('15m is ranging (efficiency ' + er15.toFixed(2) + ')');
       // --- loss guard: no same-direction re-entry after SL until a fresh opening range AND 15m swing confirms ---
@@ -463,7 +367,7 @@
       // --- stop: beyond range midpoint or the recent 2m swing, whichever protects better ---
       const s2 = S[G.M2].bars.slice(-3);
       const swing = sgn > 0 ? Math.min(...s2.map((x) => x.l)) : Math.max(...s2.map((x) => x.h));
-      let sl = cand.sl != null ? cand.sl : sgn > 0 ? Math.min(mid, swing) : Math.max(mid, swing);
+      let sl = sgn > 0 ? Math.min(mid, swing) : Math.max(mid, swing);
       sl -= sgn * 0.05 * atr15;
       let risk = Math.abs(entry - sl);
       if (risk > cfg.maxRiskAtr * atr15) {
@@ -480,31 +384,13 @@
       const nearest = obs.length ? (sgn > 0 ? Math.min(...obs) : Math.max(...obs)) : null;
       const roomR = nearest == null ? 99 : Math.abs(nearest - entry) / risk;
       if (roomR < cfg.minRoomR) return reject('No room: 1H level ' + roomR.toFixed(2) + 'R away');
-      // --- smart-money structure (smc lab options) ---
-      let smcH1 = null, smcSup = null;
-      if (cfg.smc) {
-        smcH1 = smcRead(S[G.H1]); const s15 = smcRead(S[G.M15]);
-        const sm = cfg.smc, w = want(dir), tp1x = entry + sgn * cfg.r1Min * risk;
-        if (sm.bos && smcH1.dir === against(dir)) return reject('1H structure against (' + (smcH1.last ? smcH1.last.kind : 'break') + ' ' + smcH1.dir + ')');
-        if (sm.zone) {
-          const opp = smcH1.zones.concat(s15.zones).find((z) => z.dir === against(dir) && (sgn > 0 ? z.lo > entry && z.lo < tp1x : z.hi < entry && z.hi > tp1x));
-          if (opp) return reject('Opposing ' + (opp.kind === 'OB' ? (sgn > 0 ? 'supply' : 'demand') + ' order block' : 'FVG') + ' before TP1');
-        }
-        const near = 0.5 * atr15;
-        smcSup = smcH1.zones.concat(s15.zones).find((z) => z.dir === w && (sgn > 0 ? entry >= z.lo && entry <= z.hi + near : entry <= z.hi && entry >= z.lo - near)) || null;
-        if (sm.needZone && !smcSup) return reject('No demand/supply zone or FVG behind the entry');
-      }
 
       // --- targets ---
       let r1 = clamp(h / risk, cfg.r1Min, kind === 'SCALP' ? Math.min(cfg.r1Max, cfg.r1Min + 0.2) : cfg.r1Max);
       let r2 = kind === 'SCALP' ? clamp(1.6 * h / risk, r1 + 0.3, Math.max(r1 + 0.3, cfg.r2Min)) : clamp((2 * h) / risk, Math.max(cfg.r2Min, r1 + 0.8), cfg.r2Max);
       if (nearest != null && roomR < r1) r1 = Math.max(1.0, roomR * 0.95);
       if (nearest != null && roomR < r2 && roomR > r1 + 0.3) r2 = roomR * 0.97;
-      let tp1 = entry + sgn * r1 * risk, tp2 = entry + sgn * r2 * risk;
-      if (cfg.slOfTp) {   // stop distance = k × the distance to TP1 or TP2 (targets stay where they are)
-        const ref = cfg.slOfTp.ref === 'tp1' ? tp1 : tp2, nr = cfg.slOfTp.k * Math.abs(ref - entry);
-        if (nr > 0) { risk = nr; sl = entry - sgn * risk; r1 = Math.abs(tp1 - entry) / risk; r2 = Math.abs(tp2 - entry) / risk; }
-      }
+      const tp1 = entry + sgn * r1 * risk, tp2 = entry + sgn * r2 * risk;
 
       // --- score (0..100) ---
       const reasons = [];
@@ -523,14 +409,10 @@
       const hq = h / atr15;
       add(hq >= 0.6 && hq <= 2.5 ? 10 : hq >= 0.4 && hq <= 3.5 ? 5 : 0, hq >= 0.4 && hq <= 3.5, 'Range quality', (hq).toFixed(2) + '× 15m ATR');
       add(roomR >= 2 ? 5 : 0, roomR >= 2, 'Room to 1H structure', roomR >= 99 ? 'open sky' : roomR.toFixed(1) + 'R');
-      if (cfg.smc) { add(smcH1 && smcH1.dir === want(dir) ? 5 : 0, !smcH1 || smcH1.dir !== against(dir), '1H structure ' + (smcH1 && smcH1.last ? smcH1.last.kind + ' ' + smcH1.dir : 'n/a'), ''); add(smcSup ? 10 : 0, !!smcSup, 'Entry at ' + (smcSup ? (smcSup.kind === 'OB' ? (sgn > 0 ? 'demand' : 'supply') + ' order block' : 'FVG') : 'no zone'), ''); }
       reasons.push({ ok: true, pts: 0, label: '15m trend quality', detail: 'efficiency ' + er15.toFixed(2) });
       score = Math.min(100, score);
       const minS = kind === 'SCALP' ? cfg.minScalpScore : cfg.minScore;
       if (score < minS) return reject('Score ' + score + ' below ' + minS);
-      // Loss review, 24 Nov 2026: when every timeframe is already aligned (score 95+ with the 2H and 4H both behind the
-      // trade) the move is usually late; those trades lost 9–16% of the time against 4–6% for the rest.
-      if (cfg.skipLate && score >= 95 && tH4.dir === want(dir) && tH2.dir === want(dir)) return reject('Late entry: every timeframe already aligned (score ' + score + ')');
       const grade = score >= 85 ? 'A+' : score >= 74 ? 'A' : 'B';
 
       const sig = {
@@ -541,7 +423,7 @@
         or: { hi: b.hi, lo: b.lo, start: b.start, end: b.end, orEnd: b.orEnd },
         status: entryType === 'LIMIT' ? 'PENDING' : 'ACTIVE',
         createdAt: T, filledAt: entryType === 'LIMIT' ? null : T, tp1At: null, closedAt: null, lastT: T,
-        result: null, mfeR: 0, maeR: 0, price: bar2.c, exit: null, atr15, peak: null,
+        result: null, mfeR: 0, maeR: 0, price: bar2.c, exit: null,
       };
       sig.text = this.narrative(sig, { atr15, er15, h, roomR, nearest });
       this.signals.push(sig);
@@ -555,11 +437,9 @@
       const rNow = (sgn * (exitPrice - sig.entry)) / sig.risk;
       const p = this.cfg.partialAtTp1;
       let R = 0;
-      if (sig.threeR != null) R = sig.threeR;  // 3-position plan sets its own result
-      else if (status === 'SL_HIT') R = -1;
+      if (status === 'SL_HIT') R = -1;
       else if (status === 'TP2_HIT') R = p * sig.r1 + (1 - p) * sig.r2;
-      else if (status === 'BE_HIT' || status === 'TRAIL_EXIT') R = p * sig.r1 + (1 - p) * rNow;
-      else if (status === 'BE_EARLY' || status === 'SOFT_EXIT' || status === 'DYN_STOP') R = rNow;  // stopped at entry (or the locked level) before TP1
+      else if (status === 'BE_HIT') R = p * sig.r1;
       else if (status === 'TIME_EXIT') R = sig.tp1At ? p * sig.r1 + (1 - p) * rNow : rNow;
       else R = 0; // EXPIRED / CANCELLED never filled
       sig.status = status; sig.closedAt = t; sig.exit = exitPrice; sig.result = Math.round(R * 100) / 100; sig.lastT = t;
@@ -570,15 +450,6 @@
       this.hooks.onUpdate && this.hooks.onUpdate(sig, prev);
     }
 
-    _better(sgn, a, b) { if (a == null) return b; if (b == null) return a; return sgn > 0 ? Math.max(a, b) : Math.min(a, b); }
-    _dynCap(sig, dy, sgn) { return sig.entry + sgn * (dy.cap == null ? 0.5 : dy.cap) * Math.abs(sig.tp1 - sig.entry); }
-    // Dynamic stop: follows the best price at dist × risk, never past cap × the TP1 distance. Applies from the next bar.
-    _dyn(sig, dy, sgn) {
-      const best = sig.entry + sgn * sig.mfeR * sig.risk;
-      const cand = this._better(-sgn, best - sgn * dy.dist * sig.risk, this._dynCap(sig, dy, sgn));
-      const cur = sig.beArmed || sig.dynMoved || sig.status === 'TP1_HIT' ? sig.slLive : sig.sl;
-      if (sgn > 0 ? cand > cur + 1e-12 : cand < cur - 1e-12) { sig.slLive = cand; sig.dynMoved = true; }
-    }
     _track(sig, st, hi, lo, t, price, _newMin) {
       const sgn = dirSign(sig.dir), cfg = this.cfg;
       const fav = sgn > 0 ? hi : lo, adv = sgn > 0 ? lo : hi;
@@ -598,53 +469,127 @@
       sig.mfeR = Math.max(sig.mfeR, (sgn * (fav - sig.entry)) / sig.risk);
       sig.maeR = Math.min(sig.maeR, (sgn * (adv - sig.entry)) / sig.risk);
       if (sig.status === 'ACTIVE') {
-        const stop = sig.beArmed || sig.dynMoved ? sig.slLive : sig.sl;
-        const slHit = sgn > 0 ? adv <= stop : adv >= stop;
+        const slHit = sgn > 0 ? adv <= sig.sl : adv >= sig.sl;
         const tp1Hit = sgn > 0 ? fav >= sig.tp1 : fav <= sig.tp1;
-        if (slHit) return this._close(sig, st, sgn * (stop - sig.entry) >= -1e-12 && (sig.beArmed || sig.dynMoved) ? 'BE_EARLY' : sig.dynMoved ? 'DYN_STOP' : 'SL_HIT', stop, t); // pessimistic if both in one bar
-        // early breakeven: armed from the next bar once the trade has run beAtR in profit
-        if (cfg.beAtR && !sig.beArmed && sig.mfeR >= cfg.beAtR && !tp1Hit) { sig.beArmed = true; sig.slLive = this._better(sgn, sig.slLive, sig.entry + sgn * (cfg.beLockR || 0) * sig.risk); this.hooks.onUpdate && this.hooks.onUpdate(sig, 'ACTIVE'); }
-        if (cfg.dyn && !tp1Hit) this._dyn(sig, cfg.dyn, sgn);
+        if (slHit) return this._close(sig, st, 'SL_HIT', sig.sl, t); // pessimistic if both in one bar
         if (tp1Hit) {
-          sig.status = 'TP1_HIT'; sig.tp1At = t;
-          if (cfg.three) { sig.sl12 = sig.tp1; sig.sl3 = sig.entry + 0.5 * (sig.tp1 - sig.entry); sig.open12 = true; sig.slLive = sig.sl12; this.hooks.onUpdate && this.hooks.onUpdate(sig, 'ACTIVE');
-            if (sgn > 0 ? fav >= sig.tp2 : fav <= sig.tp2) { sig.threeR = sig.r2; return this._close(sig, st, 'TP2_HIT', sig.tp2, t); }
-            return; } // the new stops apply from the next bar/tick
-          else { sig.slLive = this._better(sgn, sig.dynMoved || sig.beArmed ? sig.slLive : null, cfg.tp1LockAtTp1 ? sig.tp1 : sig.entry + sgn * (cfg.tp1Lock || 0) * sig.risk); sig.peak = sig.tp1;
-          if (cfg.dyn && cfg.dyn.whole) sig.slLive = this._better(-sgn, sig.slLive, this._dynCap(sig, cfg.dyn, sgn));
+          sig.status = 'TP1_HIT'; sig.tp1At = t; sig.slLive = sig.entry;
           this.hooks.onUpdate && this.hooks.onUpdate(sig, 'ACTIVE');
           if (sgn > 0 ? fav >= sig.tp2 : fav <= sig.tp2) return this._close(sig, st, 'TP2_HIT', sig.tp2, t);
           if (this.mode === 'backtest') return; // BE can't be ordered inside the same bar; check next bar
-          }
         }
-      }
-      if (sig.status === 'TP1_HIT' && cfg.three) {
-        // stops first (pessimistic): positions 1-2 at TP1, position 3 halfway between entry and TP1
-        if (sig.open12 && (sgn > 0 ? adv <= sig.sl12 : adv >= sig.sl12)) { sig.open12 = false; sig.slLive = sig.sl3; this.hooks.onUpdate && this.hooks.onUpdate(sig, 'TP1_HIT'); }
-        const bank = sig.open12 ? null : 2 * sig.r1;
-        if (!sig.open12 && (sgn > 0 ? adv <= sig.sl3 : adv >= sig.sl3)) { sig.threeR = (bank + 0.5 * sig.r1) / 3; return this._close(sig, st, 'TRAIL_EXIT', sig.sl3, t); }
-        if (sgn > 0 ? fav >= sig.tp2 : fav <= sig.tp2) { sig.threeR = sig.open12 ? sig.r2 : (bank + sig.r2) / 3; return this._close(sig, st, 'TP2_HIT', sig.tp2, t); }
-        if (sig.filledAt && t - sig.filledAt > cfg.maxHoldMin * 60) { const rNow = (sgn * (price - sig.entry)) / sig.risk; sig.threeR = sig.open12 ? rNow : (bank + rNow) / 3; return this._close(sig, st, 'TIME_EXIT', price, t); }
-        return;
       }
       if (sig.status === 'TP1_HIT') {
-        const tr = cfg.trail || {}, keepTp2 = tr.mode === 'off' || tr.keepTp2 !== false;
-        const stop = sig.slLive != null ? sig.slLive : sig.entry;
-        if (sgn > 0 ? adv <= stop : adv >= stop) return this._close(sig, st, Math.abs(stop - sig.entry) < 1e-12 ? 'BE_HIT' : 'TRAIL_EXIT', stop, t); // stop first (pessimistic)
-        if (keepTp2 && (sgn > 0 ? fav >= sig.tp2 : fav <= sig.tp2)) return this._close(sig, st, 'TP2_HIT', sig.tp2, t);
-        if (cfg.dyn && cfg.dyn.whole) this._dyn(sig, cfg.dyn, sgn);
-        if (tr.mode && tr.mode !== 'off') {   // trail behind the best price; the new stop applies from the next bar
-          sig.peak = sig.peak == null ? fav : sgn > 0 ? Math.max(sig.peak, fav) : Math.min(sig.peak, fav);
-          const pip = tr.mode === 'pips' && st.market === 'forex' ? Math.pow(10, -Math.max(0, st.dec - 1)) : null;
-          const dist = pip ? tr.pips * pip : (tr.atr || 0.75) * (sig.atr15 || sig.risk);
-          const cand = sig.peak - sgn * dist;
-          const capped = cfg.dyn && cfg.dyn.whole ? this._better(-sgn, cand, this._dynCap(sig, cfg.dyn, sgn)) : cand;
-          if (sgn > 0 ? capped > sig.slLive : capped < sig.slLive) sig.slLive = capped;
-        }
+        if (sgn > 0 ? fav >= sig.tp2 : fav <= sig.tp2) return this._close(sig, st, 'TP2_HIT', sig.tp2, t);
+        if (sgn > 0 ? adv <= sig.entry : adv >= sig.entry) return this._close(sig, st, 'BE_HIT', sig.entry, t);
       }
       if ((sig.status === 'ACTIVE' || sig.status === 'TP1_HIT') && sig.filledAt && t - sig.filledAt > cfg.maxHoldMin * 60) {
         return this._close(sig, st, 'TIME_EXIT', price, t);
       }
+    }
+
+    // ---------- Royal Ladder ----------
+    _ladderOn(st) {
+      const L = this.cfg.ladder;
+      if (!L || !L.on) return false;
+      return (L.symbols || []).includes(st.symbol) || (L.markets || []).includes(st.market);
+    }
+    _ladder(st, bar15) {
+      const L = Object.assign({}, DEFAULTS.ladder, this.cfg.ladder), T = bar15.t + G.M15;
+      if (T < this.cfg.signalsEnabledFrom) return;
+      if (this.openSignals(st.symbol).some((x) => x.strategy === 'LADDER')) return;
+      const b = st.series[G.M15].bars, h1 = st.series[G.H1].bars, w = L.w, n = b.length;
+      if (n < 120 || h1.length < 60) return;
+      const emaArr = (a, k) => { const m = 2 / (k + 1); let e = null; return a.map((v) => (e = e == null ? v : e + m * (v - e))); };
+      const tail15 = b.slice(-400), e15 = emaArr(tail15.map((x) => x.c), 50), last15 = tail15.length - 1;
+      let atr = null;
+      for (let i = 0; i < tail15.length; i++) { const x = tail15[i]; const tr = i ? Math.max(x.h - x.l, Math.abs(x.h - tail15[i - 1].c), Math.abs(x.l - tail15[i - 1].c)) : x.h - x.l; atr = atr == null ? tr : (atr * 13 + tr) / 14; }
+      const tail1h = h1.slice(-400), e1 = emaArr(tail1h.map((x) => x.c), 50), j = tail1h.length - 1;
+      const tr1h = tail1h[j].c > e1[j] && e1[j] > e1[j - 3] ? 1 : tail1h[j].c < e1[j] && e1[j] < e1[j - 3] ? -1 : 0;
+      if (L.units && L.units[st.symbol]) atr = L.units[st.symbol]; // fixed price distances (gold: the original $ ladder)
+      const i = n - 1 - w, px = b[n - 1].c;
+      for (const d of [1, -1]) {
+        let ok = true;
+        for (let k = 1; k <= w; k++) {
+          if (d > 0) { if (!(b[i].l < b[i - k].l && b[i].l <= b[i + k].l)) ok = false; }
+          else if (!(b[i].h > b[i - k].h && b[i].h >= b[i + k].h)) ok = false;
+        }
+        if (!ok) continue;
+        const lvl = d > 0 ? b[i].l : b[i].h;
+        if ((px - lvl) * d < L.away * atr) continue;          // price has moved away, so a limit back at the level makes sense
+        if (tr1h === -d) continue;                             // never against the 1H
+        if ((px - e15[last15]) * d < 0) continue;              // 15m closed on the trade's side of its EMA50
+        const dir = d > 0 ? 'BUY' : 'SELL', S = st.series;
+        const entry = lvl + d * L.front * atr, risk = L.sl * atr, sl = entry - d * risk;
+        const tps = L.tps.map((x) => entry + d * x * atr), rs = L.tps.map((x) => x / L.sl);
+        const bias = { H4: trendOf(S[G.H4]).dir, H2: trendOf(S[G.H2]).dir, H1: tr1h > 0 ? 'UP' : tr1h < 0 ? 'DOWN' : 'FLAT', M15: trendOf(S[G.M15]).dir, M5: trendOf(S[G.M5]).dir };
+        const want = d > 0 ? 'UP' : 'DOWN';
+        const reasons = [];
+        let score = 60;
+        const add = (pts, ok2, label, detail) => { if (ok2) score += pts; reasons.push({ ok: ok2, pts: ok2 ? pts : 0, label, detail }); };
+        reasons.push({ ok: true, pts: 0, label: 'Fresh 15m swing ' + (d > 0 ? 'low' : 'high'), detail: fmt(lvl, st.dec) + ', confirmed by ' + w + ' candles each side' });
+        add(15, bias.H1 === want, '1H trend with the trade', bias.H1);
+        add(10, bias.H4 === want, '4H trend with the trade', bias.H4);
+        add(5, bias.H2 === want, '2H trend with the trade', bias.H2);
+        add(10, bias.M15 === want, '15m trend with the trade', bias.M15 + ', close on the right side of EMA50');
+        score = Math.min(100, score);
+        const grade = score >= 85 ? 'A+' : score >= 74 ? 'A' : 'B';
+        const sig = {
+          id: uid(), symbol: st.symbol, name: st.name, market: st.market, source: st.source, dec: st.dec,
+          strategy: 'LADDER', setup: 'Royal Ladder', kind: bias.H1 === want ? 'TREND' : 'SCALP', dir, tf: '15m', entryType: 'LIMIT',
+          entry, sl, slLive: sl, tp1: tps[0], tp2: tps[1], tps, rs, risk, r1: rs[0], r2: rs[1], stage: 0, beAt: L.beAt,
+          expiresAt: T + L.expH * 3600, maxHold: L.holdH * 3600, level: lvl, atr,
+          score, grade, reasons, unproven: (this.cfg.ladderRoyalty || []).includes(st.symbol),
+          bias, or: null, status: 'PENDING', createdAt: T, filledAt: null, tp1At: null, closedAt: null, lastT: T,
+          result: null, mfeR: 0, maeR: 0, price: px, exit: null,
+        };
+        const dd = st.dec;
+        sig.text = [
+          `${dir} ${st.name}: Royal Ladder, grade ${grade} (${score}/100).`,
+          `A fresh 15m swing ${d > 0 ? 'low' : 'high'} formed at ${fmt(lvl, dd)} and price has moved away from it. The 1H trend is ${bias.H1.toLowerCase()} (never against the trade) and the 15m is on the right side of its EMA50.`,
+          `Limit ${dir.toLowerCase()} at ${fmt(entry, dd)}, set just before the level so it fills even if price doesn't quite tag it. Stop ${fmt(sl, dd)}. The order is cancelled if it isn't filled within ${L.expH} hours.`,
+          `Five targets: ${tps.map((x, k) => 'TP' + (k + 1) + ' ' + fmt(x, dd)).join(', ')}. Close a fifth at each, and move the stop to entry after TP${L.beAt}.`,
+          sig.unproven ? 'Royalty: the ladder has no proven edge on this market yet. Watch it, or trade the smallest size only.' : '',
+        ].filter(Boolean).join(' ');
+        this.signals.push(sig);
+        this.hooks.onSignal && this.hooks.onSignal(sig);
+        return sig;
+      }
+    }
+    _trackLadder(sig, st, hi, lo, t, price) {
+      const d = dirSign(sig.dir), fav = d > 0 ? hi : lo, adv = d > 0 ? lo : hi, prev = sig.status;
+      sig.price = price; sig.lastT = t;
+      if (sig.status === 'PENDING') {
+        if (t >= sig.expiresAt) return this._closeLadder(sig, st, 'EXPIRED', price, t);
+        if (!(d > 0 ? adv <= sig.entry : adv >= sig.entry)) return;
+        sig.status = 'ACTIVE'; sig.filledAt = t;
+        if (d > 0 ? adv <= sig.sl : adv >= sig.sl) return this._closeLadder(sig, st, 'SL_HIT', sig.sl, t);
+        this.hooks.onUpdate && this.hooks.onUpdate(sig, prev);
+        return; // targets are checked from the next bar
+      }
+      sig.mfeR = Math.max(sig.mfeR, (d * (fav - sig.entry)) / sig.risk);
+      sig.maeR = Math.min(sig.maeR, (d * (adv - sig.entry)) / sig.risk);
+      if (t - sig.filledAt > sig.maxHold) return this._closeLadder(sig, st, 'TIME_EXIT', price, t);
+      if (d > 0 ? adv <= sig.slLive : adv >= sig.slLive) return this._closeLadder(sig, st, sig.stage >= sig.beAt ? 'BE_HIT' : 'SL_HIT', sig.slLive, t);
+      const before = sig.stage;
+      while (sig.stage < sig.tps.length && (d > 0 ? fav >= sig.tps[sig.stage] : fav <= sig.tps[sig.stage])) {
+        sig.stage++;
+        if (sig.stage === 1) sig.tp1At = t;
+        if (sig.stage === sig.beAt) sig.slLive = sig.entry;
+      }
+      if (sig.stage === sig.tps.length) return this._closeLadder(sig, st, 'TP5_HIT', sig.tps[sig.tps.length - 1], t);
+      if (sig.stage > before) { sig.status = 'TP1_HIT'; this.hooks.onUpdate && this.hooks.onUpdate(sig, prev === 'TP1_HIT' ? 'TP' + before : prev); }
+    }
+    _closeLadder(sig, st, status, exitPrice, t) {
+      const prev = sig.status, d = dirSign(sig.dir), n = sig.tps.length;
+      let R = 0;
+      if (status !== 'EXPIRED' && status !== 'CANCELLED') {
+        for (let k = 0; k < sig.stage; k++) R += sig.rs[k] / n;
+        const rem = (n - sig.stage) / n;
+        R += ((d * (exitPrice - sig.entry)) / sig.risk) * rem;
+      }
+      sig.status = status; sig.closedAt = t; sig.exit = exitPrice; sig.result = Math.round(R * 100) / 100; sig.lastT = t;
+      this.hooks.onUpdate && this.hooks.onUpdate(sig, prev);
     }
 
     // ---------- reading ----------
@@ -655,7 +600,8 @@
       const er = efficiency(S[G.M15], 16);
       let orState = 'forming';
       if (b && b.done) orState = st.price > b.hi ? 'above' : st.price < b.lo ? 'below' : 'inside';
-      const open = this.openSignals(symbol)[0] || null;
+      const open = this.openSignals(symbol).find((x) => x.strategy !== 'LADDER') || null;
+      const ladderOpen = this.openSignals(symbol).find((x) => x.strategy === 'LADDER') || null;
       let look = 'Waiting';
       if (open) look = 'In trade';
       else if (tr.H1 === 'FLAT' && this.cfg.trendMode === 'strict') look = 'No 1H trend';
@@ -665,7 +611,7 @@
       else look = 'Timeframes disagree';
       return { symbol, name: st.name, market: st.market, dec: st.dec, price: st.price, t: st.lastT, trend: tr, er,
         or: b ? { hi: b.hi, lo: b.lo, done: b.done, start: b.start, end: b.end, state: orState } : null,
-        open: open ? open.id : null, look, ready: st.ready };
+        open: open ? open.id : null, ladder: ladderOpen ? ladderOpen.id : null, look, ready: st.ready };
     }
 
     narrative(sig, x) {
@@ -681,11 +627,7 @@
       lines.push(`The SL at ${fmt(sig.sl, d)} sits beyond the range midpoint and the recent 2m swing. Risk is ${(sig.risk / x.atr15).toFixed(2)}× the 15m ATR.`);
       lines.push(`TP1 ${fmt(sig.tp1, d)} (${sig.r1.toFixed(2)}R) and TP2 ${fmt(sig.tp2, d)} (${sig.r2.toFixed(2)}R). ${x.nearest != null ? `The next 1H structure is ${x.roomR.toFixed(1)}R away at ${fmt(x.nearest, d)}.` : 'There is no 1H structure in the way.'}`);
       if (sig.unproven) lines.push('Royalty: this market runs the Royalty strategy, which has no proven edge in backtests yet. Watch it, or trade the smallest size only.');
-      { const c = this.cfg, tr = c.trail || {};
-        const pre = [c.beAtR ? `at +${c.beAtR}R move the SL to entry${c.beLockR ? ' +' + c.beLockR + 'R' : ''}` : '', c.softStop ? `close early if a ${c.softStop.tf / 60}m candle closes ${c.softStop.r}R against you` : '', c.dyn ? `trail the SL ${c.dyn.dist}R behind the best price, but never past ${fmt(sig.entry + dirSign(sig.dir) * (c.dyn.cap == null ? 0.5 : c.dyn.cap) * Math.abs(sig.tp1 - sig.entry), sig.dec)} (halfway to TP1)` : ''].filter(Boolean).join('; ');
-        const post = tr.mode && tr.mode !== 'off' ? `trail the rest ${sig.market === 'forex' && tr.mode === 'pips' ? tr.pips + ' pips' : tr.atr + '× the 15m ATR'} behind price${tr.keepTp2 === false ? ' (TP2 is a guide)' : ''}` : 'let the rest run to TP2';
-        if (c.three) lines.push(`Management: open 3 equal positions with the same SL. ${pre ? 'Before TP1, ' + pre + '. ' : 'Nothing moves before TP1. '}At TP1, move the SL of positions 1 and 2 to TP1 (${fmt(sig.tp1, d)}) and the SL of position 3 halfway, to ${fmt(sig.entry + 0.5 * (sig.tp1 - sig.entry), d)}. All 3 aim for TP2.`); else
-        lines.push(`Management: ${pre ? 'before TP1, ' + pre + '. ' : ''}Close ${Math.round(c.partialAtTp1 * 100)}% at TP1 and move the SL to entry${c.tp1Lock ? ' +' + c.tp1Lock + 'R' : ''}, then ${post}.`); }
+      lines.push(`Management: close ${Math.round(this.cfg.partialAtTp1 * 100)}% at TP1 and move the SL to entry, then let the rest run to TP2.`);
       return lines.join(' ');
     }
   }
@@ -693,7 +635,7 @@
   // ---------- stats ----------
   function stats(list) {
     const closed = list.filter((s) => s.result != null && !['EXPIRED', 'CANCELLED'].includes(s.status));
-    const wins = closed.filter((s) => s.result > 0);
+    const wins = closed.filter((s) => (s.strategy === 'LADDER' ? s.result > 0 : s.tp1At || s.status === 'TP2_HIT' || s.status === 'BE_HIT' || (s.status === 'TIME_EXIT' && s.result > 0)));
     const sumR = closed.reduce((a, s) => a + s.result, 0);
     const gross = closed.filter((s) => s.result > 0).reduce((a, s) => a + s.result, 0);
     const loss = -closed.filter((s) => s.result < 0).reduce((a, s) => a + s.result, 0);
@@ -702,7 +644,7 @@
     const count = (st) => closed.filter((s) => s.status === st).length;
     const group = (key) => {
       const o = {};
-      for (const s of closed) { const k = key(s); o[k] = o[k] || { n: 0, w: 0, t1: 0, R: 0 }; o[k].n++; o[k].R += s.result; if (s.result > 0) o[k].w++; if (s.tp1At) o[k].t1++; }
+      for (const s of closed) { const k = key(s); o[k] = o[k] || { n: 0, w: 0, R: 0 }; o[k].n++; o[k].R += s.result; if (s.tp1At || s.result > 0) o[k].w++; }
       for (const k in o) o[k].R = Math.round(o[k].R * 100) / 100;
       return o;
     };
@@ -710,12 +652,10 @@
       total: list.length, closed: closed.length, open: list.filter((s) => ['PENDING', 'ACTIVE', 'TP1_HIT'].includes(s.status)).length,
       expired: list.filter((s) => s.status === 'EXPIRED' || s.status === 'CANCELLED').length,
       wins: wins.length, winRate: closed.length ? wins.length / closed.length : 0,
-      tp1Hits: closed.filter((s) => s.tp1At).length, tp1Rate: closed.length ? closed.filter((s) => s.tp1At).length / closed.length : 0,
       sl: count('SL_HIT'), tp2: count('TP2_HIT') + count('TP5_HIT'), be: count('BE_HIT'), timeExit: count('TIME_EXIT'),
       totalR: Math.round(sumR * 100) / 100, avgR: closed.length ? sumR / closed.length : 0,
       profitFactor: loss ? gross / loss : gross ? Infinity : 0, maxDD: Math.round(dd * 100) / 100, curve,
-      ddNow: Math.round((peak - eq) * 100) / 100, sizeNow: peak - eq >= 3 ? 0.25 : peak - eq >= 2 ? 0.5 : 1, // drawdown rule: half size from 2R below the peak, quarter from 3R
-      byGrade: group((s) => s.grade), bySymbol: group((s) => s.name), byKind: group((s) => s.kind), bySetup: group((s) => s.setup), byStrategy: group(() => 'ORB+'),
+      byGrade: group((s) => s.grade), bySymbol: group((s) => s.name), byKind: group((s) => s.kind), bySetup: group((s) => s.setup), byStrategy: group((s) => (s.strategy === 'LADDER' ? 'Royal Ladder' : 'ORB+')),
     };
   }
 
@@ -913,18 +853,9 @@
     for (const b of bars) { if (b.t < startFeed) continue; eng.onBar(sym, b); }
     // close anything still open at the end at last price (time exit) for honest accounting
     const lastBar = last(bars);
-    for (const s of eng.openSignals(sym)) eng._close(s, st, s.status === 'PENDING' ? 'EXPIRED' : 'TIME_EXIT', lastBar.c, lastBar.t + 60);
+    for (const s of eng.openSignals(sym)) (s.strategy === 'LADDER' ? eng._closeLadder.bind(eng) : eng._close.bind(eng))(s, st, s.status === 'PENDING' ? 'EXPIRED' : 'TIME_EXIT', lastBar.c, lastBar.t + 60);
     return { signals: eng.signals, from: startFeed, to: lastBar.t, bars: bars.length };
   }
-
-  // Trade-management presets (management lab, 23 Nov 2026)
-  const MANAGEMENT = {
-    // Regime lab, 24 Nov 2026: both windows together, ORB+ only
-    quality: { label: 'High quality', beAtR: 0, beLockR: 0, tp1Lock: 0.3, softStop: null, dyn: null, trail: { mode: 'pips', pips: 20, atr: 0.75, keepTp2: false },
-      minOrAtr: 0.6, maxOrAtr: 0.9, hours: { fromUtc: 6, toUtc: 18 } },   // 89% in profit, PF 3.85, 3.7R DD, +100.1R, ~6 signals a day
-    volume: { label: 'More signals', beAtR: 0, beLockR: 0, tp1Lock: 0.3, softStop: null, dyn: null, trail: { mode: 'pips', pips: 20, atr: 0.75, keepTp2: false },
-      minOrAtr: 0, maxOrAtr: 1.5, hours: null },                            // 87% in profit, PF 2.37, 7.0R DD, +214.8R, ~23 signals a day
-  };
 
   const D = (symbol, name, market = 'synthetic') => ({ symbol, name, market, source: 'deriv' });
   // Weltrade SyntX pairs arrive through your MT5 terminal (source 'mt5'), the same bridge model Aurum uses.
@@ -949,5 +880,5 @@
     W('GainX-400'), W('GainX-600'), W('PainX-400'), W('PainX-600'),
   ];
 
-  return { smcRead, Engine, Series, DerivFeed, BridgeFeed, aggCandles, startLive, backtest, stats, trendOf, efficiency, pivots, fmt, toBar, decimalsOf, G, TF_NAME, DEFAULTS, DEFAULT_SYMBOLS, WELTRADE_SYMBOLS, MANAGEMENT, version: '1.15' };
+  return { Engine, Series, DerivFeed, BridgeFeed, aggCandles, startLive, backtest, stats, trendOf, efficiency, pivots, fmt, toBar, decimalsOf, G, TF_NAME, DEFAULTS, DEFAULT_SYMBOLS, WELTRADE_SYMBOLS, version: '1.4.0' };
 });
