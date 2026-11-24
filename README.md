@@ -9,7 +9,9 @@ A live signal platform in the style of Aurum Signals, built from scratch around 
 | Engine | `engine/moxie-engine.js` | ORB+ strategy, multi-timeframe filters, grading, live trade capture, stats, and the Deriv and Weltrade feeds. Runs in the browser and in Node. |
 | Terminal | `web/index.html` | Live signals, scanner, chart, performance, backtest, risk tools and settings |
 | Single file | `dist/RoyalTrades.html` | Terminal with the engine built in. Open it in Chrome and it runs. |
-| Server | `server/server.js` | 24/7 engine with SSE stream to the terminal, optional Telegram broadcast and an optional access key for members |
+| Server | `server/server.js` | 24/7 engine with SSE stream to the terminal, optional Telegram broadcast, an optional access key for members, and the optional robot |
+| Robot | `engine/royal-robot.js` | Places signals automatically: Paper, or a Deriv demo/real account through Deriv's API (Multipliers). Runs in the terminal's Robot tab or on the server. |
+| MT5 robot | `mt5/RoyalTradesRobot.mq5` | Places signals on an MT5 account (Deriv MT5, Weltrade) with lot sizes, reading the server's `/api/robot/feed` |
 
 ## How a signal is made
 
@@ -308,3 +310,26 @@ v1.12 turns the late-entry filter on in the live engine (`skipLate: true`, set i
 Over all 60 days it lifts the profit factor from 3.51 to 5.17 and the in-profit rate from 88% to 90%, with about 60% fewer
 trades and less total R (+78.4R vs +145.0R). On the oldest window alone, which was never used to choose settings, it did
 slightly worse than v1.11.1 (PF 2.55 vs 3.05), so watch the live record. The −2R / −3R size rule and the Ladder removal are unchanged.
+
+## Royal Robot: automatic execution
+
+Educational software, not financial advice. Automated trading can lose money fast. Run it in Paper mode or on a demo account first.
+
+The robot takes the same signals the terminal shows and places the trades for you. It never invents its own trades.
+
+**Where it runs**
+- **Robot tab in the terminal.** Press START. It trades while the tab is open. The stop loss and take profit sit at the broker, so they still work if the tab closes. Early exits (profit lock, trailing, cutting early) only happen while the robot is running.
+- **On the server (24/7).** `ROBOT_MODE=demo DERIV_APP_ID=... DERIV_TOKEN=... node server/server.js`. Status is at `/api/robot`. A real account needs `ROBOT_MODE=real ROBOT_REAL_CONFIRM=I_UNDERSTAND`. Settings go in `ROBOT_SETTINGS` as JSON, for example `{"riskPct":1,"maxOpen":2}`.
+- **MT5 (lot sizes).** `mt5/RoyalTradesRobot.mq5` reads the server's `/api/robot/feed` and trades any MT5 account (Deriv MT5, Weltrade) with fixed lots or lots sized from % risk. Attach it to one chart and allow WebRequest to your server.
+
+**Deriv connection.** Easiest: **Log in with Deriv** (OAuth with PKCE). The App ID `3533hZTM3TxsGSi8gV95I` ("Royal Trades Robot", OAuth, `trade` scope, redirect `https://moxy19.github.io/trades-with-moxie/`) is registered and built in. After that, users just sign in at Deriv, and the access token is kept for that browser session only. Deriv's guide prefers the token exchange from a server; if Deriv blocks it from the browser, paste a token instead. Or make an App ID and a Personal Access Token with the **trade** scope at [developers.deriv.com](https://developers.deriv.com). The robot exchanges the token for a one-time WebSocket address (`POST /trading/v1/options/accounts/{id}/otp`). It checks that the account type matches the mode: in demo mode it refuses a real account. The token is never logged or put in the robot's history. It is only kept in the browser if you tick "remember".
+
+**How a trade is placed (Deriv).** Each signal becomes a MULTUP (buy) or MULTDOWN (sell) Multiplier contract:
+- **Size.** Loss at the stop ≈ stake × multiplier × stop distance ÷ price. In "% risk" mode the robot picks the stake and multiplier so a stopped-out trade loses your chosen % (default 1%). Deriv's minimum stake is $1, so on small accounts it uses a lower multiplier. If even that would pass the cap (default 3%), it skips the trade.
+- **Broker-side protection.** Stop loss = the money at risk. Take profit = TP1 for the first half.
+- **Management.** At TP1 the first contract closes. The second contract follows the engine: its broker stop tightens as the engine's stop moves, and it closes when the engine closes the trade.
+- **Fixed stake** mode is the Deriv version of a lot size.
+
+**Safety limits** (all editable): the v1.11.1 drawdown rule on the robot's own results (half size from 2R below its peak, quarter from 3R), max 2 open trades, one per market, 8 trades a day, a 6% daily loss limit that counts open risk, a pause after 3 losses in a row, a $3 balance floor, a cap on stake per trade, and skips for signals older than 3 minutes or more than 0.3R past entry. Default filters: grades A+ and A, synthetics only, Royalty markets skipped. Per-pair settings: on/off, direction, stake and max trades a day.
+
+**Tested** (`node test/robot.test.js`): sizing, every limit, Paper trading on the live engine path, and the Deriv client against a fake Deriv server. That covers the OTP exchange, the demo/real account check, proposal → buy → contract stream → sell, and the token never leaking. It has not yet run against Deriv's real servers, because this build environment can't reach them. The MT5 robot has not been compiled yet. Compile it in MetaEditor and run it on a demo account before relying on it.
