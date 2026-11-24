@@ -23,6 +23,7 @@
     orBlock: 3600,          // session block in seconds (3600 = new opening range every hour)
     orMinutes: 15,          // opening range length
     bufferFrac: 0.15,       // breakout must clear the edge by this fraction of range height (tuned on 7d real data)
+    htfNoAgainst: false,    // golden rule (lab): block any trade with 4H or 2H against it
     trendMode: 'adaptive',  // 'strict' = only with 1H trend; 'adaptive' = also counter-1H scalps when 1H is weak
     minScore: 74,           // publish threshold (A grade). SL lab 23 Nov: scores under 74 won 37% (-0.28R each)
     minScalpScore: 80,      // counter-1H scalps need more confluence
@@ -388,6 +389,8 @@
       if (!m15ok) return reject('15m not aligned');
       // --- higher-TF veto: 2H and 4H both against ---
       if (tH4.dir === against(dir) && tH2.dir === against(dir)) return reject('2H and 4H both against');
+      // golden rule (user): never against the higher timeframe. htfNoAgainst blocks a trade when 4H or 2H is against it
+      if (cfg.htfNoAgainst && (tH4.dir === against(dir) || tH2.dir === against(dir))) return reject('Golden rule: 4H or 2H against the trade');
       // --- chop filter ---
       if (er15 < cfg.chopMin) return reject('15m is ranging (efficiency ' + er15.toFixed(2) + ')');
       // --- loss guard: no same-direction re-entry after SL until a fresh opening range AND 15m swing confirms ---
