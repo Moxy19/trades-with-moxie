@@ -44,6 +44,7 @@
     maxSlipR: 0.3,          // skip when price has already run this many R past the entry
     maxAgeSec: 180,         // skip signals older than this when the robot sees them
     paperBalance: 10,       // starting balance for Paper mode
+    ddRule: true,           // v1.11.1 drawdown rule on the robot's own results: half size from 2R below its peak, quarter from 3R, full again at a new high
   };
 
   const MULTS = [1, 5, 10, 20, 30, 40, 50, 60, 80, 100, 150, 200, 300, 400, 500, 600, 800, 1000, 1500, 2000];
@@ -271,10 +272,12 @@
         this.journal = this.store.get('robot.journal') || [];
         this.day = this.store.get('robot.day') || null;
         this.pos = this.store.get('robot.pos') || {};
+        this.eq = this.store.get('robot.eq') || null;
       }
+      if (!this.eq) this.eq = { r: 0, peak: 0 };
     }
     setSettings(s) { this.set = Object.assign({}, ROBOT_DEFAULTS, this.set, s || {}); this._changed(); }
-    _save() { if (!this.store) return; this.store.set('robot.journal', this.journal.slice(-300)); this.store.set('robot.day', this.day); this.store.set('robot.pos', this._posForSave()); }
+    _save() { if (!this.store) return; this.store.set('robot.journal', this.journal.slice(-300)); this.store.set('robot.day', this.day); this.store.set('robot.pos', this._posForSave()); this.store.set('robot.eq', this.eq); }
     _posForSave() { const o = {}; for (const k in this.pos) { const p = this.pos[k]; o[k] = Object.assign({}, p, { sig: { id: p.sig.id, symbol: p.sig.symbol, name: p.sig.name, dir: p.sig.dir } }); } return o; }
     _changed() { this._save(); this.onChange(this.state()); }
     note(type, msg, extra) {
@@ -324,10 +327,11 @@
         mode: this.set.mode, running: this.running, status: this.status, account: this.account, balance: this.balance,
         today: { trades: d.trades || 0, max: this.set.maxPerDay, realized: cents(d.realized || 0), wins: d.wins || 0, losses: d.losses || 0, consec: d.consec || 0, lossLimit: this._lossLimit() },
         open: openPos.map((p) => ({ id: p.sig.id, name: p.sig.name, symbol: p.sig.symbol, dir: p.sig.dir, risk: p.risk, stake: p.legs.reduce((a, l) => a + l.stake, 0), mult: p.legs[0] && p.legs[0].mult, legs: p.legs.length, profit: cents(p.legs.reduce((a, l) => a + (l.profit || 0), 0)), opened: p.t })),
-        halt: this.halt, journal: this.journal.slice(-150),
+        halt: this.halt, sizeFactor: this.sizeFactor(), ddR: cents(this.eq.peak - this.eq.r), journal: this.journal.slice(-150),
       };
     }
     _lossLimit() { const b = (this.day && this.day.startBal) || this.balance || 0; return cents((b * this.set.maxDailyLossPct) / 100); }
+    sizeFactor() { if (!this.set.ddRule) return 1; const dd = this.eq.peak - this.eq.r; return dd >= 3 ? 0.25 : dd >= 2 ? 0.5 : 1; }
     pairSet(sym) { return Object.assign({}, this.set, (this.set.pairs && this.set.pairs[sym]) || {}); }
 
     // ---- signal intake ----
@@ -377,7 +381,10 @@
       try {
         let q;
         try { q = await this.broker.quote(sig.symbol); } catch (e) { return skip(e.message); }
-        const sz = sizeTrade({ price, sl: sig.sl, r1: sig.r1 || 1, balance: this.balance || 0, set: ps, mults: q.mults, minStake: q.minStake });
+        const k = this.sizeFactor();
+        const pz = k < 1 ? Object.assign({}, ps, { riskPct: ps.riskPct * k, riskUsd: ps.riskUsd * k, stake: Math.max(q.minStake, ps.stake * k) }) : ps;
+        const sz = sizeTrade({ price, sl: sig.sl, r1: sig.r1 || 1, balance: this.balance || 0, set: pz, mults: q.mults, minStake: q.minStake });
+        if (!sz.skip && k < 1) sz.note = (sz.note ? sz.note + ', ' : '') + (k === 0.5 ? 'half' : 'quarter') + ' size: ' + (this.eq.peak - this.eq.r).toFixed(1) + 'R below peak';
         if (sz.skip) return skip(sz.skip);
         const openRisk = live.reduce((a, p) => a + p.risk, 0);
         const lossToday = Math.max(0, -d.realized);
@@ -427,6 +434,7 @@
       if (p.legs.some((x) => x.open)) { this._changed(); return; }
       const net = cents(p.legs.reduce((a, x) => a + (x.profit || 0), 0)), d = this._today();
       d.realized = cents(d.realized + net);
+      if (p.risk > 0) { this.eq.r = Math.round((this.eq.r + net / p.risk) * 100) / 100; this.eq.peak = Math.max(this.eq.peak, this.eq.r); }
       if (net < 0) { d.losses++; d.consec++; } else { d.wins++; d.consec = 0; }
       this.note('close', `${p.sig.dir} ${p.sig.name} closed (${why}) · ${net >= 0 ? '+' : '−'}$${Math.abs(net).toFixed(2)}${p.risk ? ' (' + (net / p.risk >= 0 ? '+' : '') + (net / p.risk).toFixed(2) + 'R)' : ''}`, { sym: p.sig.symbol, sig: p.sig.id, pnl: net });
       delete this.pos[p.sig.id];

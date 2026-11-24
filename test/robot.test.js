@@ -82,6 +82,8 @@ const tick = () => new Promise((r) => setImmediate(r));
     assert(!robot.pos[s3.id], 'runner closed when the engine trailed out');
     const last = robot.journal.filter((j) => j.type === 'close').pop(); console.log('tp1 close:', last.msg); assert(last.pnl > 0);
     await robot.stop(true); assert(Object.keys(robot.pos).length === 0, 'stop(true) closes all');
+    // drawdown rule: 2R below the peak -> half size
+    robot.eq = { r: -2.1, peak: 0 }; assert.strictEqual(robot.sizeFactor(), 0.5); robot.eq = { r: -3, peak: 0 }; assert.strictEqual(robot.sizeFactor(), 0.25); robot.eq = { r: 1, peak: 1 }; assert.strictEqual(robot.sizeFactor(), 1);
   }
 
   // ---------- 3) Paper robot on the real engine (live path, mock market) ----------

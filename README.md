@@ -290,6 +290,22 @@ It can't meet a 75% win-rate floor, so v1.11 removes it from the engine and the 
 ORB+ signals are unchanged: replayed on the same data, v1.10 and v1.11 produce identical trades.
 The lab's "Royal Ladder" variant needs the v1.10 engine (`git show 0f130f5:engine/moxie-engine.js`).
 
+## 60-day fresh comparison (24 Nov 2026)
+
+`tools/fresh-lab.js`: three back-to-back windows of about 20 trading days each (~62 days on synthetics and crypto,
+~3 calendar months on forex), 23 Deriv markets, ORB+ only, stop first on ties, no spread. Window 3 (the oldest) was never
+used to choose any setting.
+
+| System | Trades | In profit | Profit factor | Max drawdown | Net | Window 3 alone |
+|---|---|---|---|---|---|---|
+| v1.2 (renamed to Royal Trades, original rules) | 1528 | 47% | 1.06 | 37.4R | +45.1R | 43%, PF 0.89, −30.2R |
+| v1.2 entries + v1.10 trade management | 3747 | 86% | 1.92 | 10.4R | +422.7R | 84%, PF 1.71, +119.1R |
+| **v1.10 / v1.11 (live)** | 537 | 88% | **3.51** | 3.1R | +145.0R | 84%, PF 3.05, 2.9R, +45.1R |
+| v1.10 + late-entry filter (score 95+ with 2H and 4H aligned skipped) | 215 | 90% | 5.17 | 3.2R | +78.4R | 83%, PF 2.55, +18.5R: not shipped |
+
+v1.11.1 adds the drawdown size rule to the terminal: half size from 2R below the equity peak, quarter size from 3R,
+full size again at a new high.
+
 ## Royal Robot: automatic execution (v1.12)
 
 Educational software, not financial advice. Automated trading can lose money fast. Run it in Paper mode or on a demo account first.
@@ -309,6 +325,6 @@ The robot takes the same signals the terminal shows and places the trades for yo
 - **Management.** At TP1 the first contract closes. The second contract follows the engine: its broker stop tightens as the engine's stop moves, and it closes when the engine closes the trade.
 - **Fixed stake** mode is the Deriv version of a lot size.
 
-**Safety limits** (all editable): max 2 open trades, one per market, 8 trades a day, a 6% daily loss limit that counts open risk, a pause after 3 losses in a row, a $3 balance floor, a cap on stake per trade, and skips for signals older than 3 minutes or more than 0.3R past entry. Default filters: grades A+ and A, synthetics only, Royalty markets skipped. Per-pair settings: on/off, direction, stake and max trades a day.
+**Safety limits** (all editable): the v1.11.1 drawdown rule on the robot's own results (half size from 2R below its peak, quarter from 3R), max 2 open trades, one per market, 8 trades a day, a 6% daily loss limit that counts open risk, a pause after 3 losses in a row, a $3 balance floor, a cap on stake per trade, and skips for signals older than 3 minutes or more than 0.3R past entry. Default filters: grades A+ and A, synthetics only, Royalty markets skipped. Per-pair settings: on/off, direction, stake and max trades a day.
 
 **Tested** (`node test/robot.test.js`): sizing, every limit, Paper trading on the live engine path, and the Deriv client against a fake Deriv server. That covers the OTP exchange, the demo/real account check, proposal → buy → contract stream → sell, and the token never leaking. It has not yet run against Deriv's real servers, because this build environment can't reach them. The MT5 robot has not been compiled yet. Compile it in MetaEditor and run it on a demo account before relying on it.

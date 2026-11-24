@@ -984,6 +984,7 @@ label.f input,label.f select{width:100%}
       sl: count('SL_HIT'), tp2: count('TP2_HIT') + count('TP5_HIT'), be: count('BE_HIT'), timeExit: count('TIME_EXIT'),
       totalR: Math.round(sumR * 100) / 100, avgR: closed.length ? sumR / closed.length : 0,
       profitFactor: loss ? gross / loss : gross ? Infinity : 0, maxDD: Math.round(dd * 100) / 100, curve,
+      ddNow: Math.round((peak - eq) * 100) / 100, sizeNow: peak - eq >= 3 ? 0.25 : peak - eq >= 2 ? 0.5 : 1, // drawdown rule: half size from 2R below the peak, quarter from 3R
       byGrade: group((s) => s.grade), bySymbol: group((s) => s.name), byKind: group((s) => s.kind), bySetup: group((s) => s.setup), byStrategy: group(() => 'ORB+'),
     };
   }
@@ -1218,7 +1219,7 @@ label.f input,label.f select{width:100%}
     W('GainX-400'), W('GainX-600'), W('PainX-400'), W('PainX-600'),
   ];
 
-  return { Engine, Series, DerivFeed, BridgeFeed, aggCandles, startLive, backtest, stats, trendOf, efficiency, pivots, fmt, toBar, decimalsOf, G, TF_NAME, DEFAULTS, DEFAULT_SYMBOLS, WELTRADE_SYMBOLS, MANAGEMENT, version: '1.11.0' };
+  return { Engine, Series, DerivFeed, BridgeFeed, aggCandles, startLive, backtest, stats, trendOf, efficiency, pivots, fmt, toBar, decimalsOf, G, TF_NAME, DEFAULTS, DEFAULT_SYMBOLS, WELTRADE_SYMBOLS, MANAGEMENT, version: '1.11.1' };
 });
 
 </script>
@@ -1269,6 +1270,7 @@ label.f input,label.f select{width:100%}
     maxSlipR: 0.3,          // skip when price has already run this many R past the entry
     maxAgeSec: 180,         // skip signals older than this when the robot sees them
     paperBalance: 10,       // starting balance for Paper mode
+    ddRule: true,           // v1.11.1 drawdown rule on the robot's own results: half size from 2R below its peak, quarter from 3R, full again at a new high
   };
 
   const MULTS = [1, 5, 10, 20, 30, 40, 50, 60, 80, 100, 150, 200, 300, 400, 500, 600, 800, 1000, 1500, 2000];
@@ -1496,10 +1498,12 @@ label.f input,label.f select{width:100%}
         this.journal = this.store.get('robot.journal') || [];
         this.day = this.store.get('robot.day') || null;
         this.pos = this.store.get('robot.pos') || {};
+        this.eq = this.store.get('robot.eq') || null;
       }
+      if (!this.eq) this.eq = { r: 0, peak: 0 };
     }
     setSettings(s) { this.set = Object.assign({}, ROBOT_DEFAULTS, this.set, s || {}); this._changed(); }
-    _save() { if (!this.store) return; this.store.set('robot.journal', this.journal.slice(-300)); this.store.set('robot.day', this.day); this.store.set('robot.pos', this._posForSave()); }
+    _save() { if (!this.store) return; this.store.set('robot.journal', this.journal.slice(-300)); this.store.set('robot.day', this.day); this.store.set('robot.pos', this._posForSave()); this.store.set('robot.eq', this.eq); }
     _posForSave() { const o = {}; for (const k in this.pos) { const p = this.pos[k]; o[k] = Object.assign({}, p, { sig: { id: p.sig.id, symbol: p.sig.symbol, name: p.sig.name, dir: p.sig.dir } }); } return o; }
     _changed() { this._save(); this.onChange(this.state()); }
     note(type, msg, extra) {
@@ -1549,10 +1553,11 @@ label.f input,label.f select{width:100%}
         mode: this.set.mode, running: this.running, status: this.status, account: this.account, balance: this.balance,
         today: { trades: d.trades || 0, max: this.set.maxPerDay, realized: cents(d.realized || 0), wins: d.wins || 0, losses: d.losses || 0, consec: d.consec || 0, lossLimit: this._lossLimit() },
         open: openPos.map((p) => ({ id: p.sig.id, name: p.sig.name, symbol: p.sig.symbol, dir: p.sig.dir, risk: p.risk, stake: p.legs.reduce((a, l) => a + l.stake, 0), mult: p.legs[0] && p.legs[0].mult, legs: p.legs.length, profit: cents(p.legs.reduce((a, l) => a + (l.profit || 0), 0)), opened: p.t })),
-        halt: this.halt, journal: this.journal.slice(-150),
+        halt: this.halt, sizeFactor: this.sizeFactor(), ddR: cents(this.eq.peak - this.eq.r), journal: this.journal.slice(-150),
       };
     }
     _lossLimit() { const b = (this.day && this.day.startBal) || this.balance || 0; return cents((b * this.set.maxDailyLossPct) / 100); }
+    sizeFactor() { if (!this.set.ddRule) return 1; const dd = this.eq.peak - this.eq.r; return dd >= 3 ? 0.25 : dd >= 2 ? 0.5 : 1; }
     pairSet(sym) { return Object.assign({}, this.set, (this.set.pairs && this.set.pairs[sym]) || {}); }
 
     // ---- signal intake ----
@@ -1602,7 +1607,10 @@ label.f input,label.f select{width:100%}
       try {
         let q;
         try { q = await this.broker.quote(sig.symbol); } catch (e) { return skip(e.message); }
-        const sz = sizeTrade({ price, sl: sig.sl, r1: sig.r1 || 1, balance: this.balance || 0, set: ps, mults: q.mults, minStake: q.minStake });
+        const k = this.sizeFactor();
+        const pz = k < 1 ? Object.assign({}, ps, { riskPct: ps.riskPct * k, riskUsd: ps.riskUsd * k, stake: Math.max(q.minStake, ps.stake * k) }) : ps;
+        const sz = sizeTrade({ price, sl: sig.sl, r1: sig.r1 || 1, balance: this.balance || 0, set: pz, mults: q.mults, minStake: q.minStake });
+        if (!sz.skip && k < 1) sz.note = (sz.note ? sz.note + ', ' : '') + (k === 0.5 ? 'half' : 'quarter') + ' size: ' + (this.eq.peak - this.eq.r).toFixed(1) + 'R below peak';
         if (sz.skip) return skip(sz.skip);
         const openRisk = live.reduce((a, p) => a + p.risk, 0);
         const lossToday = Math.max(0, -d.realized);
@@ -1652,6 +1660,7 @@ label.f input,label.f select{width:100%}
       if (p.legs.some((x) => x.open)) { this._changed(); return; }
       const net = cents(p.legs.reduce((a, x) => a + (x.profit || 0), 0)), d = this._today();
       d.realized = cents(d.realized + net);
+      if (p.risk > 0) { this.eq.r = Math.round((this.eq.r + net / p.risk) * 100) / 100; this.eq.peak = Math.max(this.eq.peak, this.eq.r); }
       if (net < 0) { d.losses++; d.consec++; } else { d.wins++; d.consec = 0; }
       this.note('close', `${p.sig.dir} ${p.sig.name} closed (${why}) · ${net >= 0 ? '+' : '−'}$${Math.abs(net).toFixed(2)}${p.risk ? ' (' + (net / p.risk >= 0 ? '+' : '') + (net / p.risk).toFixed(2) + 'R)' : ''}`, { sym: p.sig.symbol, sig: p.sig.id, pnl: net });
       delete this.pos[p.sig.id];
@@ -1854,7 +1863,7 @@ function kpiHTML(st, extra) {
     return `<div class="kpi"><div class="l">Win rate (closed in profit) · ORB+</div><div class="v">${o && o.n ? pc(o) : '—'}</div><div class="s">${o ? o.w + ' of ' + o.n + ' in profit · ' + t1(o) + ' reached TP1' : 'no closed ORB+ trades'} · all ${st.closed ? Math.round(st.tp1Rate * 100) + '%' : '—'} TP1</div></div>`; })()}
   <div class="kpi"><div class="l">Net result</div><div class="v ${st.totalR >= 0 ? 'pos' : 'neg'}">${st.totalR > 0 ? '+' : ''}${st.totalR}R</div><div class="s">avg ${st.avgR.toFixed(2)}R / trade</div></div>
   <div class="kpi"><div class="l">Profit factor</div><div class="v">${st.closed ? pf : '—'}</div><div class="s">${st.tp2} TP2 · ${st.be} BE · ${st.sl} SL</div></div>
-  <div class="kpi"><div class="l">Max drawdown</div><div class="v">${st.maxDD}R</div><div class="s">peak-to-trough</div></div>`;
+  <div class="kpi"><div class="l">Max drawdown</div><div class="v">${st.maxDD}R</div><div class="s">${st.sizeNow < 1 ? `<b class="neg">Now ${st.ddNow}R below peak: trade ${st.sizeNow === 0.5 ? 'half' : 'quarter'} size until a new high</b>` : 'peak-to-trough · now ' + (st.ddNow || 0) + 'R below peak'}</div></div>`;
 }
 
 // ---------- signal cards ----------
@@ -2263,7 +2272,7 @@ function renderRobot() {
   $('#rbLine').textContent = !on ? 'Takes Royal Trades signals and places the trades for you. Start in Paper or on a Deriv demo account.'
     : st.halt ? 'Paused for today: ' + st.halt.why
     : st.open.length ? `In ${st.open.length} trade${st.open.length > 1 ? 's' : ''} · ${st.open.map((o) => o.dir + ' ' + o.name).join(', ')}`
-    : `Watching ${S.symbols.length} markets for ${robot.set.grades.join('/')} signals${lastE ? ' · last: ' + lastE.msg : ''}`;
+    : (st.sizeFactor < 1 ? `${st.sizeFactor === 0.5 ? 'Half' : 'Quarter'} size: ${st.ddR}R below the robot's peak · ` : '') + `Watching ${S.symbols.length} markets for ${robot.set.grades.join('/')} signals${lastE ? ' · last: ' + lastE.msg : ''}`;
   $('#rbBal').textContent = st.balance == null ? '—' : rbMoney(+st.balance);
   $('#rbDay').textContent = `${st.today.trades}/${st.today.max}`;
   $('#rbPnl').innerHTML = `<span class="${st.today.realized > 0 ? 'pos' : st.today.realized < 0 ? 'neg' : ''}">${rbMoney(st.today.realized)}</span>`;
