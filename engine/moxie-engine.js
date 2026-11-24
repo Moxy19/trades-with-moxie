@@ -23,6 +23,7 @@
     orBlock: 3600,          // session block in seconds (3600 = new opening range every hour)
     orMinutes: 15,          // opening range length
     bufferFrac: 0.15,       // breakout must clear the edge by this fraction of range height (tuned on 7d real data)
+    smc: null,              // lab: { bos: block if 1H structure (BOS/CHoCH) is against, zone: block if an opposing OB/FVG sits before TP1, needZone: entry must sit at a demand/supply OB or FVG }
     htfNoAgainst: false,    // golden rule (lab): block any trade with 4H or 2H against it
     trendMode: 'adaptive',  // 'strict' = only with 1H trend; 'adaptive' = also counter-1H scalps when 1H is weak
     minScore: 74,           // publish threshold (A grade). SL lab 23 Nov: scores under 74 won 37% (-0.28R each)
@@ -161,6 +162,45 @@
       if (lo) lows.push({ i, t: b[i].t, p: b[i].l });
     }
     return { highs, lows };
+  }
+
+
+  // ---------- smart-money structure (v1.15 lab) ----------
+  // Reads one timeframe: market structure from swing breaks (BOS = break with the current structure, CHoCH = first
+  // break against it), unmitigated order blocks (last opposite candle before a displacement that broke a swing) and
+  // fair value gaps (3-candle imbalance). Zones are { dir: 'UP'|'DOWN', lo, hi, kind } and stay live until price
+  // closes through them.
+  function smcRead(s, lookback = 200) {
+    const b = s.bars, n = b.length, out = { dir: 'FLAT', last: null, zones: [] };
+    if (n < 30) return out;
+    const start = Math.max(3, n - lookback), atr = s.atr;
+    const pv = pivots(s, lookback, 2);
+    let hi = null, lo = null, hiK = 0, loK = 0, dir = 'FLAT';
+    const H = pv.highs, L = pv.lows;
+    for (let i = start; i < n; i++) {
+      while (hiK < H.length && H[hiK].i + 2 <= i - 1) hi = H[hiK++];   // swing confirmed 2 bars after it
+      while (loK < L.length && L[loK].i + 2 <= i - 1) lo = L[loK++];
+      const x = b[i], a = atr[i] || (x.h - x.l) || 1e-9;
+      if (hi && x.c > hi.p) {
+        out.last = { kind: dir === 'DOWN' ? 'CHoCH' : 'BOS', dir: 'UP', t: x.t }; dir = 'UP';
+        for (let k = i; k > Math.max(start, i - 8); k--) if (b[k].c < b[k].o) { out.zones.push({ dir: 'UP', lo: b[k].l, hi: Math.max(b[k].o, b[k].h), kind: 'OB', i: k }); break; }
+        hi = null;
+      } else if (lo && x.c < lo.p) {
+        out.last = { kind: dir === 'UP' ? 'CHoCH' : 'BOS', dir: 'DOWN', t: x.t }; dir = 'DOWN';
+        for (let k = i; k > Math.max(start, i - 8); k--) if (b[k].c > b[k].o) { out.zones.push({ dir: 'DOWN', lo: Math.min(b[k].o, b[k].l), hi: b[k].h, kind: 'OB', i: k }); break; }
+        lo = null;
+      }
+      // fair value gaps with a displacement middle candle
+      const m = b[i - 1], p2 = b[i - 2];
+      if (Math.abs(m.c - m.o) >= 0.8 * a) {
+        if (x.l > p2.h) out.zones.push({ dir: 'UP', lo: p2.h, hi: x.l, kind: 'FVG', i });
+        if (x.h < p2.l) out.zones.push({ dir: 'DOWN', lo: x.h, hi: p2.l, kind: 'FVG', i });
+      }
+    }
+    out.dir = dir;
+    // drop mitigated zones (a later close through the far side)
+    out.zones = out.zones.filter((z) => { for (let k = z.i + 1; k < n; k++) { if (z.dir === 'UP' && b[k].c < z.lo) return false; if (z.dir === 'DOWN' && b[k].c > z.hi) return false; } return true; });
+    return out;
   }
 
   // Trend read for one timeframe (closed bars only)
@@ -430,6 +470,20 @@
       const nearest = obs.length ? (sgn > 0 ? Math.min(...obs) : Math.max(...obs)) : null;
       const roomR = nearest == null ? 99 : Math.abs(nearest - entry) / risk;
       if (roomR < cfg.minRoomR) return reject('No room: 1H level ' + roomR.toFixed(2) + 'R away');
+      // --- smart-money structure (smc lab options) ---
+      let smcH1 = null, smcSup = null;
+      if (cfg.smc) {
+        smcH1 = smcRead(S[G.H1]); const s15 = smcRead(S[G.M15]);
+        const sm = cfg.smc, w = want(dir), tp1x = entry + sgn * cfg.r1Min * risk;
+        if (sm.bos && smcH1.dir === against(dir)) return reject('1H structure against (' + (smcH1.last ? smcH1.last.kind : 'break') + ' ' + smcH1.dir + ')');
+        if (sm.zone) {
+          const opp = smcH1.zones.concat(s15.zones).find((z) => z.dir === against(dir) && (sgn > 0 ? z.lo > entry && z.lo < tp1x : z.hi < entry && z.hi > tp1x));
+          if (opp) return reject('Opposing ' + (opp.kind === 'OB' ? (sgn > 0 ? 'supply' : 'demand') + ' order block' : 'FVG') + ' before TP1');
+        }
+        const near = 0.5 * atr15;
+        smcSup = smcH1.zones.concat(s15.zones).find((z) => z.dir === w && (sgn > 0 ? entry >= z.lo && entry <= z.hi + near : entry <= z.hi && entry >= z.lo - near)) || null;
+        if (sm.needZone && !smcSup) return reject('No demand/supply zone or FVG behind the entry');
+      }
 
       // --- targets ---
       let r1 = clamp(h / risk, cfg.r1Min, kind === 'SCALP' ? Math.min(cfg.r1Max, cfg.r1Min + 0.2) : cfg.r1Max);
@@ -459,6 +513,7 @@
       const hq = h / atr15;
       add(hq >= 0.6 && hq <= 2.5 ? 10 : hq >= 0.4 && hq <= 3.5 ? 5 : 0, hq >= 0.4 && hq <= 3.5, 'Range quality', (hq).toFixed(2) + '× 15m ATR');
       add(roomR >= 2 ? 5 : 0, roomR >= 2, 'Room to 1H structure', roomR >= 99 ? 'open sky' : roomR.toFixed(1) + 'R');
+      if (cfg.smc) { add(smcH1 && smcH1.dir === want(dir) ? 5 : 0, !smcH1 || smcH1.dir !== against(dir), '1H structure ' + (smcH1 && smcH1.last ? smcH1.last.kind + ' ' + smcH1.dir : 'n/a'), ''); add(smcSup ? 10 : 0, !!smcSup, 'Entry at ' + (smcSup ? (smcSup.kind === 'OB' ? (sgn > 0 ? 'demand' : 'supply') + ' order block' : 'FVG') : 'no zone'), ''); }
       reasons.push({ ok: true, pts: 0, label: '15m trend quality', detail: 'efficiency ' + er15.toFixed(2) });
       score = Math.min(100, score);
       const minS = kind === 'SCALP' ? cfg.minScalpScore : cfg.minScore;
@@ -884,5 +939,5 @@
     W('GainX-400'), W('GainX-600'), W('PainX-400'), W('PainX-600'),
   ];
 
-  return { Engine, Series, DerivFeed, BridgeFeed, aggCandles, startLive, backtest, stats, trendOf, efficiency, pivots, fmt, toBar, decimalsOf, G, TF_NAME, DEFAULTS, DEFAULT_SYMBOLS, WELTRADE_SYMBOLS, MANAGEMENT, version: '1.14.1' };
+  return { smcRead, Engine, Series, DerivFeed, BridgeFeed, aggCandles, startLive, backtest, stats, trendOf, efficiency, pivots, fmt, toBar, decimalsOf, G, TF_NAME, DEFAULTS, DEFAULT_SYMBOLS, WELTRADE_SYMBOLS, MANAGEMENT, version: '1.14.1' };
 });
