@@ -276,9 +276,10 @@ label.f input,label.f select{width:100%}
             <label class="f">Deriv App ID<input id="rbApp" autocomplete="off" placeholder="from developers.deriv.com"></label>
             <label class="f">Account ID (optional)<input id="rbAccId" autocomplete="off" placeholder="first demo/real account"></label>
           </div>
-          <label class="f" style="margin-top:10px">API token (Personal Access Token with the trade scope)<input id="rbTok" type="password" autocomplete="off" spellcheck="false" placeholder="paste token"></label>
+          <div class="bar" style="margin-top:10px"><button class="btn primary" id="rbLogin">Log in with Deriv</button><span class="sub" id="rbLoginInfo" style="margin:0"></span></div>
+          <label class="f" style="margin-top:10px">Or paste an API token (Personal Access Token with the trade scope)<input id="rbTok" type="password" autocomplete="off" spellcheck="false" placeholder="paste token"></label>
           <div class="chk" style="margin-top:8px"><label><input type="checkbox" id="rbRemember"> Remember the token on this device</label></div>
-          <div class="sub" style="margin-top:6px">Make the App ID and token at <a href="https://developers.deriv.com" target="_blank" rel="noopener">developers.deriv.com</a>. Give the token the <b>trade</b> scope only, never payments. The token stays in this browser and goes only to Deriv. Without "remember" it is forgotten when you close the tab.</div>
+          <div class="sub" style="margin-top:6px">"Log in with Deriv" needs only the App ID: sign in at Deriv and the robot connects, with no token to copy. The app must be registered once at developers.deriv.com as an OAuth app with the <b>trade</b> scope and this page's address as its redirect URL. For a token instead, make the App ID and token at <a href="https://developers.deriv.com" target="_blank" rel="noopener">developers.deriv.com</a>. Give the token the <b>trade</b> scope only, never payments. The token stays in this browser and goes only to Deriv. Without "remember" it is forgotten when you close the tab.</div>
           <div id="rbRealBox" class="rb-warn" style="display:none">Real money. Signals lose too: even the best ORB+ backtest has losing days. Type <b>REAL</b> to confirm: <input id="rbRealOk" style="width:90px;margin-left:6px"></div>
         </div>
       </div>
@@ -2223,7 +2224,7 @@ function loadRobotUI() {
   $('#rbMaxRisk').value = r.maxRiskPct; $('#rbMaxStake').value = r.maxStake; $('#rbMaxOpen').value = r.maxOpen; $('#rbMaxDay').value = r.maxPerDay; $('#rbDayLoss').value = r.maxDailyLossPct;
   $('#rbConsec').value = r.maxConsecLosses; $('#rbMinBal').value = r.minBalance; $('#rbSlip').value = r.maxSlipR; $('#rbDirs').value = r.dirs; $('#rbRoyal').value = r.skipRoyalty ? '1' : '0';
   $$('#rbGrades input').forEach((x) => (x.checked = r.grades.includes(x.value))); $$('#rbMarkets input').forEach((x) => (x.checked = r.markets.includes(x.value)));
-  rbFormState(); renderRobotPairs();
+  rbFormState(); renderRobotPairs(); if (typeof renderLoginInfo === 'function') renderLoginInfo();
 }
 function rbFormState() {
   const m = $('#rbMode').value, z = $('#rbSizing').value;
@@ -2308,6 +2309,45 @@ $('#rbCloseAll').addEventListener('click', async () => { if (!robot.running) { t
 $('#rbResume').addEventListener('click', () => robot.resume());
 $('#rbCopy').addEventListener('click', () => copyText(robot.journal.map((j) => `${new Date(j.t).toISOString()} ${j.type.toUpperCase()} ${j.msg}${j.pnl != null ? ' ' + j.pnl : ''}`).join('\n')));
 $('#v-robot').addEventListener('change', (e) => { if (e.target.id === 'rbRealOk') return; if (robot.running && e.target.id === 'rbMode') { toast('Stop the robot before changing its mode.'); $('#rbMode').value = robot.set.mode; return; } readRobotUI(); renderRobot(); });
+
+// "Log in with Deriv": OAuth 2.0 with PKCE (no token to copy). The App ID must be registered once at developers.deriv.com
+// as an OAuth app with the trade scope and this page's exact address as a redirect URL.
+const DERIV_AUTH = 'https://auth.deriv.com/oauth2/auth', DERIV_TOKEN = 'https://auth.deriv.com/oauth2/token';
+const b64url = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const redirectUri = () => location.origin + location.pathname;
+async function derivLogin() {
+  readRobotUI();
+  const app = $('#rbApp').value.trim();
+  if (!app) { toast('Enter the Deriv App ID first. Register it once at developers.deriv.com as an OAuth app with the trade scope and this redirect URL: ' + esc(redirectUri()), 12000); return; }
+  if (!crypto || !crypto.subtle) { toast('This browser cannot do a secure Deriv login here. Open the site over https.'); return; }
+  const verifier = b64url(crypto.getRandomValues(new Uint8Array(48))), state = b64url(crypto.getRandomValues(new Uint8Array(16)));
+  const challenge = b64url(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)));
+  try { sessionStorage.setItem('twm.oauth', JSON.stringify({ verifier, state, app, t: Date.now() })); } catch (e) {}
+  const q = new URLSearchParams({ response_type: 'code', client_id: app, redirect_uri: redirectUri(), scope: 'trade', state, code_challenge: challenge, code_challenge_method: 'S256' });
+  location.href = DERIV_AUTH + '?' + q.toString();
+}
+async function derivLoginReturn() {
+  const u = new URL(location.href), code = u.searchParams.get('code'), state = u.searchParams.get('state'), err = u.searchParams.get('error');
+  if (!code && !err) return;
+  let saved = null; try { saved = JSON.parse(sessionStorage.getItem('twm.oauth') || 'null'); sessionStorage.removeItem('twm.oauth'); } catch (e) {}
+  history.replaceState(null, '', u.pathname + '#robot'); // the code never stays in the address bar
+  if (err) { toast('Deriv login cancelled: ' + esc(u.searchParams.get('error_description') || err)); return; }
+  if (!saved || saved.state !== state) { toast('Deriv login did not match this browser session. Please try again.'); return; }
+  try {
+    const r = await fetch(DERIV_TOKEN, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ grant_type: 'authorization_code', client_id: saved.app, code, code_verifier: saved.verifier, redirect_uri: redirectUri() }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.access_token) throw new Error(j.error_description || j.error || 'HTTP ' + r.status);
+    tokStore.set(j.access_token, false); // session only: a fresh login per browser session
+    store.set('robot.app', saved.app); store.set('robot.oauthExp', Date.now() + (j.expires_in || 3600) * 1000);
+    toast('Logged in with Deriv. Choose Deriv demo and press START.'); loadRobotUI(); show('robot');
+  } catch (e) { toast('Deriv login failed: ' + esc(e.message) + '. Deriv may only allow this step from a server; paste an API token instead for now.', 12000); }
+}
+function renderLoginInfo() {
+  const exp = store.get('robot.oauthExp', 0), has = !!tokStore.get();
+  $('#rbLoginInfo').textContent = has && exp > Date.now() ? 'Logged in (until ' + new Date(exp).toLocaleDateString('en-ZA') + ')' : '';
+}
+$('#rbLogin').addEventListener('click', derivLogin);
+derivLoginReturn();
 function robotTicks() { if (!robot.running) return; for (const o of robot.state().open) { const sn = S.snaps[o.symbol]; if (sn && sn.price) robot.tick(o.symbol, sn.price); } }
 setInterval(robotTicks, 1500);
 
