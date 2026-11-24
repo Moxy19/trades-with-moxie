@@ -287,3 +287,19 @@ The Royal Ladder lost money on synthetics (−9.9R, PF 0.84) and on gold (18% wi
 It can't meet a 75% win-rate floor, so v1.11 removes it from the engine and the terminal, and drops its old trades from the stored record.
 ORB+ signals are unchanged: replayed on the same data, v1.10 and v1.11 produce identical trades.
 The lab's "Royal Ladder" variant needs the v1.10 engine (`git show 0f130f5:engine/moxie-engine.js`).
+
+## 60-day fresh comparison (24 Nov 2026)
+
+`tools/fresh-lab.js`: three back-to-back windows of about 20 trading days each (~62 days on synthetics and crypto,
+~3 calendar months on forex), 23 Deriv markets, ORB+ only, stop first on ties, no spread. Window 3 (the oldest) was never
+used to choose any setting.
+
+| System | Trades | In profit | Profit factor | Max drawdown | Net | Window 3 alone |
+|---|---|---|---|---|---|---|
+| v1.2 (renamed to Royal Trades, original rules) | 1528 | 47% | 1.06 | 37.4R | +45.1R | 43%, PF 0.89, −30.2R |
+| v1.2 entries + v1.10 trade management | 3747 | 86% | 1.92 | 10.4R | +422.7R | 84%, PF 1.71, +119.1R |
+| **v1.10 / v1.11 (live)** | 537 | 88% | **3.51** | 3.1R | +145.0R | 84%, PF 3.05, 2.9R, +45.1R |
+| v1.10 + late-entry filter (score 95+ with 2H and 4H aligned skipped) | 215 | 90% | 5.17 | 3.2R | +78.4R | 83%, PF 2.55, +18.5R: not shipped |
+
+v1.11.1 adds the drawdown size rule to the terminal: half size from 2R below the equity peak, quarter size from 3R,
+full size again at a new high.

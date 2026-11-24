@@ -34,7 +34,7 @@
     minOrAtr: 0.6,          // skip when the opening range is narrower than this × the 15m ATR (0 = off)
     hours: { fromUtc: 6, toUtc: 18 }, // only signal inside these UTC hours (08:00–20:00 SAST); null = always
     needH4: false,          // require the 4H trend to agree with the trade
-    skipLate: true,         // skip score-95+ setups with the 2H and 4H already aligned (late entries)
+    skipLate: false,        // skip score-95+ setups with 2H and 4H aligned. Off: it failed the unseen 60-day window (PF 2.55 vs 3.05)
     maxOrAtr: 0.9,          // skip when the opening range is wider than this × the 15m ATR (regime lab; was 1.5)
     quiet: { markets: ['forex'], fromUtc: 4, toUtc: 8 },  // no forex/metals ORB+ 06:00–10:00 SAST (London-open fakeouts: 42% win, -9R)
     orbOff: ['frxNZDUSD', 'frxUSDCHF', 'frxEURUSD', '1HZ25V', 'R_75', 'frxUSDJPY', 'frxUSDCAD'],  // ORB+ lost in both halves on these markets
@@ -790,6 +790,7 @@
       sl: count('SL_HIT'), tp2: count('TP2_HIT') + count('TP5_HIT'), be: count('BE_HIT'), timeExit: count('TIME_EXIT'),
       totalR: Math.round(sumR * 100) / 100, avgR: closed.length ? sumR / closed.length : 0,
       profitFactor: loss ? gross / loss : gross ? Infinity : 0, maxDD: Math.round(dd * 100) / 100, curve,
+      ddNow: Math.round((peak - eq) * 100) / 100, sizeNow: peak - eq >= 3 ? 0.25 : peak - eq >= 2 ? 0.5 : 1, // drawdown rule: half size from 2R below the peak, quarter from 3R
       byGrade: group((s) => s.grade), bySymbol: group((s) => s.name), byKind: group((s) => s.kind), bySetup: group((s) => s.setup), byStrategy: group((s) => (s.strategy === 'LADDER' ? 'Royal Ladder' : 'ORB+')),
     };
   }
@@ -1024,5 +1025,5 @@
     W('GainX-400'), W('GainX-600'), W('PainX-400'), W('PainX-600'),
   ];
 
-  return { Engine, Series, DerivFeed, BridgeFeed, aggCandles, startLive, backtest, stats, trendOf, efficiency, pivots, fmt, toBar, decimalsOf, G, TF_NAME, DEFAULTS, DEFAULT_SYMBOLS, WELTRADE_SYMBOLS, MANAGEMENT, version: '1.11.0' };
+  return { Engine, Series, DerivFeed, BridgeFeed, aggCandles, startLive, backtest, stats, trendOf, efficiency, pivots, fmt, toBar, decimalsOf, G, TF_NAME, DEFAULTS, DEFAULT_SYMBOLS, WELTRADE_SYMBOLS, MANAGEMENT, version: '1.10.1' };
 });
