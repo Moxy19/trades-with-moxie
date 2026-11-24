@@ -9,10 +9,11 @@
 //   fetch(RAW + 'tools/robot-lab.js').then(r => r.text()).then(t => eval(t)({ m1Bars: 30000 }))
 // Results: window.__rlab (events, in memory) and localStorage 'rt.robotlab' (summaries).
 (async (opts = {}) => {
-  const RAW = opts.raw || 'https://raw.githubusercontent.com/Moxy19/trades-with-moxie/claude/project-thread-b7b3gn/';
+  const RAW = opts.raw || 'https://raw.githubusercontent.com/Moxy19/trades-with-moxie/claude/project-thread-b7b3gn/'; // engine from this branch (= main + robot)
   const load = async (f) => { const src = await (await fetch(RAW + f + '?' + Date.now())).text(); const mod = { exports: {} }; new Function('module', 'exports', src)(mod, mod.exports); return mod.exports; };
   const M = opts.M || await load('engine/moxie-engine.js'), R = opts.R || await load('engine/royal-robot.js');
   const W = typeof window !== 'undefined' ? window : globalThis;
+  if (W.__rlab && !W.__rlab.raw) W.__rlab = null; // older lab object without raw data
   const lab = (W.__rlab = W.__rlab || { data: {}, err: {}, progress: '', fin: false });
   lab.M = M; lab.R = R; lab.fin = false;
   const N1 = opts.m1Bars || 30000;
@@ -31,47 +32,60 @@
   };
   const copy = (s) => ({ id: s.id, symbol: s.symbol, name: s.name, market: s.market, source: 'deriv', dir: s.dir, grade: s.grade, unproven: s.unproven, status: s.status, entry: s.entry, price: s.price, sl: s.sl, slLive: s.slLive, tp1: s.tp1, tp2: s.tp2, risk: s.risk, r1: s.r1, r2: s.r2, createdAt: s.createdAt, filledAt: s.filledAt, result: s.result, exit: s.exit });
 
-  // ---------- phase 1: engine replay per market ----------
+  // ---------- phase 1a: download (kept in memory so the engine can be replayed with other settings) ----------
+  lab.raw = lab.raw || {};
   for (const mk of markets) {
-    const sym = mk.symbol; if (lab.data[sym]) continue;
-    lab.progress = sym + ' (' + (Object.keys(lab.data).length + 1) + '/' + markets.length + ')';
+    const sym = mk.symbol; if (lab.raw[sym]) continue;
+    lab.progress = 'download ' + sym + ' (' + (Object.keys(lab.raw).length + 1) + '/' + markets.length + ')';
     try {
       const m1 = await retry(() => feed.candlesBack(sym, 60, N1));
       if (!m1.candles.length) throw new Error('no data');
       const bars = m1.candles.map(M.toBar);
       const startFeed = Math.ceil(bars[0].t / M.G.H4) * M.G.H4;
+      const htf = {};
+      for (const g of [M.G.M5, M.G.M15, M.G.H1, M.G.H2, M.G.H4]) {
+        const r = await retry(() => feed.candles(sym, g, 1500, String(startFeed - 1)));
+        htf[g] = r.candles.filter((c) => c.epoch + g <= startFeed);
+      }
+      lab.raw[sym] = { mk, pip: m1.pip, bars, startFeed, htf };
+      delete lab.err[sym];
+    } catch (e) { lab.err[sym] = String((e && e.message) || e); }
+    await sleep(0);
+  }
+  // ---------- phase 1b: engine replay per market (stop first on ties) ----------
+  lab.replay = (E = M, cfg = {}) => {
+    lab.data = {};
+    for (const sym in lab.raw) {
+      const { mk, pip, bars, startFeed, htf } = lab.raw[sym];
       const ev = [];   // [t, kind, payload]  kind: 'S' signal, 'U' update, 'P' price
       const open = new Set();
-      const eng = new M.Engine(Object.assign({}, M.DEFAULTS, opts.engineCfg || {}, { signalsEnabledFrom: startFeed + 3 * 3600 }), {
+      let cur = 0;
+      const eng = new E.Engine(Object.assign({}, E.DEFAULTS, cfg, { signalsEnabledFrom: startFeed + 3 * 3600 }), {
         onSignal: (s) => { ev.push([cur + 60, 'S', copy(s)]); if (['ACTIVE', 'PENDING'].includes(s.status)) open.add(s.id); },
         onUpdate: (s, prev) => { ev.push([cur + 60, 'U', copy(s), prev]); if (!['ACTIVE', 'PENDING', 'TP1_HIT'].includes(s.status)) open.delete(s.id); },
       });
-      let cur = 0;
       eng.mode = 'backtest';
-      eng.addSymbol(sym, Object.assign({}, mk, { source: 'deriv', decimals: m1.pip }));
+      eng.addSymbol(sym, Object.assign({}, mk, { source: 'deriv', decimals: pip }));
       const st = eng.sym[sym];
-      for (const g of [M.G.M5, M.G.M15, M.G.H1, M.G.H2, M.G.H4]) {
-        const r = await retry(() => feed.candles(sym, g, 1500, String(startFeed - 1)));
-        st.series[g].seed(r.candles.filter((c) => c.epoch + g <= startFeed), false);
-      }
+      for (const g in htf) st.series[g].seed(htf[g], false);
       st.ready = true;
       for (const b of bars) {
         if (b.t < startFeed) continue;
         cur = b.t;
         const pre = open.size ? [...open] : null;
         eng.onBar(sym, b);
-        // price path of this bar for the Paper broker, after the engine's own exits in this bar (the engine fills its stops
-        // inside the bar; live, the robot acts on that same tick). Only signals that were open before the bar see it.
+        // 1m close for the Paper broker, after the engine settled this bar. Only signals open before the bar see it.
         if (pre) ev.push([b.t + 60, 'P', [b.o, b.h, b.l, b.c], pre]);
       }
       const lastBar = bars[bars.length - 1];
       cur = lastBar.t + 60;
       for (const s of eng.openSignals(sym)) eng._close(s, st, s.status === 'PENDING' ? 'EXPIRED' : 'TIME_EXIT', lastBar.c, lastBar.t + 60);
       lab.data[sym] = { market: mk.market, name: mk.name, from: startFeed, to: lastBar.t, ev, sigs: eng.signals.map(copy) };
-      delete lab.err[sym];
-    } catch (e) { lab.err[sym] = String((e && e.message) || e); }
-    await sleep(0);
-  }
+    }
+    return Object.keys(lab.data).length;
+  };
+  lab.load = load;
+  lab.replay(M, opts.engineCfg || {});
   try { feed.ws.onclose = null; feed.ws.close(); } catch (e) {}
 
   // ---------- phase 2: run the robot over every market in time order ----------
