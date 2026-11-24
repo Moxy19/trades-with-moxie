@@ -6,7 +6,7 @@
 // Pessimistic fills (stop first on ties), no spread. Resumable: results are saved to localStorage 'rt.ss'.
 (async (opts = {}) => {
   const src = await (await fetch('https://moxy19.github.io/trades-with-moxie/tools/engine-next.js?' + Date.now())).text();
-  if (!src.includes('_softStops')) throw new Error('engine-next not deployed yet');
+  if (!src.includes(opts.need || '_softStops')) throw new Error('engine-next not deployed yet');
   const mod = { exports: {} }; new Function('module', 'exports', src)(mod, mod.exports);
   const M = mod.exports && mod.exports.Engine ? mod.exports : window.MoxieEngine;
   const KEY = opts.key || 'rt.ss', N1 = opts.m1Bars || 30000;

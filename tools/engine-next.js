@@ -49,6 +49,7 @@
     tp1Lock: 0.3,           // at TP1 the stop moves to entry + this many R
     trail: { mode: 'pips', pips: 20, atr: 0.75, keepTp2: false }, // after TP1: trail 'pips' (forex & metals) or 'atr' (× 15m ATR) behind the best price; keepTp2 false = let the runner go
     slOfTp: null,           // { ref: 'tp1'|'tp2', k }: stop distance as a fraction of a target's distance (tested: worse for ORB+)
+    dyn: null,              // { dist, cap, whole }: dynamic stop that trails dist × risk behind the best price, never past cap × the TP1 distance (whole: for the whole trade, else until TP1)
     softStop: { r: 0.6, tf: 300 }, // before the stop has moved: exit at the close of a 5m candle that closes 0.6R or more against the trade
     lossGuard: true,        // block same-direction re-entry after SL until structure resets
     retest: false,          // ORB retest continuation setups (off: they lost money in real-data tests)
@@ -495,7 +496,7 @@
       if (status === 'SL_HIT') R = -1;
       else if (status === 'TP2_HIT') R = p * sig.r1 + (1 - p) * sig.r2;
       else if (status === 'BE_HIT' || status === 'TRAIL_EXIT') R = p * sig.r1 + (1 - p) * rNow;
-      else if (status === 'BE_EARLY' || status === 'SOFT_EXIT') R = rNow;  // stopped at entry (or the locked level) before TP1
+      else if (status === 'BE_EARLY' || status === 'SOFT_EXIT' || status === 'DYN_STOP') R = rNow;  // stopped at entry (or the locked level) before TP1
       else if (status === 'TIME_EXIT') R = sig.tp1At ? p * sig.r1 + (1 - p) * rNow : rNow;
       else R = 0; // EXPIRED / CANCELLED never filled
       sig.status = status; sig.closedAt = t; sig.exit = exitPrice; sig.result = Math.round(R * 100) / 100; sig.lastT = t;
@@ -506,6 +507,15 @@
       this.hooks.onUpdate && this.hooks.onUpdate(sig, prev);
     }
 
+    _better(sgn, a, b) { if (a == null) return b; if (b == null) return a; return sgn > 0 ? Math.max(a, b) : Math.min(a, b); }
+    _dynCap(sig, dy, sgn) { return sig.entry + sgn * (dy.cap == null ? 0.5 : dy.cap) * Math.abs(sig.tp1 - sig.entry); }
+    // Dynamic stop: follows the best price at dist × risk, never past cap × the TP1 distance. Applies from the next bar.
+    _dyn(sig, dy, sgn) {
+      const best = sig.entry + sgn * sig.mfeR * sig.risk;
+      const cand = this._better(-sgn, best - sgn * dy.dist * sig.risk, this._dynCap(sig, dy, sgn));
+      const cur = sig.beArmed || sig.dynMoved || sig.status === 'TP1_HIT' ? sig.slLive : sig.sl;
+      if (sgn > 0 ? cand > cur + 1e-12 : cand < cur - 1e-12) { sig.slLive = cand; sig.dynMoved = true; }
+    }
     _track(sig, st, hi, lo, t, price, _newMin) {
       const sgn = dirSign(sig.dir), cfg = this.cfg;
       const fav = sgn > 0 ? hi : lo, adv = sgn > 0 ? lo : hi;
@@ -525,14 +535,16 @@
       sig.mfeR = Math.max(sig.mfeR, (sgn * (fav - sig.entry)) / sig.risk);
       sig.maeR = Math.min(sig.maeR, (sgn * (adv - sig.entry)) / sig.risk);
       if (sig.status === 'ACTIVE') {
-        const stop = sig.beArmed ? sig.slLive : sig.sl;
+        const stop = sig.beArmed || sig.dynMoved ? sig.slLive : sig.sl;
         const slHit = sgn > 0 ? adv <= stop : adv >= stop;
         const tp1Hit = sgn > 0 ? fav >= sig.tp1 : fav <= sig.tp1;
-        if (slHit) return this._close(sig, st, sig.beArmed ? 'BE_EARLY' : 'SL_HIT', stop, t); // pessimistic if both in one bar
+        if (slHit) return this._close(sig, st, sgn * (stop - sig.entry) >= -1e-12 && (sig.beArmed || sig.dynMoved) ? 'BE_EARLY' : sig.dynMoved ? 'DYN_STOP' : 'SL_HIT', stop, t); // pessimistic if both in one bar
         // early breakeven: armed from the next bar once the trade has run beAtR in profit
-        if (cfg.beAtR && !sig.beArmed && sig.mfeR >= cfg.beAtR && !tp1Hit) { sig.beArmed = true; sig.slLive = sig.entry + sgn * (cfg.beLockR || 0) * sig.risk; this.hooks.onUpdate && this.hooks.onUpdate(sig, 'ACTIVE'); }
+        if (cfg.beAtR && !sig.beArmed && sig.mfeR >= cfg.beAtR && !tp1Hit) { sig.beArmed = true; sig.slLive = this._better(sgn, sig.slLive, sig.entry + sgn * (cfg.beLockR || 0) * sig.risk); this.hooks.onUpdate && this.hooks.onUpdate(sig, 'ACTIVE'); }
+        if (cfg.dyn && !tp1Hit) this._dyn(sig, cfg.dyn, sgn);
         if (tp1Hit) {
-          sig.status = 'TP1_HIT'; sig.tp1At = t; sig.slLive = sig.entry + sgn * (cfg.tp1Lock || 0) * sig.risk; sig.peak = sig.tp1;
+          sig.status = 'TP1_HIT'; sig.tp1At = t; sig.slLive = this._better(sgn, sig.dynMoved || sig.beArmed ? sig.slLive : null, sig.entry + sgn * (cfg.tp1Lock || 0) * sig.risk); sig.peak = sig.tp1;
+          if (cfg.dyn && cfg.dyn.whole) sig.slLive = this._better(-sgn, sig.slLive, this._dynCap(sig, cfg.dyn, sgn));
           this.hooks.onUpdate && this.hooks.onUpdate(sig, 'ACTIVE');
           if (sgn > 0 ? fav >= sig.tp2 : fav <= sig.tp2) return this._close(sig, st, 'TP2_HIT', sig.tp2, t);
           if (this.mode === 'backtest') return; // BE can't be ordered inside the same bar; check next bar
@@ -543,12 +555,14 @@
         const stop = sig.slLive != null ? sig.slLive : sig.entry;
         if (sgn > 0 ? adv <= stop : adv >= stop) return this._close(sig, st, Math.abs(stop - sig.entry) < 1e-12 ? 'BE_HIT' : 'TRAIL_EXIT', stop, t); // stop first (pessimistic)
         if (keepTp2 && (sgn > 0 ? fav >= sig.tp2 : fav <= sig.tp2)) return this._close(sig, st, 'TP2_HIT', sig.tp2, t);
+        if (cfg.dyn && cfg.dyn.whole) this._dyn(sig, cfg.dyn, sgn);
         if (tr.mode && tr.mode !== 'off') {   // trail behind the best price; the new stop applies from the next bar
           sig.peak = sig.peak == null ? fav : sgn > 0 ? Math.max(sig.peak, fav) : Math.min(sig.peak, fav);
           const pip = tr.mode === 'pips' && st.market === 'forex' ? Math.pow(10, -Math.max(0, st.dec - 1)) : null;
           const dist = pip ? tr.pips * pip : (tr.atr || 0.75) * (sig.atr15 || sig.risk);
           const cand = sig.peak - sgn * dist;
-          if (sgn > 0 ? cand > sig.slLive : cand < sig.slLive) sig.slLive = cand;
+          const capped = cfg.dyn && cfg.dyn.whole ? this._better(-sgn, cand, this._dynCap(sig, cfg.dyn, sgn)) : cand;
+          if (sgn > 0 ? capped > sig.slLive : capped < sig.slLive) sig.slLive = capped;
         }
       }
       if ((sig.status === 'ACTIVE' || sig.status === 'TP1_HIT') && sig.filledAt && t - sig.filledAt > cfg.maxHoldMin * 60) {
@@ -645,15 +659,17 @@
       sig.mfeR = Math.max(sig.mfeR, (d * (fav - sig.entry)) / sig.risk);
       sig.maeR = Math.min(sig.maeR, (d * (adv - sig.entry)) / sig.risk);
       if (t - sig.filledAt > sig.maxHold) return this._closeLadder(sig, st, 'TIME_EXIT', price, t);
-      if (d > 0 ? adv <= sig.slLive : adv >= sig.slLive) return this._closeLadder(sig, st, (d * (sig.slLive - sig.entry)) > 1e-12 ? 'TRAIL_EXIT' : sig.stage >= sig.beAt || Math.abs(sig.slLive - sig.entry) < 1e-12 ? 'BE_HIT' : 'SL_HIT', sig.slLive, t);
+      if (d > 0 ? adv <= sig.slLive : adv >= sig.slLive) return this._closeLadder(sig, st, (d * (sig.slLive - sig.entry)) > 1e-12 ? 'TRAIL_EXIT' : sig.stage >= sig.beAt || Math.abs(sig.slLive - sig.entry) < 1e-12 ? 'BE_HIT' : sig.dynMoved && sig.stage === 0 ? 'DYN_STOP' : 'SL_HIT', sig.slLive, t);
       const before = sig.stage;
       while (sig.stage < sig.tps.length && (d > 0 ? fav >= sig.tps[sig.stage] : fav <= sig.tps[sig.stage])) {
         sig.stage++;
         if (sig.stage === 1) sig.tp1At = t;
-        if (sig.stage === 1 && sig.tp1Stop != null) sig.slLive = sig.entry - d * sig.tp1Stop * sig.risk;  // cut the open risk at TP1
-        if (sig.stage === sig.beAt) sig.slLive = sig.entry + d * (sig.beLock || 0) * sig.risk;
+        if (sig.stage === 1 && sig.tp1Stop != null) sig.slLive = this._better(d, sig.slLive, sig.entry - d * sig.tp1Stop * sig.risk);  // cut the open risk at TP1
+        if (sig.stage === sig.beAt) sig.slLive = this._better(d, sig.slLive, sig.entry + d * (sig.beLock || 0) * sig.risk);
         if (sig.stepTrail && sig.stage >= sig.stepFrom) sig.slLive = sig.stage === sig.stepFrom ? sig.entry + d * (sig.stepLock || 0) * sig.risk : sig.tps[sig.stage - sig.stepFrom - 1];
       }
+      const LD = (this.cfg.ladder || {}).dyn;
+      if (LD && (LD.whole || sig.stage === 0)) this._dyn(sig, LD, d); // the cap uses the first ladder target as TP1
       if (sig.stage === sig.tps.length) return this._closeLadder(sig, st, 'TP5_HIT', sig.tps[sig.tps.length - 1], t);
       if (sig.stage > before) { sig.status = 'TP1_HIT'; this.hooks.onUpdate && this.hooks.onUpdate(sig, prev === 'TP1_HIT' ? 'TP' + before : prev); }
     }
