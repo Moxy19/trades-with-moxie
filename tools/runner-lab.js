@@ -15,6 +15,7 @@
   const markets = opts.markets || M.DEFAULT_SYMBOLS.filter((x) => x.source !== 'mt5');
   let feed = new M.DerivFeed(); await feed.connect();
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const yieldNow = () => new Promise((r) => { const ch = new MessageChannel(); ch.port1.onmessage = () => r(); ch.port2.postMessage(0); }); // not throttled in background tabs
   const retry = async (fn) => {
     for (let k = 0; ; k++) {
       try { return await fn(); } catch (e) {
@@ -43,7 +44,7 @@
           lab.progress = sym + ' w' + w + ' ' + k;
           const bt = await M.backtest(cache, Object.assign({}, mk, { source: 'deriv' }), Math.ceil(N1 / 1440), Object.assign({}, base, a ? { after: a } : {}));
           (res[k] = res[k] || []).push(bt.signals.filter((s) => s.result != null && s.filledAt).map((s) => [s.createdAt, s.result, s.tp1At ? 1 : 0, w]));
-          await sleep(0);
+          await yieldNow();
         }
       }
       lab.done[sym] = { name: mk.name, market: mk.market, bars: all.candles.length, res };
