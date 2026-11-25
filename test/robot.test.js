@@ -215,6 +215,34 @@ const tick = () => new Promise((r) => setImmediate(r));
     assert(tp2pnl > retracePnl, 'TP2 pays more than the retrace');
     await robot.stop(true);
   }
+
+  // ---------- 7) runner plan (engine cfg.after): stops trail after TP1, each contract follows its engine position ----------
+  {
+    let now = 1796100000 * 1000;
+    const robot = new R.Robot(Object.assign({}, b3), { now: () => now });
+    const paper = new R.PaperBroker({ balance: 1000 }); await robot.start(paper);
+    const eng = new M.Engine(Object.assign({}, M.DEFAULTS));
+    const sig = { id: 'run1', symbol: 'R_75', name: 'Volatility 75', market: 'synthetic', source: 'deriv', dir: 'BUY', grade: 'A', status: 'ACTIVE', entry: 40000, price: 40000, sl: 39920, slLive: 39920,
+      tp1: 40024, tp2: 40160, risk: 80, r1: 0.3, r2: 2, createdAt: now / 1000, filledAt: now / 1000, unproven: false, mfeR: 0, maeR: 0 };
+    sig.runTgtR = 5;
+    eng.hooks = { onUpdate: (s, prev) => robot.onUpdate(s, prev) };
+    const st = { guard: {} }; eng.signals.push(sig);
+    robot.tick('R_75', 40000); assert(await robot.onSignal(sig), 'opened runner plan');
+    const legs = robot.pos.run1.legs; assert.strictEqual(legs.length, 3);
+    for (const l of legs) assert(Math.abs(l.tp$ - l.sl$ * 5) < 0.02, 'broker take profit at the 5R cap, not TP2');
+    const bar = async (hi, lo, c) => { now += 60000; robot.tick('R_75', c); eng._track(sig, st, hi, lo, now / 1000, c); await tick(); await tick(); };
+    await bar(40030, 40000, 40028);          // TP1 (0.3R): stops 0.3R, 0.3R, 0.15R
+    assert.strictEqual(sig.status, 'TP1_HIT'); assert(sig.pos, 'engine runs the runner plan');
+    await bar(40090, 40040, 40088);          // best +1.125R: trail to +0.825R for all
+    assert(sig.pos.every((q) => Math.abs(q.stopR - 0.825) < 1e-6), 'all stops trail 0.3R behind the best price');
+    assert.strictEqual(robot.pos.run1.legs.filter((l) => l.open).length, 3, 'nothing closed yet');
+    await bar(40070, 40060, 40062);          // pulls back to +0.75R: every stop (0.825R) is hit
+    assert.strictEqual(sig.status, 'TRAIL_EXIT'); assert(Math.abs(sig.result - 0.83) < 0.011, 'result ' + sig.result);
+    await tick(); assert(!robot.pos.run1, 'robot closed all three with the engine');
+    const c = robot.journal.filter((j) => j.type === 'close' && /Volatility 75/.test(j.msg)); console.log('runner closes:', c.map((j) => j.msg));
+    assert(c.length === 1 && c[0].pnl > 0);
+    await robot.stop(true);
+  }
   console.log('ROBOT TESTS PASSED');
   process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });

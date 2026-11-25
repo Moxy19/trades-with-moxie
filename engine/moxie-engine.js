@@ -34,6 +34,10 @@
     maxHoldMin: 360,        // time exit after 6h
     partialAtTp1: 0.5,      // fraction closed at TP1 (rest runs to TP2)
     three: true,            // ORB+ 3-position plan (Moxy, 24 Nov): 3 equal positions, all aim for TP2. At TP1: positions 1-2 SL -> TP1, position 3 SL -> halfway entry/TP1
+    // Runner lab, 25 Nov 2026 (23 markets, 3 windows of ~21 days, ~20 trades/day): after TP1 the user's stops still move as planned
+    // (1-2 to TP1, 3 halfway), but there is no fixed TP2: once the best price is +0.6R, every open position's stop trails 0.3R behind it.
+    // v1.15 entries: +301R vs +224R, profit factor 2.13 vs 1.86, better in all 3 windows; TP1 rate 78.2% vs 79.2% (runners hold the pair longer). null = old fixed TP2.
+    after: { tgt: [5, 5, 5], trail: { from: 0.6, dist: 0.3 } },
     lockAtTp1: 0.5,         // Royal Ladder: after TP1 the stop moves this far from entry towards TP1 (0 = entry, 0.5 = halfway)
     lossGuard: true,        // block same-direction re-entry after SL until structure resets
     retest: false,          // ORB retest continuation setups (off: they lost money in real-data tests)
@@ -429,11 +433,45 @@
       };
       sig.text = this.narrative(sig, { atr15, er15, h, roomR, nearest });
       this.signals.push(sig);
+      if (this.cfg.three && this.cfg.after) sig.runTgtR = Math.max.apply(null, (this.cfg.after.tgt || []).map((x) => (x == null ? sig.r2 : x)).concat([sig.r2])); // furthest target: the robot's broker take profit
       this.hooks.onSignal && this.hooks.onSignal(sig);
       return sig;
     }
 
     // ---------- live trade capture ----------
+    // ---------- runner after TP1 (3-position plan, cfg.after) ----------
+    // Each position keeps its own stop (in R) and target. Stops are checked first (pessimistic), then targets; new stops apply from the next bar/tick.
+    _afterInit(sig, A, sgn) {
+      const lock = A.lock || [1, 1, 0.5], tg = A.tgt || [null, null, null];
+      sig.pos = [0, 1, 2].map((i) => ({ stopR: lock[i] * sig.r1, tgtR: tg[i] == null ? sig.r2 : tg[i], open: true, R: null, how: null }));
+      sig.peakR = sig.r1; sig.trailFrom = A.trail ? (A.trail.from == null ? sig.r1 : A.trail.from) : null; sig.trailDist = A.trail ? A.trail.dist : null;
+      sig.slLive = sig.entry + sgn * Math.min.apply(null, sig.pos.map((p) => p.stopR)) * sig.risk;
+      sig.sl12 = sig.entry + sgn * sig.pos[0].stopR * sig.risk; sig.sl3 = sig.entry + sgn * sig.pos[2].stopR * sig.risk; sig.open12 = true; // older readers (cards, robot) still understand these
+    }
+    _after(sig, st, A, sgn, fav, adv, t, price, first) {
+      const R = (px) => (sgn * (px - sig.entry)) / sig.risk;
+      const favR = R(fav), advR = R(adv);
+      const before = sig.pos.filter((p) => p.open).length;
+      if (!first) for (const p of sig.pos) if (p.open && advR <= p.stopR + 1e-12) { p.open = false; p.R = p.stopR; p.how = 'stop'; }
+      for (const p of sig.pos) if (p.open && favR >= p.tgtR - 1e-12) { p.open = false; p.R = p.tgtR; p.how = 'tgt'; }
+      const timeUp = sig.filledAt && t - sig.filledAt > this.cfg.maxHoldMin * 60;
+      if (timeUp) for (const p of sig.pos) if (p.open) { p.open = false; p.R = Math.max(p.stopR, R(price)); p.how = 'time'; }
+      if (!sig.pos.some((p) => p.open)) {
+        sig.threeR = sig.pos.reduce((a, p) => a + p.R, 0) / 3;
+        const how = sig.pos.every((p) => p.how === 'tgt') ? 'TP2_HIT' : timeUp ? 'TIME_EXIT' : 'TRAIL_EXIT';
+        return this._close(sig, st, how, price, t);
+      }
+      sig.peakR = Math.max(sig.peakR, favR);
+      let lvl = -Infinity;
+      if (A.trail) { const from = A.trail.from == null ? sig.r1 : A.trail.from; if (sig.peakR >= from - 1e-12) lvl = sig.peakR - A.trail.dist; }
+      let moved = false;
+      for (const p of sig.pos) if (p.open && lvl > p.stopR + 1e-9) { p.stopR = lvl; moved = true; }
+      const open = sig.pos.filter((p) => p.open);
+      sig.slLive = sig.entry + sgn * Math.min.apply(null, open.map((p) => p.stopR)) * sig.risk;
+      sig.open12 = sig.pos[0].open || sig.pos[1].open;
+      if (open.length !== before || moved) this.hooks.onUpdate && this.hooks.onUpdate(sig, 'TP1_HIT');
+    }
+
     _close(sig, st, status, exitPrice, t) {
       const prev = sig.status, sgn = dirSign(sig.dir);
       const rNow = (sgn * (exitPrice - sig.entry)) / sig.risk;
@@ -477,6 +515,7 @@
         if (slHit) return this._close(sig, st, 'SL_HIT', sig.sl, t); // pessimistic if both in one bar
         if (tp1Hit) {
           sig.status = 'TP1_HIT'; sig.tp1At = t; sig.slLive = sig.entry;
+          if (cfg.three && cfg.after) { this._afterInit(sig, cfg.after, sgn); this.hooks.onUpdate && this.hooks.onUpdate(sig, 'ACTIVE'); return this._after(sig, st, cfg.after, sgn, fav, adv, t, price, true); }
           if (cfg.three) {
             sig.sl12 = sig.tp1; sig.sl3 = sig.entry + 0.5 * (sig.tp1 - sig.entry); sig.open12 = true; sig.slLive = sig.sl12;
             this.hooks.onUpdate && this.hooks.onUpdate(sig, 'ACTIVE');
@@ -488,6 +527,7 @@
           if (this.mode === 'backtest') return; // BE can't be ordered inside the same bar; check next bar
         }
       }
+      if (sig.status === 'TP1_HIT' && sig.pos) return this._after(sig, st, cfg.after || {}, sgn, fav, adv, t, price, false);
       if (sig.status === 'TP1_HIT') {
         if (sig.sl12 == null && (sgn > 0 ? fav >= sig.tp2 : fav <= sig.tp2)) return this._close(sig, st, 'TP2_HIT', sig.tp2, t);
         if (sig.sl12 != null) {
@@ -649,7 +689,7 @@
       lines.push(`The SL at ${fmt(sig.sl, d)} sits beyond the range midpoint and the recent 2m swing. Risk is ${(sig.risk / x.atr15).toFixed(2)}× the 15m ATR.`);
       lines.push(`TP1 ${fmt(sig.tp1, d)} (${sig.r1.toFixed(2)}R) and TP2 ${fmt(sig.tp2, d)} (${sig.r2.toFixed(2)}R). ${x.nearest != null ? `The next 1H structure is ${x.roomR.toFixed(1)}R away at ${fmt(x.nearest, d)}.` : 'There is no 1H structure in the way.'}`);
       if (sig.unproven) lines.push('Royalty: this market runs the Royalty strategy, which has no proven edge in backtests yet. Watch it, or trade the smallest size only.');
-      if (this.cfg.three) lines.push(`Management: open 3 equal positions with the same SL, all aiming for TP2. Nothing moves before TP1. At TP1, move the SL of positions 1 and 2 to TP1 (${fmt(sig.tp1, sig.dec)}) and the SL of position 3 halfway, to ${fmt(sig.entry + 0.5 * (sig.tp1 - sig.entry), sig.dec)}, in case price retraces.`);
+      if ((this.cfg.after) && (this.cfg.three)) lines.push(`Management: open 3 equal positions with the same SL. Nothing moves before TP1. At TP1, move the SL of positions 1 and 2 to TP1 (${fmt(sig.tp1, sig.dec)}) and the SL of position 3 halfway, to ${fmt(sig.entry + 0.5 * (sig.tp1 - sig.entry), sig.dec)}. There is no fixed TP2: once price is ${this.cfg.after.trail ? this.cfg.after.trail.from : 0.6}R in profit, trail all stops ${this.cfg.after.trail ? this.cfg.after.trail.dist : 0.3}R behind the best price (TP2 ${fmt(sig.tp2, sig.dec)} is a guide).`); else if (this.cfg.three) lines.push(`Management: open 3 equal positions with the same SL, all aiming for TP2. Nothing moves before TP1. At TP1, move the SL of positions 1 and 2 to TP1 (${fmt(sig.tp1, sig.dec)}) and the SL of position 3 halfway, to ${fmt(sig.entry + 0.5 * (sig.tp1 - sig.entry), sig.dec)}, in case price retraces.`);
       else lines.push(`Management: close ${Math.round(this.cfg.partialAtTp1 * 100)}% at TP1 and move the SL to entry, then let the rest run to TP2.`);
       return lines.join(' ');
     }
@@ -903,5 +943,5 @@
     W('GainX-400'), W('GainX-600'), W('PainX-400'), W('PainX-600'),
   ];
 
-  return { Engine, Series, DerivFeed, BridgeFeed, aggCandles, startLive, backtest, stats, trendOf, efficiency, pivots, fmt, toBar, decimalsOf, G, TF_NAME, DEFAULTS, DEFAULT_SYMBOLS, WELTRADE_SYMBOLS, version: '1.4.1' };
+  return { Engine, Series, DerivFeed, BridgeFeed, aggCandles, startLive, backtest, stats, trendOf, efficiency, pivots, fmt, toBar, decimalsOf, G, TF_NAME, DEFAULTS, DEFAULT_SYMBOLS, WELTRADE_SYMBOLS, version: '1.4.2' };
 });

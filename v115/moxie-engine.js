@@ -1,0 +1,993 @@
+/*!
+ * Royal Trades — ORB+ Engine
+ * Multi-timeframe Opening Range Breakout engine with live trade capture.
+ * Runs identically in the browser (window.MoxieEngine) and in Node (require).
+ *
+ * Pipeline per symbol:
+ *   1m ticks  ->  aggregate into 2m / 15m / 1H / 2H / 4H  ->  closed-bar indicators (no repaint)
+ *   every closed 2m bar -> ORB+ setups (Break, Retest) -> multi-TF filters & score -> signal
+ *   every tick -> track open signals (pending fill, SL, TP1 -> BE, TP2, expiry, time exit)
+ */
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) module.exports = factory();
+  else root.MoxieEngine = factory();
+})(typeof self !== 'undefined' ? self : this, function () {
+  'use strict';
+
+  const G = { M1: 60, M2: 120, M5: 300, M15: 900, H1: 3600, H2: 7200, H4: 14400 };
+  const TF_LIST = [G.M1, G.M2, G.M5, G.M15, G.H1, G.H2, G.H4];
+  const TF_NAME = { 60: '1m', 120: '2m', 300: '5m', 900: '15m', 3600: '1H', 7200: '2H', 14400: '4H' };
+  const EMA_LENS = [9, 21, 50, 200];
+
+  const DEFAULTS = {
+    orBlock: 3600,          // session block in seconds (3600 = new opening range every hour)
+    orMinutes: 15,          // opening range length
+    bufferFrac: 0.15,       // breakout must clear the edge by this fraction of range height (tuned on 7d real data)
+    amd: false,             // lab: true = add AMD setups (range sweep, then a 2m close back through the midpoint); 'only' = AMD setups only
+    smc: null,              // lab: { bos: block if 1H structure (BOS/CHoCH) is against, zone: block if an opposing OB/FVG sits before TP1, needZone: entry must sit at a demand/supply OB or FVG }
+    htfNoAgainst: true,     // v1.15 golden rule (user): block any trade with 4H or 2H against it (lab): block any trade with 4H or 2H against it
+    trendMode: 'strict',    // v1.15 golden rule: no counter-1H scalps. 'strict' = only with 1H trend; 'adaptive' = also counter-1H scalps when 1H is weak
+    minScore: 74,           // publish threshold (A grade). SL lab 23 Nov: scores under 74 won 37% (-0.28R each)
+    minScalpScore: 80,      // counter-1H scalps need more confluence
+    // Stop-loss lab, 23 Nov 2026 (593 ORB+ trades, ~21 days synthetics / ~30 days forex & crypto). Each filter
+    // removed trades that lost money in both halves of the data.
+    // Regime lab, 24 Nov 2026 (ORB+ only, two separate ~20-trading-day windows): compact opening ranges (0.6–0.9× the 15m ATR)
+    // in the active session (06:00–18:00 UTC) gave 89% of trades in profit, profit factor 3.85, 3.7R max drawdown and +100.1R
+    // over both windows (unseen window alone: 87%, PF 2.80, 3.7R, +43.8R), against PF 2.37 and 7.0R drawdown without them.
+    minOrAtr: 0.6,          // skip when the opening range is narrower than this × the 15m ATR (0 = off)
+    hours: { fromUtc: 6, toUtc: 18 }, // only signal inside these UTC hours (08:00–20:00 SAST); null = always
+    needH4: false,          // require the 4H trend to agree with the trade
+    skipLate: false,        // late-entry filter (score 95+ with 2H and 4H aligned). v1.12 had it on; v1.12.1 turns it off at the user's request (more trades, more total R; it also did worse on the unseen window)
+    maxOrAtr: 0.9,          // skip when the opening range is wider than this × the 15m ATR (regime lab; was 1.5)
+    quiet: { markets: ['forex'], fromUtc: 4, toUtc: 8 },  // no forex/metals ORB+ 06:00–10:00 SAST (London-open fakeouts: 42% win, -9R)
+    orbOff: ['frxNZDUSD', 'frxUSDCHF', 'frxEURUSD', '1HZ25V', 'R_75', 'frxUSDJPY', 'frxUSDCAD'],  // ORB+ lost in both halves on these markets
+    chopMin: 0,             // optional 15m efficiency floor (0..1). Off by default: in walk-forward tests it removed more winners than losers
+    maxRiskAtr: 1.8,        // stop distance cap in 15m ATRs
+    minRiskAtr: 0.35,       // stop distance floor in 15m ATRs (avoid noise stops)
+    minRoomR: 1.0,          // need at least 1R to nearest 1H obstacle
+    pendingExpiryMin: 30,   // unfilled limit orders expire
+    maxHoldMin: 360,        // time exit after 6h
+    partialAtTp1: 0.5,      // fraction closed at TP1 (rest runs to TP2 with SL at entry)
+    three: true,            // v1.14.1 (user plan): 3 equal positions, nothing moves before TP1. At TP1: positions 1-2 SL -> TP1, position 3 SL -> halfway entry/TP1; all 3 aim for TP2
+    // Runner lab, 25 Nov 2026 (23 markets, 3 windows of ~21 days, ~20 trades/day): after TP1 the user's stops still move as planned
+    // (1-2 to TP1, 3 halfway), but there is no fixed TP2: once the best price is +0.6R, every open position's stop trails 0.3R behind it.
+    // v1.15 entries: +301R vs +224R, profit factor 2.13 vs 1.86, better in all 3 windows; TP1 rate 78.2% vs 79.2% (runners hold the pair longer). null = old fixed TP2.
+    after: { tgt: [5, 5, 5], trail: { from: 0.6, dist: 0.3 } },
+    // Management lab, 23 Nov 2026 (v1.5.1 rules, 24 markets): moving the stop to entry at +0.5R lifted ORB+ from +83.8R to
+    // +99.8R (both halves better; stop-outs 44% -> 25%). Partial size, TP2 distance and holding time made no real difference.
+    // Stop-out lab, 24 Nov 2026 (23 markets, ~20 days): locking +0.05R at +0.3R and cutting any trade whose 5m candle closes
+    // 0.6R against it cut full stop-outs from 26% to 9% of trades and lifted wins from 74% to 79%, for the same profit
+    // (+109.9R vs +111.5R; both halves positive). Earlier: trailing lab, 23 Nov 2026 (see README).
+    // v1.14 (user rule): no stop move or profit lock before TP1. beAtR/beLockR/dyn off; the stop only moves once TP1 is touched.
+    beAtR: 0,               // 0 = off. (was 0.15; 87–88% of trades closed in profit in both lab windows) Move the stop to entry (+ beLockR) once a trade has been this many R in profit before TP1
+    beLockR: 0,             // R locked in by that early stop move (makes "breakeven" a small win)
+    tp1Lock: 0.3,           // at TP1 the stop moves to entry + this many R
+    tp1LockAtTp1: false,    // true: at TP1 the runner's stop moves to TP1 itself (3-position plan: 2 close at TP1, 1 runs)
+    trail: { mode: 'pips', pips: 20, atr: 0.75, keepTp2: false }, // after TP1: trail 'pips' (forex & metals) or 'atr' (× 15m ATR) behind the best price; keepTp2 false = let the runner go
+    slOfTp: null,           // { ref: 'tp1'|'tp2', k }: stop distance as a fraction of a target's distance (tested: worse for ORB+)
+    // Dynamic-stop lab, 24 Nov 2026 (23 markets, ~20 days, on top of v1.8): trailing the stop 1R behind the best price,
+    // never past half of the TP1 distance, until TP1: ORB+ +134.4R vs +106.3R, full stop-outs 9% -> 1%, wins 78% vs 79%;
+    dyn: null,              // was { dist: 1, cap: 0.5, whole: false }. { dist, cap, whole }: dynamic stop that trails dist × risk behind the best price, never past cap × the TP1 distance (whole: for the whole trade, else until TP1)
+    softStop: null,         // v1.15: off (it cut 197 trades for -141R; lab 24 Nov). Was { r: 0.6, tf: 300 }: before the stop has moved: exit at the close of a 5m candle that closes 0.6R or more against the trade
+    lossGuard: true,        // block same-direction re-entry after SL until structure resets
+    retest: false,          // ORB retest continuation setups (off: they lost money in real-data tests)
+    triggerTf: 120,         // candle that must close beyond the range: 120 = 2m, 300 = 5m
+    m5Filter: 'momentum',   // 5m gate (default momentum: best in real-data tests, both halves): 'off' | 'aligned' (5m trend with trade) | 'notAgainst' | 'side' (5m close on right side of EMA21) | 'momentum' (last 5m candle with trade)
+    m5Score: true,          // add +5 score when the 5m trend agrees
+    // Per-market profiles from real-data backtests (22 Nov 2026). Keys: a symbol, or a source ('mt5' = Weltrade via MT5 bridge).
+    overrides: { mt5: { m5Filter: 'off', m5Score: false } },     // 5m gate hurt Weltrade SyntX (34% vs 43% win)
+    // "Royalty" markets: ORB+ lost money in the 23 Nov 2026 strategy lab (20,000 1m bars each: ~14 days synthetics,
+    // ~20 days forex/crypto) or, for Weltrade SyntX, in the 7-day test. Signals carry a Royalty tag: watch or minimum size.
+    unproven: ['mt5', 'stpRNG', 'R_75', '1HZ25V', 'frxEURUSD', 'frxUSDJPY', 'frxUSDCHF', 'frxNZDUSD', 'frxGBPJPY', 'frxEURGBP', 'cryETHUSD'],
+    entryMode: 'auto',      // 'auto' = limit back at the edge when the trigger candle over-extends; 'market' = always market; 'skip' = skip over-extended breaks
+    r1Min: 0.3, r1Max: 0.3, // v1.15 (user's pick, 24 Nov lab: 79% wins, 78% unseen, ~20/day, +232R, PF 1.89). Was 1.0-1.5. // TP1 bounds in R (measured move = range height; tuned: losers often reached 0.5-0.9R first)
+    r2Min: 1.8, r2Max: 3,   // TP2 bounds in R (2x range height)
+    signalsEnabledFrom: 0,  // epoch; used by backtests to warm up
+  };
+
+  // ---------- helpers ----------
+  const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+  const last = (a, k = 1) => a[a.length - k];
+  const num = (x) => (typeof x === 'string' ? parseFloat(x) : x);
+  const uid = () => Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-4);
+  function decimalsOf(pip) {
+    if (pip == null) return 2;
+    if (pip >= 1 && Number.isInteger(pip)) return pip; // ticks_history gives decimals count
+    const s = String(pip);
+    if (s.includes('e-')) return parseInt(s.split('e-')[1], 10);
+    const i = s.indexOf('.');
+    return i < 0 ? 0 : s.length - i - 1;
+  }
+  function fmt(p, d) { return p == null || isNaN(p) ? '—' : Number(p).toFixed(d == null ? 2 : d); }
+  function toBar(c) {
+    return { t: num(c.open_time != null ? c.open_time : c.epoch), o: num(c.open), h: num(c.high), l: num(c.low), c: num(c.close) };
+  }
+
+  // ---------- Series: closed bars + incremental indicators ----------
+  class Series {
+    constructor(g, max = 3000) {
+      this.g = g; this.max = max; this.bars = []; this.forming = null;
+      this.ema = {}; EMA_LENS.forEach((n) => (this.ema[n] = []));
+      this.atr = [];
+    }
+    pushClosed(b) {
+      const prev = last(this.bars);
+      this.bars.push(b);
+      for (const n of EMA_LENS) {
+        const arr = this.ema[n]; const p = last(arr);
+        arr.push(p == null ? b.c : p + (2 / (n + 1)) * (b.c - p));
+      }
+      const tr = prev ? Math.max(b.h - b.l, Math.abs(b.h - prev.c), Math.abs(b.l - prev.c)) : b.h - b.l;
+      const pa = last(this.atr);
+      this.atr.push(pa == null ? tr : (pa * 13 + tr) / 14);
+      if (this.bars.length > this.max) {
+        const cut = this.bars.length - Math.floor(this.max * 0.8);
+        this.bars.splice(0, cut); this.atr.splice(0, cut);
+        for (const n of EMA_LENS) this.ema[n].splice(0, cut);
+      }
+    }
+    // Feed a (possibly partial) 1m bar. Returns the bar that just closed, if any.
+    update(b) {
+      const bucket = Math.floor(b.t / this.g) * this.g;
+      const f = this.forming;
+      if (!f) { this.forming = { t: bucket, o: b.o, h: b.h, l: b.l, c: b.c }; return null; }
+      if (bucket > f.t) {
+        this.pushClosed(f);
+        this.forming = { t: bucket, o: b.o, h: b.h, l: b.l, c: b.c };
+        return f;
+      }
+      if (bucket === f.t) {
+        if (this.g === 60) { f.h = Math.max(f.h, b.h); f.l = Math.min(f.l, b.l); f.c = b.c; }
+        else { f.h = Math.max(f.h, b.h); f.l = Math.min(f.l, b.l); f.c = b.c; }
+      }
+      return null;
+    }
+    seed(candles, treatLastAsForming = true) {
+      const bars = candles.map(toBar).sort((a, b) => a.t - b.t);
+      const closed = treatLastAsForming ? bars.slice(0, -1) : bars;
+      for (const b of closed) this.pushClosed(b);
+      this.forming = treatLastAsForming && bars.length ? { ...last(bars) } : null;
+    }
+    get n() { return this.bars.length; }
+    e(n, k = 1) { return last(this.ema[n], k); }
+    get atrv() { return last(this.atr); }
+    get close() { return this.forming ? this.forming.c : (last(this.bars) || {}).c; }
+  }
+
+  // fractal pivots on closed bars (left=right=2)
+  function pivots(s, lookback = 150, w = 2) {
+    const b = s.bars, n = b.length, highs = [], lows = [];
+    for (let i = Math.max(w, n - lookback); i < n - w; i++) {
+      let hi = true, lo = true;
+      for (let k = 1; k <= w; k++) {
+        if (b[i].h <= b[i - k].h || b[i].h < b[i + k].h) hi = false;
+        if (b[i].l >= b[i - k].l || b[i].l > b[i + k].l) lo = false;
+      }
+      if (hi) highs.push({ i, t: b[i].t, p: b[i].h });
+      if (lo) lows.push({ i, t: b[i].t, p: b[i].l });
+    }
+    return { highs, lows };
+  }
+
+
+  // ---------- smart-money structure (v1.15 lab) ----------
+  // Reads one timeframe: market structure from swing breaks (BOS = break with the current structure, CHoCH = first
+  // break against it), unmitigated order blocks (last opposite candle before a displacement that broke a swing) and
+  // fair value gaps (3-candle imbalance). Zones are { dir: 'UP'|'DOWN', lo, hi, kind } and stay live until price
+  // closes through them.
+  function smcRead(s, lookback = 200) {
+    const b = s.bars, n = b.length, out = { dir: 'FLAT', last: null, zones: [] };
+    if (n < 30) return out;
+    const start = Math.max(3, n - lookback), atr = s.atr;
+    const pv = pivots(s, lookback, 2);
+    let hi = null, lo = null, hiK = 0, loK = 0, dir = 'FLAT';
+    const H = pv.highs, L = pv.lows;
+    for (let i = start; i < n; i++) {
+      while (hiK < H.length && H[hiK].i + 2 <= i - 1) hi = H[hiK++];   // swing confirmed 2 bars after it
+      while (loK < L.length && L[loK].i + 2 <= i - 1) lo = L[loK++];
+      const x = b[i], a = atr[i] || (x.h - x.l) || 1e-9;
+      if (hi && x.c > hi.p) {
+        out.last = { kind: dir === 'DOWN' ? 'CHoCH' : 'BOS', dir: 'UP', t: x.t }; dir = 'UP';
+        for (let k = i; k > Math.max(start, i - 8); k--) if (b[k].c < b[k].o) { out.zones.push({ dir: 'UP', lo: b[k].l, hi: Math.max(b[k].o, b[k].h), kind: 'OB', i: k }); break; }
+        hi = null;
+      } else if (lo && x.c < lo.p) {
+        out.last = { kind: dir === 'UP' ? 'CHoCH' : 'BOS', dir: 'DOWN', t: x.t }; dir = 'DOWN';
+        for (let k = i; k > Math.max(start, i - 8); k--) if (b[k].c > b[k].o) { out.zones.push({ dir: 'DOWN', lo: Math.min(b[k].o, b[k].l), hi: b[k].h, kind: 'OB', i: k }); break; }
+        lo = null;
+      }
+      // fair value gaps with a displacement middle candle
+      const m = b[i - 1], p2 = b[i - 2];
+      if (Math.abs(m.c - m.o) >= 0.8 * a) {
+        if (x.l > p2.h) out.zones.push({ dir: 'UP', lo: p2.h, hi: x.l, kind: 'FVG', i });
+        if (x.h < p2.l) out.zones.push({ dir: 'DOWN', lo: x.h, hi: p2.l, kind: 'FVG', i });
+      }
+    }
+    out.dir = dir;
+    // drop mitigated zones (a later close through the far side)
+    out.zones = out.zones.filter((z) => { for (let k = z.i + 1; k < n; k++) { if (z.dir === 'UP' && b[k].c < z.lo) return false; if (z.dir === 'DOWN' && b[k].c > z.hi) return false; } return true; });
+    return out;
+  }
+
+  // Trend read for one timeframe (closed bars only)
+  function trendOf(s) {
+    const out = { dir: 'FLAT', score: 0, strength: 0, parts: {} };
+    if (!s || s.n < 30) return out;
+    const c = last(s.bars).c, e21 = s.e(21), e50 = s.e(50), e200 = s.e(200);
+    const slope = e50 - (s.ema[50][s.n - 6] != null ? s.ema[50][s.n - 6] : e50);
+    let sc = 0;
+    if (s.n >= 200) { sc += e50 > e200 ? 1 : -1; out.parts.stack = e50 > e200 ? 'EMA50>200' : 'EMA50<200'; }
+    sc += c > e50 ? 1 : -1;
+    sc += slope > 0 ? 1 : -1;
+    const pv = pivots(s, 120);
+    if (pv.highs.length >= 2 && pv.lows.length >= 2) {
+      const hh = last(pv.highs).p > last(pv.highs, 2).p, hl = last(pv.lows).p > last(pv.lows, 2).p;
+      if (hh && hl) { sc += 1; out.parts.structure = 'HH/HL'; }
+      else if (!hh && !hl) { sc -= 1; out.parts.structure = 'LH/LL'; }
+      else out.parts.structure = 'mixed';
+    }
+    out.score = sc;
+    out.dir = sc >= 2 ? 'UP' : sc <= -2 ? 'DOWN' : 'FLAT';
+    out.strength = Math.min(1, Math.abs(sc) / 4);
+    out.above21 = c > e21; out.e21over50 = e21 > e50; out.close = c; out.e21 = e21; out.e50 = e50;
+    return out;
+  }
+
+  // Kaufman efficiency ratio over n closed bars: 1 = clean trend, 0 = pure chop
+  function efficiency(s, n = 16) {
+    if (!s || s.n < n + 1) return 0.5;
+    const b = s.bars, end = b.length - 1;
+    const change = Math.abs(b[end].c - b[end - n].c);
+    let path = 0; for (let i = end - n + 1; i <= end; i++) path += Math.abs(b[i].c - b[i - 1].c);
+    return path === 0 ? 0 : change / path;
+  }
+
+  const dirSign = (d) => (d === 'BUY' ? 1 : -1);
+  const want = (d) => (d === 'BUY' ? 'UP' : 'DOWN');
+  const against = (d) => (d === 'BUY' ? 'DOWN' : 'UP');
+
+  // ---------- Engine ----------
+  class Engine {
+    constructor(cfg = {}, hooks = {}) {
+      this.cfg = Object.assign({}, DEFAULTS, cfg);
+      this.hooks = hooks; // onSignal(sig), onUpdate(sig, prevStatus), onReject(info)
+      this.sym = {};      // symbol state
+      this.signals = [];  // all signals (open + closed)
+      this.mode = 'live'; // 'live' (exact tick order) | 'backtest' (bar extremes, pessimistic)
+    }
+    setConfig(c) { Object.assign(this.cfg, c); }
+
+    addSymbol(symbol, meta = {}) {
+      if (this.sym[symbol]) return this.sym[symbol];
+      const st = {
+        symbol, name: meta.name || symbol, market: meta.market || 'synthetic', source: meta.source || 'deriv', dec: decimalsOf(meta.pip != null ? meta.pip : meta.decimals),
+        series: {}, block: null, price: null, lastT: 0, guard: { BUY: null, SELL: null }, ready: false,
+      };
+      for (const g of TF_LIST) st.series[g] = new Series(g, g === 60 ? 3000 : 2500);
+      this.sym[symbol] = st; return st;
+    }
+
+    // seed history for one timeframe. For g=60 also rebuilds the current opening range.
+    seed(symbol, g, candles, opts = {}) {
+      const st = this.sym[symbol]; if (!st || !candles || !candles.length) return;
+      if (opts.decimals != null) st.dec = decimalsOf(opts.decimals);
+      const s = st.series[g];
+      s.seed(candles, opts.forming !== false);
+      if (g === 60) {
+        for (const b of s.bars) this._orUpdate(st, b, true);
+        if (s.forming) { st.price = s.forming.c; st.lastT = s.forming.t; }
+      }
+    }
+    // after all timeframes seeded: mark breakouts that already happened in the current block
+    finishSeed(symbol) {
+      const st = this.sym[symbol]; if (!st) return;
+      const tg = this.cfg.triggerTf === G.M5 ? G.M5 : G.M2;
+      const b = st.block, s2 = st.series[tg];
+      if (b && b.done) {
+        const buf = (b.hi - b.lo) * this.cfg.bufferFrac;
+        for (const x of s2.bars) {
+          if (x.t + tg <= b.orEnd || x.t < b.start) continue;
+          if (x.c > b.hi + buf) b.brokeUp = b.retestUp = true;
+          if (x.c < b.lo - buf) b.brokeDn = b.retestDn = true;
+        }
+      }
+      st.ready = true;
+      // replay closed 1m history through open signals restored from storage
+      for (const sig of this.openSignals(symbol)) {
+        for (const x of st.series[60].bars) if (x.t >= (sig.lastT || sig.createdAt)) this._track(sig, st, x.h, x.l, x.t + 60, x.c, true);
+      }
+    }
+
+    restoreSignals(list) {
+      for (const s of list || []) if (!this.signals.find((x) => x.id === s.id)) this.signals.push(s);
+      this.signals.sort((a, b) => a.createdAt - b.createdAt);
+    }
+    openSignals(symbol) {
+      return this.signals.filter((s) => (!symbol || s.symbol === symbol) && ['PENDING', 'ACTIVE', 'TP1_HIT'].includes(s.status));
+    }
+
+    // Live: feed every 1m ohlc update (Deriv 'ohlc' message or candle). Backtest: feed each closed 1m bar.
+    onBar(symbol, raw) {
+      const st = this.sym[symbol]; if (!st) return;
+      const bar = raw.t != null ? raw : toBar(raw);
+      if (!isFinite(bar.c)) return;
+      const s1 = st.series[60];
+      const prevForming = s1.forming;
+      // 1) aggregate into every timeframe, collecting closures
+      const closed = {};
+      for (const g of TF_LIST) { const c = st.series[g].update(bar); if (c) closed[g] = c; }
+      if (closed[60]) this._orUpdate(st, closed[60], false);
+      st.price = bar.c; st.lastT = bar.t;
+      // 2) strategy on closed 2m bar
+      const trig = this.cfg.triggerTf === G.M5 ? G.M5 : G.M2;
+      if (closed[trig] && st.ready) this._evaluate(st, closed[trig], trig);
+      // 3) track open signals with the newest data
+      const isNewMinute = !prevForming || bar.t > prevForming.t;
+      let hi = bar.c, lo = bar.c;
+      if (this.mode === 'backtest') { hi = bar.h; lo = bar.l; }
+      const now = this.mode === 'backtest' ? bar.t + 60 : Math.max(bar.t, Math.floor(Date.now() / 1000));
+      for (const sig of this.openSignals(symbol)) {
+        if (sig.createdAt > now) continue;
+        this._track(sig, st, hi, lo, now, bar.c, isNewMinute);
+      }
+      for (const g of [G.M5, G.M15]) if (closed[g]) this._softStops(st, closed[g], g);
+    }
+    // Soft stops: a candle that closes against the trade cuts it at that close instead of waiting for the full stop.
+    _softStops(st, cb, g) {
+      const cfg = this.cfg, T = cb.t + g;
+      for (const sig of this.openSignals(st.symbol)) {
+        if (!sig.filledAt || sig.filledAt > cb.t) continue;      // only candles that opened after the fill
+        const d = dirSign(sig.dir), rNow = (d * (cb.c - sig.entry)) / sig.risk;
+        const ss = cfg.softStop;
+        if (!ss || ss.tf !== g || sig.status !== 'ACTIVE' || sig.beArmed) continue;
+        if (rNow <= -ss.r) this._close(sig, st, 'SOFT_EXIT', cb.c, T);
+      }
+    }
+
+    // ---------- opening range ----------
+    _orUpdate(st, b1, seeding) {
+      const cfg = this.cfg;
+      const start = Math.floor(b1.t / cfg.orBlock) * cfg.orBlock;
+      if (!st.block || st.block.start !== start) {
+        st.block = { start, end: start + cfg.orBlock, orEnd: start + cfg.orMinutes * 60, hi: null, lo: null, done: false,
+          brokeUp: false, brokeDn: false, retestUp: false, retestDn: false };
+        // new block resets the loss guard only if structure changed (handled in guard check)
+      }
+      const b = st.block;
+      if (b1.t < b.orEnd) {
+        b.hi = b.hi == null ? b1.h : Math.max(b.hi, b1.h);
+        b.lo = b.lo == null ? b1.l : Math.min(b.lo, b1.l);
+      }
+      if (b1.t + 60 >= b.orEnd && b.hi != null) b.done = true;
+    }
+
+    // ---------- setups ----------
+    _evaluate(st, bar2, tg = G.M2) {
+      const cfg = this.cfg, b = st.block;
+      const T = bar2.t + tg;
+      if (!b || !b.done || T <= b.orEnd || T > b.end) return;
+      if (T < cfg.signalsEnabledFrom) return;
+      const h = b.hi - b.lo; if (!(h > 0)) return;
+      const buf = h * cfg.bufferFrac, mid = (b.hi + b.lo) / 2;
+      const cands = [];
+      if (!b.brokeUp && bar2.c > b.hi + buf) { b.brokeUp = true; cands.push({ dir: 'BUY', setup: 'ORB Break' }); }
+      if (!b.brokeDn && bar2.c < b.lo - buf) { b.brokeDn = true; cands.push({ dir: 'SELL', setup: 'ORB Break' }); }
+      if (cfg.retest) {
+        if (b.brokeUp && !b.retestUp && !cands.length && bar2.l <= b.hi + 0.25 * h && bar2.l > mid && bar2.c > b.hi && bar2.c > bar2.o) {
+          b.retestUp = true; cands.push({ dir: 'BUY', setup: 'ORB Retest' });
+        }
+        if (b.brokeDn && !b.retestDn && !cands.length && bar2.h >= b.lo - 0.25 * h && bar2.h < mid && bar2.c < b.lo && bar2.c < bar2.o) {
+          b.retestDn = true; cands.push({ dir: 'SELL', setup: 'ORB Retest' });
+        }
+      }
+      // AMD (lab): the opening range is the accumulation; a run beyond one side is the manipulation (sweep); a 2m close
+      // back through the range midpoint is the change of character that starts the distribution the other way.
+      if (cfg.amd) {
+        if (cfg.amd === 'only') cands.length = 0;
+        if (bar2.l < b.lo - buf) { b.amdLo = Math.min(b.amdLo == null ? Infinity : b.amdLo, bar2.l); }
+        if (bar2.h > b.hi + buf) { b.amdHi = Math.max(b.amdHi == null ? -Infinity : b.amdHi, bar2.h); }
+        if (b.amdLo != null && !b.amdBuy && bar2.c > mid && bar2.c > bar2.o && bar2.l > b.amdLo) { b.amdBuy = true; cands.push({ dir: 'BUY', setup: 'AMD (sweep + CHoCH)', sl: b.amdLo }); }
+        if (b.amdHi != null && !b.amdSell && bar2.c < mid && bar2.c < bar2.o && bar2.h < b.amdHi) { b.amdSell = true; cands.push({ dir: 'SELL', setup: 'AMD (sweep + CHoCH)', sl: b.amdHi }); }
+      }
+      for (const c of cands) this._consider(st, c, bar2, T, h, mid);
+    }
+
+    _cfgFor(st) {
+      const o = this.cfg.overrides || {};
+      return Object.assign({}, this.cfg, o[st.source] || {}, o[st.symbol] || {});
+    }
+    _consider(st, cand, bar2, T, h, mid) {
+      const cfg = this._cfgFor(st), b = st.block, dir = cand.dir, sgn = dirSign(dir);
+      const S = st.series;
+      const reject = (why) => { this.hooks.onReject && this.hooks.onReject({ symbol: st.symbol, dir, setup: cand.setup, t: T, why }); return null; };
+      if (this.openSignals(st.symbol).length) return reject('Trade already open on this pair');
+
+      const tH4 = trendOf(S[G.H4]), tH2 = trendOf(S[G.H2]), tH1 = trendOf(S[G.H1]), t15 = trendOf(S[G.M15]);
+      const atr15 = S[G.M15].atrv || h;
+      if ((cfg.orbOff || []).includes(st.symbol)) return reject('ORB+ is off on this market (it lost money in testing)');
+      if (cfg.maxOrAtr && h > cfg.maxOrAtr * atr15) return reject('Opening range too wide (' + (h / atr15).toFixed(1) + '× ATR): breakouts from wide ranges usually fail');
+      if (cfg.quiet && (cfg.quiet.markets || []).includes(st.market)) {
+        const hu = new Date(T * 1000).getUTCHours();
+        if (hu >= cfg.quiet.fromUtc && hu < cfg.quiet.toUtc) return reject('Quiet window (London open): breakouts fail more often');
+      }
+      // Regime filters (regime lab, 24 Nov 2026): compact ranges in the active session, with the 4H behind the trade
+      if (cfg.minOrAtr && h < cfg.minOrAtr * atr15) return reject('Opening range too tight (' + (h / atr15).toFixed(2) + '× ATR): no clean breakout regime');
+      if (cfg.hours) { const hu = new Date(T * 1000).getUTCHours(); if (hu < cfg.hours.fromUtc || hu >= cfg.hours.toUtc) return reject('Outside the active session (' + cfg.hours.fromUtc + ':00–' + cfg.hours.toUtc + ':00 UTC)'); }
+      if (cfg.needH4 && tH4.dir !== want(dir)) return reject('4H trend not behind the trade');
+      const er15 = efficiency(S[G.M15], 16);
+      const m1 = S[G.M1];
+      const mom1 = m1.n > 21 && (sgn > 0 ? last(m1.bars).c > m1.e(9) && m1.e(9) > m1.e(21) : last(m1.bars).c < m1.e(9) && m1.e(9) < m1.e(21));
+      // 5m read: trend, side of EMA21, last-candle momentum
+      const s5 = S[G.M5], t5 = trendOf(s5), l5 = last(s5.bars);
+      const side5 = !!l5 && s5.n > 21 && (sgn > 0 ? l5.c > s5.e(21) : l5.c < s5.e(21));
+      const mom5 = !!l5 && s5.n > 9 && (sgn > 0 ? l5.c > l5.o && l5.c > s5.e(9) : l5.c < l5.o && l5.c < s5.e(9));
+      if (cfg.m5Filter === 'aligned' && t5.dir !== want(dir)) return reject('5m trend not aligned');
+      if (cfg.m5Filter === 'notAgainst' && t5.dir === against(dir)) return reject('5m trend against');
+      if (cfg.m5Filter === 'side' && !side5) return reject('5m closed on the wrong side of EMA21');
+      if (cfg.m5Filter === 'momentum' && !mom5) return reject('Last 5m candle not with the trade');
+
+      // --- the 1H rule (strict or adaptive) ---
+      let kind = 'TREND';
+      if (tH1.dir === want(dir)) kind = 'TREND';
+      else if (cfg.trendMode === 'strict') return reject('Against / without 1H trend (strict mode)');
+      else {
+        // adaptive: counter-1H scalp only if 1H is weak, 15m strongly with us, 1m momentum, 4H not against
+        const h1Strong = tH1.dir === against(dir) && Math.abs(tH1.score) >= 3;
+        if (h1Strong) return reject('Strong 1H trend against — blocked');
+        if (t15.dir !== want(dir)) return reject('Counter-1H scalp needs 15m aligned');
+        if (!mom1) return reject('Counter-1H scalp needs 1m momentum');
+        if (tH4.dir === against(dir)) return reject('Counter-1H scalp with 4H against — blocked');
+        kind = 'SCALP';
+      }
+      // --- 15m must not be against (check 15m and 1H always) ---
+      const m15ok = t15.dir === want(dir) || (t15.dir === 'FLAT' && (sgn > 0 ? t15.above21 : !t15.above21));
+      if (!m15ok) return reject('15m not aligned');
+      // --- higher-TF veto: 2H and 4H both against ---
+      if (tH4.dir === against(dir) && tH2.dir === against(dir)) return reject('2H and 4H both against');
+      // golden rule (user): never against the higher timeframe. htfNoAgainst blocks a trade when 4H or 2H is against it
+      if (cfg.htfNoAgainst && (tH4.dir === against(dir) || tH2.dir === against(dir))) return reject('Golden rule: 4H or 2H against the trade');
+      // --- chop filter ---
+      if (er15 < cfg.chopMin) return reject('15m is ranging (efficiency ' + er15.toFixed(2) + ')');
+      // --- loss guard: no same-direction re-entry after SL until a fresh opening range AND 15m swing confirms ---
+      const g = st.guard[dir];
+      if (cfg.lossGuard && g) {
+        const pv = pivots(S[G.M15], 60);
+        const fresh = sgn > 0 ? pv.lows.some((p) => p.t > g.t && p.p > g.level) : pv.highs.some((p) => p.t > g.t && p.p < g.level);
+        if (b.start <= g.block || !fresh) return reject('Loss guard: waiting for structure reset after SL');
+        st.guard[dir] = null;
+      }
+
+      // --- entry ---
+      const edge = sgn > 0 ? b.hi : b.lo;
+      const dist = Math.abs(bar2.c - edge);
+      let entryType = 'MARKET', entry = bar2.c;
+      if (cand.setup === 'ORB Break' && dist > 0.4 * h) {
+        if (cfg.entryMode === 'skip') return reject('Breakout candle over-extended from the range');
+        if (cfg.entryMode === 'auto') { entryType = 'LIMIT'; entry = edge + sgn * 0.15 * h; }
+      }
+      // --- stop: beyond range midpoint or the recent 2m swing, whichever protects better ---
+      const s2 = S[G.M2].bars.slice(-3);
+      const swing = sgn > 0 ? Math.min(...s2.map((x) => x.l)) : Math.max(...s2.map((x) => x.h));
+      let sl = cand.sl != null ? cand.sl : sgn > 0 ? Math.min(mid, swing) : Math.max(mid, swing);
+      sl -= sgn * 0.05 * atr15;
+      let risk = Math.abs(entry - sl);
+      if (risk > cfg.maxRiskAtr * atr15) {
+        // try the tighter of the two references before giving up
+        const alt = (sgn > 0 ? Math.max(mid, swing) : Math.min(mid, swing)) - sgn * 0.05 * atr15;
+        if (Math.abs(entry - alt) <= cfg.maxRiskAtr * atr15 && sgn * (entry - alt) > 0) { sl = alt; risk = Math.abs(entry - sl); }
+        else return reject('Stop would be too wide (' + (risk / atr15).toFixed(1) + '× ATR)');
+      }
+      if (risk < cfg.minRiskAtr * atr15) { risk = cfg.minRiskAtr * atr15; sl = entry - sgn * risk; }
+
+      // --- room to the nearest 1H obstacle ---
+      const pvH1 = pivots(S[G.H1], 200);
+      const obs = sgn > 0 ? pvH1.highs.map((p) => p.p).filter((p) => p > entry) : pvH1.lows.map((p) => p.p).filter((p) => p < entry);
+      const nearest = obs.length ? (sgn > 0 ? Math.min(...obs) : Math.max(...obs)) : null;
+      const roomR = nearest == null ? 99 : Math.abs(nearest - entry) / risk;
+      if (roomR < cfg.minRoomR) return reject('No room: 1H level ' + roomR.toFixed(2) + 'R away');
+      // --- smart-money structure (smc lab options) ---
+      let smcH1 = null, smcSup = null;
+      if (cfg.smc) {
+        smcH1 = smcRead(S[G.H1]); const s15 = smcRead(S[G.M15]);
+        const sm = cfg.smc, w = want(dir), tp1x = entry + sgn * cfg.r1Min * risk;
+        if (sm.bos && smcH1.dir === against(dir)) return reject('1H structure against (' + (smcH1.last ? smcH1.last.kind : 'break') + ' ' + smcH1.dir + ')');
+        if (sm.zone) {
+          const opp = smcH1.zones.concat(s15.zones).find((z) => z.dir === against(dir) && (sgn > 0 ? z.lo > entry && z.lo < tp1x : z.hi < entry && z.hi > tp1x));
+          if (opp) return reject('Opposing ' + (opp.kind === 'OB' ? (sgn > 0 ? 'supply' : 'demand') + ' order block' : 'FVG') + ' before TP1');
+        }
+        const near = 0.5 * atr15;
+        smcSup = smcH1.zones.concat(s15.zones).find((z) => z.dir === w && (sgn > 0 ? entry >= z.lo && entry <= z.hi + near : entry <= z.hi && entry >= z.lo - near)) || null;
+        if (sm.needZone && !smcSup) return reject('No demand/supply zone or FVG behind the entry');
+      }
+
+      // --- targets ---
+      let r1 = clamp(h / risk, cfg.r1Min, kind === 'SCALP' ? Math.min(cfg.r1Max, cfg.r1Min + 0.2) : cfg.r1Max);
+      let r2 = kind === 'SCALP' ? clamp(1.6 * h / risk, r1 + 0.3, Math.max(r1 + 0.3, cfg.r2Min)) : clamp((2 * h) / risk, Math.max(cfg.r2Min, r1 + 0.8), cfg.r2Max);
+      if (nearest != null && roomR < r1) r1 = Math.max(1.0, roomR * 0.95);
+      if (nearest != null && roomR < r2 && roomR > r1 + 0.3) r2 = roomR * 0.97;
+      let tp1 = entry + sgn * r1 * risk, tp2 = entry + sgn * r2 * risk;
+      if (cfg.slOfTp) {   // stop distance = k × the distance to TP1 or TP2 (targets stay where they are)
+        const ref = cfg.slOfTp.ref === 'tp1' ? tp1 : tp2, nr = cfg.slOfTp.k * Math.abs(ref - entry);
+        if (nr > 0) { risk = nr; sl = entry - sgn * risk; r1 = Math.abs(tp1 - entry) / risk; r2 = Math.abs(tp2 - entry) / risk; }
+      }
+
+      // --- score (0..100) ---
+      const reasons = [];
+      let score = 0;
+      const add = (pts, ok, label, detail) => { score += pts; reasons.push({ ok, pts, label, detail }); };
+      if (kind === 'TREND') add(15 + Math.round(10 * tH1.strength), true, '1H trend ' + tH1.dir, tH1.parts.structure ? tH1.parts.structure + ', ' + (tH1.parts.stack || '') : tH1.parts.stack || '');
+      else add(6, true, '1H weak/flat — scalp only', '1H score ' + tH1.score);
+      add(tH4.dir === want(dir) ? 15 : tH4.dir === 'FLAT' ? 7 : 0, tH4.dir !== against(dir), '4H ' + tH4.dir, '');
+      add(tH2.dir === want(dir) ? 10 : tH2.dir === 'FLAT' ? 5 : 0, tH2.dir !== against(dir), '2H ' + tH2.dir, '');
+      add(t15.dir === want(dir) ? 15 : 8, true, '15m ' + (t15.dir === want(dir) ? 'aligned' : 'neutral, right side of EMA21'), '');
+      add(mom1 ? 10 : 0, mom1, '1m momentum', mom1 ? 'EMA9 > EMA21 in trade direction' : 'not confirmed');
+      add(cfg.m5Score && t5.dir === want(dir) ? 5 : 0, t5.dir !== against(dir), '5m ' + t5.dir + (side5 ? ', right side of EMA21' : ''), mom5 ? 'last 5m candle with the trade' : '');
+      const body = Math.abs(bar2.c - bar2.o), rng = bar2.h - bar2.l || 1e-9;
+      const closePos = sgn > 0 ? (bar2.c - bar2.l) / rng : (bar2.h - bar2.c) / rng;
+      add((body / rng >= 0.5 ? 5 : 0) + (closePos >= 0.7 ? 5 : 0), body / rng >= 0.5, '2m trigger candle', Math.round((body / rng) * 100) + '% body, closed ' + Math.round(closePos * 100) + '% toward ' + (sgn > 0 ? 'high' : 'low'));
+      const hq = h / atr15;
+      add(hq >= 0.6 && hq <= 2.5 ? 10 : hq >= 0.4 && hq <= 3.5 ? 5 : 0, hq >= 0.4 && hq <= 3.5, 'Range quality', (hq).toFixed(2) + '× 15m ATR');
+      add(roomR >= 2 ? 5 : 0, roomR >= 2, 'Room to 1H structure', roomR >= 99 ? 'open sky' : roomR.toFixed(1) + 'R');
+      if (cfg.smc) { add(smcH1 && smcH1.dir === want(dir) ? 5 : 0, !smcH1 || smcH1.dir !== against(dir), '1H structure ' + (smcH1 && smcH1.last ? smcH1.last.kind + ' ' + smcH1.dir : 'n/a'), ''); add(smcSup ? 10 : 0, !!smcSup, 'Entry at ' + (smcSup ? (smcSup.kind === 'OB' ? (sgn > 0 ? 'demand' : 'supply') + ' order block' : 'FVG') : 'no zone'), ''); }
+      reasons.push({ ok: true, pts: 0, label: '15m trend quality', detail: 'efficiency ' + er15.toFixed(2) });
+      score = Math.min(100, score);
+      const minS = kind === 'SCALP' ? cfg.minScalpScore : cfg.minScore;
+      if (score < minS) return reject('Score ' + score + ' below ' + minS);
+      // Loss review, 24 Nov 2026: when every timeframe is already aligned (score 95+ with the 2H and 4H both behind the
+      // trade) the move is usually late; those trades lost 9–16% of the time against 4–6% for the rest.
+      if (cfg.skipLate && score >= 95 && tH4.dir === want(dir) && tH2.dir === want(dir)) return reject('Late entry: every timeframe already aligned (score ' + score + ')');
+      const grade = score >= 85 ? 'A+' : score >= 74 ? 'A' : 'B';
+
+      const sig = {
+        id: uid(), symbol: st.symbol, name: st.name, market: st.market, source: st.source, dec: st.dec,
+        setup: cand.setup, kind, dir, tf: TF_NAME[cfg.triggerTf === G.M5 ? G.M5 : G.M2], entryType, entry, sl, slLive: sl, tp1, tp2, risk, r1, r2,
+        score, grade, reasons, unproven: (cfg.unproven || []).includes(st.symbol) || (cfg.unproven || []).includes(st.source),
+        bias: { H4: tH4.dir, H2: tH2.dir, H1: tH1.dir, M15: t15.dir, M5: t5.dir, M1: mom1 ? want(dir) : 'FLAT' },
+        or: { hi: b.hi, lo: b.lo, start: b.start, end: b.end, orEnd: b.orEnd },
+        status: entryType === 'LIMIT' ? 'PENDING' : 'ACTIVE',
+        createdAt: T, filledAt: entryType === 'LIMIT' ? null : T, tp1At: null, closedAt: null, lastT: T,
+        result: null, mfeR: 0, maeR: 0, price: bar2.c, exit: null, atr15, peak: null,
+      };
+      sig.text = this.narrative(sig, { atr15, er15, h, roomR, nearest });
+      this.signals.push(sig);
+      if (this.cfg.three && this.cfg.after) sig.runTgtR = Math.max.apply(null, (this.cfg.after.tgt || []).map((x) => (x == null ? sig.r2 : x)).concat([sig.r2])); // furthest target: the robot's broker take profit
+      this.hooks.onSignal && this.hooks.onSignal(sig);
+      return sig;
+    }
+
+    // ---------- live trade capture ----------
+    // ---------- runner after TP1 (3-position plan, cfg.after) ----------
+    // Each position keeps its own stop (in R) and target. Stops are checked first (pessimistic), then targets; new stops apply from the next bar/tick.
+    _afterInit(sig, A, sgn) {
+      const lock = A.lock || [1, 1, 0.5], tg = A.tgt || [null, null, null];
+      sig.pos = [0, 1, 2].map((i) => ({ stopR: lock[i] * sig.r1, tgtR: tg[i] == null ? sig.r2 : tg[i], open: true, R: null, how: null }));
+      sig.peakR = sig.r1; sig.trailFrom = A.trail ? (A.trail.from == null ? sig.r1 : A.trail.from) : null; sig.trailDist = A.trail ? A.trail.dist : null;
+      sig.slLive = sig.entry + sgn * Math.min.apply(null, sig.pos.map((p) => p.stopR)) * sig.risk;
+      sig.sl12 = sig.entry + sgn * sig.pos[0].stopR * sig.risk; sig.sl3 = sig.entry + sgn * sig.pos[2].stopR * sig.risk; sig.open12 = true; // older readers (cards, robot) still understand these
+    }
+    _after(sig, st, A, sgn, fav, adv, t, price, first) {
+      const R = (px) => (sgn * (px - sig.entry)) / sig.risk;
+      const favR = R(fav), advR = R(adv);
+      const before = sig.pos.filter((p) => p.open).length;
+      if (!first) for (const p of sig.pos) if (p.open && advR <= p.stopR + 1e-12) { p.open = false; p.R = p.stopR; p.how = 'stop'; }
+      for (const p of sig.pos) if (p.open && favR >= p.tgtR - 1e-12) { p.open = false; p.R = p.tgtR; p.how = 'tgt'; }
+      const timeUp = sig.filledAt && t - sig.filledAt > this.cfg.maxHoldMin * 60;
+      if (timeUp) for (const p of sig.pos) if (p.open) { p.open = false; p.R = Math.max(p.stopR, R(price)); p.how = 'time'; }
+      if (!sig.pos.some((p) => p.open)) {
+        sig.threeR = sig.pos.reduce((a, p) => a + p.R, 0) / 3;
+        const how = sig.pos.every((p) => p.how === 'tgt') ? 'TP2_HIT' : timeUp ? 'TIME_EXIT' : 'TRAIL_EXIT';
+        return this._close(sig, st, how, price, t);
+      }
+      sig.peakR = Math.max(sig.peakR, favR);
+      let lvl = -Infinity;
+      if (A.trail) { const from = A.trail.from == null ? sig.r1 : A.trail.from; if (sig.peakR >= from - 1e-12) lvl = sig.peakR - A.trail.dist; }
+      let moved = false;
+      for (const p of sig.pos) if (p.open && lvl > p.stopR + 1e-9) { p.stopR = lvl; moved = true; }
+      const open = sig.pos.filter((p) => p.open);
+      sig.slLive = sig.entry + sgn * Math.min.apply(null, open.map((p) => p.stopR)) * sig.risk;
+      sig.open12 = sig.pos[0].open || sig.pos[1].open;
+      if (open.length !== before || moved) this.hooks.onUpdate && this.hooks.onUpdate(sig, 'TP1_HIT');
+    }
+
+    _close(sig, st, status, exitPrice, t) {
+      const prev = sig.status, sgn = dirSign(sig.dir);
+      const rNow = (sgn * (exitPrice - sig.entry)) / sig.risk;
+      const p = this.cfg.partialAtTp1;
+      let R = 0;
+      if (sig.threeR != null) R = sig.threeR;  // 3-position plan sets its own result
+      else if (status === 'SL_HIT') R = -1;
+      else if (status === 'TP2_HIT') R = p * sig.r1 + (1 - p) * sig.r2;
+      else if (status === 'BE_HIT' || status === 'TRAIL_EXIT') R = p * sig.r1 + (1 - p) * rNow;
+      else if (status === 'BE_EARLY' || status === 'SOFT_EXIT' || status === 'DYN_STOP') R = rNow;  // stopped at entry (or the locked level) before TP1
+      else if (status === 'TIME_EXIT') R = sig.tp1At ? p * sig.r1 + (1 - p) * rNow : rNow;
+      else R = 0; // EXPIRED / CANCELLED never filled
+      sig.status = status; sig.closedAt = t; sig.exit = exitPrice; sig.result = Math.round(R * 100) / 100; sig.lastT = t;
+      if (status === 'SL_HIT') {
+        // arm the loss guard for this direction
+        st.guard[sig.dir] = { t, block: st.block ? st.block.start : 0, level: sig.dir === 'BUY' ? Math.min(sig.sl, sig.entry) : Math.max(sig.sl, sig.entry) };
+      }
+      this.hooks.onUpdate && this.hooks.onUpdate(sig, prev);
+    }
+
+    _better(sgn, a, b) { if (a == null) return b; if (b == null) return a; return sgn > 0 ? Math.max(a, b) : Math.min(a, b); }
+    _dynCap(sig, dy, sgn) { return sig.entry + sgn * (dy.cap == null ? 0.5 : dy.cap) * Math.abs(sig.tp1 - sig.entry); }
+    // Dynamic stop: follows the best price at dist × risk, never past cap × the TP1 distance. Applies from the next bar.
+    _dyn(sig, dy, sgn) {
+      const best = sig.entry + sgn * sig.mfeR * sig.risk;
+      const cand = this._better(-sgn, best - sgn * dy.dist * sig.risk, this._dynCap(sig, dy, sgn));
+      const cur = sig.beArmed || sig.dynMoved || sig.status === 'TP1_HIT' ? sig.slLive : sig.sl;
+      if (sgn > 0 ? cand > cur + 1e-12 : cand < cur - 1e-12) { sig.slLive = cand; sig.dynMoved = true; }
+    }
+    _track(sig, st, hi, lo, t, price, _newMin) {
+      const sgn = dirSign(sig.dir), cfg = this.cfg;
+      const fav = sgn > 0 ? hi : lo, adv = sgn > 0 ? lo : hi;
+      const prev = sig.status;
+      sig.price = price; sig.lastT = t;
+      if (sig.status === 'PENDING') {
+        if (t - sig.createdAt > cfg.pendingExpiryMin * 60) return this._close(sig, st, 'EXPIRED', price, t);
+        const filled = sgn > 0 ? adv <= sig.entry : adv >= sig.entry;
+        if (!filled) {
+          if (sgn > 0 ? fav >= sig.tp1 : fav <= sig.tp1) return this._close(sig, st, 'CANCELLED', price, t); // ran away without us
+          return;
+        }
+        sig.status = 'ACTIVE'; sig.filledAt = t;
+        this.hooks.onUpdate && this.hooks.onUpdate(sig, prev);
+      }
+      // excursions
+      sig.mfeR = Math.max(sig.mfeR, (sgn * (fav - sig.entry)) / sig.risk);
+      sig.maeR = Math.min(sig.maeR, (sgn * (adv - sig.entry)) / sig.risk);
+      if (sig.status === 'ACTIVE') {
+        const stop = sig.beArmed || sig.dynMoved ? sig.slLive : sig.sl;
+        const slHit = sgn > 0 ? adv <= stop : adv >= stop;
+        const tp1Hit = sgn > 0 ? fav >= sig.tp1 : fav <= sig.tp1;
+        if (slHit) return this._close(sig, st, sgn * (stop - sig.entry) >= -1e-12 && (sig.beArmed || sig.dynMoved) ? 'BE_EARLY' : sig.dynMoved ? 'DYN_STOP' : 'SL_HIT', stop, t); // pessimistic if both in one bar
+        // early breakeven: armed from the next bar once the trade has run beAtR in profit
+        if (cfg.beAtR && !sig.beArmed && sig.mfeR >= cfg.beAtR && !tp1Hit) { sig.beArmed = true; sig.slLive = this._better(sgn, sig.slLive, sig.entry + sgn * (cfg.beLockR || 0) * sig.risk); this.hooks.onUpdate && this.hooks.onUpdate(sig, 'ACTIVE'); }
+        if (cfg.dyn && !tp1Hit) this._dyn(sig, cfg.dyn, sgn);
+        if (tp1Hit) {
+          sig.status = 'TP1_HIT'; sig.tp1At = t;
+          if (cfg.three && cfg.after) { this._afterInit(sig, cfg.after, sgn); this.hooks.onUpdate && this.hooks.onUpdate(sig, 'ACTIVE'); return this._after(sig, st, cfg.after, sgn, fav, adv, t, price, true); }
+          if (cfg.three) { sig.sl12 = sig.tp1; sig.sl3 = sig.entry + 0.5 * (sig.tp1 - sig.entry); sig.open12 = true; sig.slLive = sig.sl12; this.hooks.onUpdate && this.hooks.onUpdate(sig, 'ACTIVE');
+            if (sgn > 0 ? fav >= sig.tp2 : fav <= sig.tp2) { sig.threeR = sig.r2; return this._close(sig, st, 'TP2_HIT', sig.tp2, t); }
+            return; } // the new stops apply from the next bar/tick
+          else { sig.slLive = this._better(sgn, sig.dynMoved || sig.beArmed ? sig.slLive : null, cfg.tp1LockAtTp1 ? sig.tp1 : sig.entry + sgn * (cfg.tp1Lock || 0) * sig.risk); sig.peak = sig.tp1;
+          if (cfg.dyn && cfg.dyn.whole) sig.slLive = this._better(-sgn, sig.slLive, this._dynCap(sig, cfg.dyn, sgn));
+          this.hooks.onUpdate && this.hooks.onUpdate(sig, 'ACTIVE');
+          if (sgn > 0 ? fav >= sig.tp2 : fav <= sig.tp2) return this._close(sig, st, 'TP2_HIT', sig.tp2, t);
+          if (this.mode === 'backtest') return; // BE can't be ordered inside the same bar; check next bar
+          }
+        }
+      }
+      if (sig.status === 'TP1_HIT' && sig.pos) return this._after(sig, st, cfg.after || {}, sgn, fav, adv, t, price, false);
+      if (sig.status === 'TP1_HIT' && cfg.three) {
+        // stops first (pessimistic): positions 1-2 at TP1, position 3 halfway between entry and TP1
+        if (sig.open12 && (sgn > 0 ? adv <= sig.sl12 : adv >= sig.sl12)) { sig.open12 = false; sig.slLive = sig.sl3; this.hooks.onUpdate && this.hooks.onUpdate(sig, 'TP1_HIT'); }
+        const bank = sig.open12 ? null : 2 * sig.r1;
+        if (!sig.open12 && (sgn > 0 ? adv <= sig.sl3 : adv >= sig.sl3)) { sig.threeR = (bank + 0.5 * sig.r1) / 3; return this._close(sig, st, 'TRAIL_EXIT', sig.sl3, t); }
+        if (sgn > 0 ? fav >= sig.tp2 : fav <= sig.tp2) { sig.threeR = sig.open12 ? sig.r2 : (bank + sig.r2) / 3; return this._close(sig, st, 'TP2_HIT', sig.tp2, t); }
+        if (sig.filledAt && t - sig.filledAt > cfg.maxHoldMin * 60) { const rNow = (sgn * (price - sig.entry)) / sig.risk; sig.threeR = sig.open12 ? rNow : (bank + rNow) / 3; return this._close(sig, st, 'TIME_EXIT', price, t); }
+        return;
+      }
+      if (sig.status === 'TP1_HIT') {
+        const tr = cfg.trail || {}, keepTp2 = tr.mode === 'off' || tr.keepTp2 !== false;
+        const stop = sig.slLive != null ? sig.slLive : sig.entry;
+        if (sgn > 0 ? adv <= stop : adv >= stop) return this._close(sig, st, Math.abs(stop - sig.entry) < 1e-12 ? 'BE_HIT' : 'TRAIL_EXIT', stop, t); // stop first (pessimistic)
+        if (keepTp2 && (sgn > 0 ? fav >= sig.tp2 : fav <= sig.tp2)) return this._close(sig, st, 'TP2_HIT', sig.tp2, t);
+        if (cfg.dyn && cfg.dyn.whole) this._dyn(sig, cfg.dyn, sgn);
+        if (tr.mode && tr.mode !== 'off') {   // trail behind the best price; the new stop applies from the next bar
+          sig.peak = sig.peak == null ? fav : sgn > 0 ? Math.max(sig.peak, fav) : Math.min(sig.peak, fav);
+          const pip = tr.mode === 'pips' && st.market === 'forex' ? Math.pow(10, -Math.max(0, st.dec - 1)) : null;
+          const dist = pip ? tr.pips * pip : (tr.atr || 0.75) * (sig.atr15 || sig.risk);
+          const cand = sig.peak - sgn * dist;
+          const capped = cfg.dyn && cfg.dyn.whole ? this._better(-sgn, cand, this._dynCap(sig, cfg.dyn, sgn)) : cand;
+          if (sgn > 0 ? capped > sig.slLive : capped < sig.slLive) sig.slLive = capped;
+        }
+      }
+      if ((sig.status === 'ACTIVE' || sig.status === 'TP1_HIT') && sig.filledAt && t - sig.filledAt > cfg.maxHoldMin * 60) {
+        return this._close(sig, st, 'TIME_EXIT', price, t);
+      }
+    }
+
+    // ---------- reading ----------
+    snapshot(symbol) {
+      const st = this.sym[symbol]; if (!st) return null;
+      const S = st.series, b = st.block;
+      const tr = { H4: trendOf(S[G.H4]).dir, H2: trendOf(S[G.H2]).dir, H1: trendOf(S[G.H1]).dir, M15: trendOf(S[G.M15]).dir, M5: trendOf(S[G.M5]).dir };
+      const er = efficiency(S[G.M15], 16);
+      let orState = 'forming';
+      if (b && b.done) orState = st.price > b.hi ? 'above' : st.price < b.lo ? 'below' : 'inside';
+      const open = this.openSignals(symbol)[0] || null;
+      let look = 'Waiting';
+      if (open) look = 'In trade';
+      else if (tr.H1 === 'FLAT' && this.cfg.trendMode === 'strict') look = 'No 1H trend';
+      else if (er < this.cfg.chopMin) look = 'Ranging — standing aside';
+      else if (tr.H1 === 'UP' && tr.M15 !== 'DOWN') look = b && b.brokeUp ? 'Bull break done — watching retest' : 'Watching for BUY break';
+      else if (tr.H1 === 'DOWN' && tr.M15 !== 'UP') look = b && b.brokeDn ? 'Bear break done — watching retest' : 'Watching for SELL break';
+      else look = 'Timeframes disagree';
+      return { symbol, name: st.name, market: st.market, dec: st.dec, price: st.price, t: st.lastT, trend: tr, er,
+        or: b ? { hi: b.hi, lo: b.lo, done: b.done, start: b.start, end: b.end, state: orState } : null,
+        open: open ? open.id : null, look, ready: st.ready };
+    }
+
+    narrative(sig, x) {
+      const d = sig.dec, side = sig.dir === 'BUY' ? 'above' : 'below', edge = sig.dir === 'BUY' ? sig.or.hi : sig.or.lo;
+      const lines = [];
+      lines.push(`${sig.dir} ${sig.name} — ${sig.setup}${sig.kind === 'SCALP' ? ' (counter-1H scalp)' : ''}, grade ${sig.grade} (${sig.score}/100).`);
+      if (sig.kind === 'TREND') lines.push(`The 1H trend is ${sig.bias.H1.toLowerCase()}, and the 4H reads ${sig.bias.H4.toLowerCase()} while the 2H reads ${sig.bias.H2.toLowerCase()}. The 15m is ${sig.bias.M15 === 'FLAT' ? 'neutral but on the right side of its EMA21' : 'aligned'}.`);
+      else lines.push(`The 1H trend is weak (${sig.bias.H1.toLowerCase()}), so this is taken as a short scalp. The 15m and 1m momentum are carrying it, and targets are kept tight.`);
+      lines.push(`Price closed ${side} the opening range ${sig.dir === 'BUY' ? 'high' : 'low'} at ${fmt(edge, d)} (range ${fmt(sig.or.lo, d)}–${fmt(sig.or.hi, d)}).`);
+      lines.push(sig.entryType === 'LIMIT'
+        ? `The candle ran too far from the edge, so the entry is a limit back at ${fmt(sig.entry, d)}. If it isn't filled within ${this.cfg.pendingExpiryMin} min, the setup is cancelled.`
+        : `The entry is at market, ${fmt(sig.entry, d)}.`);
+      lines.push(`The SL at ${fmt(sig.sl, d)} sits beyond the range midpoint and the recent 2m swing. Risk is ${(sig.risk / x.atr15).toFixed(2)}× the 15m ATR.`);
+      lines.push(`TP1 ${fmt(sig.tp1, d)} (${sig.r1.toFixed(2)}R) and TP2 ${fmt(sig.tp2, d)} (${sig.r2.toFixed(2)}R). ${x.nearest != null ? `The next 1H structure is ${x.roomR.toFixed(1)}R away at ${fmt(x.nearest, d)}.` : 'There is no 1H structure in the way.'}`);
+      if (sig.unproven) lines.push('Royalty: this market runs the Royalty strategy, which has no proven edge in backtests yet. Watch it, or trade the smallest size only.');
+      { const c = this.cfg, tr = c.trail || {};
+        const pre = [c.beAtR ? `at +${c.beAtR}R move the SL to entry${c.beLockR ? ' +' + c.beLockR + 'R' : ''}` : '', c.softStop ? `close early if a ${c.softStop.tf / 60}m candle closes ${c.softStop.r}R against you` : '', c.dyn ? `trail the SL ${c.dyn.dist}R behind the best price, but never past ${fmt(sig.entry + dirSign(sig.dir) * (c.dyn.cap == null ? 0.5 : c.dyn.cap) * Math.abs(sig.tp1 - sig.entry), sig.dec)} (halfway to TP1)` : ''].filter(Boolean).join('; ');
+        const post = tr.mode && tr.mode !== 'off' ? `trail the rest ${sig.market === 'forex' && tr.mode === 'pips' ? tr.pips + ' pips' : tr.atr + '× the 15m ATR'} behind price${tr.keepTp2 === false ? ' (TP2 is a guide)' : ''}` : 'let the rest run to TP2';
+        if ((this.cfg.after) && (this.cfg.three)) lines.push(`Management: open 3 equal positions with the same SL. Nothing moves before TP1. At TP1, move the SL of positions 1 and 2 to TP1 (${fmt(sig.tp1, sig.dec)}) and the SL of position 3 halfway, to ${fmt(sig.entry + 0.5 * (sig.tp1 - sig.entry), sig.dec)}. There is no fixed TP2: once price is ${this.cfg.after.trail ? this.cfg.after.trail.from : 0.6}R in profit, trail all stops ${this.cfg.after.trail ? this.cfg.after.trail.dist : 0.3}R behind the best price (TP2 ${fmt(sig.tp2, sig.dec)} is a guide).`); else if (c.three) lines.push(`Management: open 3 equal positions with the same SL. ${pre ? 'Before TP1, ' + pre + '. ' : 'Nothing moves before TP1. '}At TP1, move the SL of positions 1 and 2 to TP1 (${fmt(sig.tp1, d)}) and the SL of position 3 halfway, to ${fmt(sig.entry + 0.5 * (sig.tp1 - sig.entry), d)}. All 3 aim for TP2.`); else
+        lines.push(`Management: ${pre ? 'before TP1, ' + pre + '. ' : ''}Close ${Math.round(c.partialAtTp1 * 100)}% at TP1 and move the SL to entry${c.tp1Lock ? ' +' + c.tp1Lock + 'R' : ''}, then ${post}.`); }
+      return lines.join(' ');
+    }
+  }
+
+  // ---------- stats ----------
+  function stats(list) {
+    const closed = list.filter((s) => s.result != null && !['EXPIRED', 'CANCELLED'].includes(s.status));
+    const wins = closed.filter((s) => s.result > 0);
+    const sumR = closed.reduce((a, s) => a + s.result, 0);
+    const gross = closed.filter((s) => s.result > 0).reduce((a, s) => a + s.result, 0);
+    const loss = -closed.filter((s) => s.result < 0).reduce((a, s) => a + s.result, 0);
+    let eq = 0, peak = 0, dd = 0; const curve = [];
+    for (const s of [...closed].sort((a, b) => a.closedAt - b.closedAt)) { eq += s.result; peak = Math.max(peak, eq); dd = Math.max(dd, peak - eq); curve.push({ t: s.closedAt, v: Math.round(eq * 100) / 100 }); }
+    const count = (st) => closed.filter((s) => s.status === st).length;
+    const group = (key) => {
+      const o = {};
+      for (const s of closed) { const k = key(s); o[k] = o[k] || { n: 0, w: 0, t1: 0, R: 0 }; o[k].n++; o[k].R += s.result; if (s.result > 0) o[k].w++; if (s.tp1At) o[k].t1++; }
+      for (const k in o) o[k].R = Math.round(o[k].R * 100) / 100;
+      return o;
+    };
+    return {
+      total: list.length, closed: closed.length, open: list.filter((s) => ['PENDING', 'ACTIVE', 'TP1_HIT'].includes(s.status)).length,
+      expired: list.filter((s) => s.status === 'EXPIRED' || s.status === 'CANCELLED').length,
+      wins: wins.length, winRate: closed.length ? wins.length / closed.length : 0,
+      tp1Hits: closed.filter((s) => s.tp1At).length, tp1Rate: closed.length ? closed.filter((s) => s.tp1At).length / closed.length : 0,
+      sl: count('SL_HIT'), tp2: count('TP2_HIT') + count('TP5_HIT'), be: count('BE_HIT'), timeExit: count('TIME_EXIT'),
+      totalR: Math.round(sumR * 100) / 100, avgR: closed.length ? sumR / closed.length : 0,
+      profitFactor: loss ? gross / loss : gross ? Infinity : 0, maxDD: Math.round(dd * 100) / 100, curve,
+      ddNow: Math.round((peak - eq) * 100) / 100, sizeNow: peak - eq >= 3 ? 0.25 : peak - eq >= 2 ? 0.5 : 1, // drawdown rule: half size from 2R below the peak, quarter from 3R
+      byGrade: group((s) => s.grade), bySymbol: group((s) => s.name), byKind: group((s) => s.kind), bySetup: group((s) => s.setup), byStrategy: group(() => 'ORB+'),
+    };
+  }
+
+  // ---------- Deriv public feed (browser + Node 22) ----------
+  class DerivFeed {
+    constructor(opts = {}) {
+      this.url = opts.url || 'wss://api.derivws.com/trading/v1/options/ws/public';
+      this.onStatus = opts.onStatus || (() => {});
+      this.WS = opts.WebSocket || (typeof WebSocket !== 'undefined' ? WebSocket : null);
+      this.req = 1; this.pending = {}; this.subs = {}; this.ws = null; this.alive = false; this.queue = [];
+    }
+    connect() {
+      return new Promise((resolve, reject) => {
+        if (!this.WS) return reject(new Error('No WebSocket available'));
+        this.onStatus('connecting');
+        const ws = new this.WS(this.url); this.ws = ws;
+        let opened = false;
+        ws.onopen = () => {
+          opened = true; this.alive = true; this.onStatus('live');
+          this.ping = setInterval(() => this._send({ ping: 1 }), 25000);
+          const q = this.queue; this.queue = []; q.forEach((m) => this._send(m));
+          // re-subscribe after reconnect
+          for (const key in this.subs) { const s = this.subs[key]; this._subscribe(s).catch(() => {}); }
+          resolve();
+        };
+        ws.onmessage = (e) => this._onMessage(e.data);
+        ws.onerror = () => { if (!opened) reject(new Error('WebSocket error')); };
+        ws.onclose = () => {
+          this.alive = false; clearInterval(this.ping); this.onStatus('reconnecting');
+          for (const id in this.pending) { this.pending[id].reject(new Error('closed')); delete this.pending[id]; }
+          setTimeout(() => this.connect().catch(() => {}), 3000);
+        };
+      });
+    }
+    _send(m) { if (this.ws && this.alive && this.ws.readyState === 1) this.ws.send(JSON.stringify(m)); else this.queue.push(m); }
+    _onMessage(raw) {
+      let d; try { d = JSON.parse(raw); } catch (e) { return; }
+      if (d.msg_type === 'ohlc' && d.ohlc) {
+        const key = d.ohlc.symbol + ':' + d.ohlc.granularity; const s = this.subs[key];
+        if (s) s.cb(d.ohlc);
+        return;
+      }
+      const id = d.req_id; if (id && this.pending[id]) {
+        const p = this.pending[id]; delete this.pending[id];
+        if (d.error) p.reject(Object.assign(new Error(d.error.message || d.error.code), { code: d.error.code })); else p.resolve(d);
+      }
+    }
+    call(m, timeout = 20000) {
+      return new Promise((resolve, reject) => {
+        const id = this.req++; m.req_id = id; this.pending[id] = { resolve, reject };
+        setTimeout(() => { if (this.pending[id]) { delete this.pending[id]; reject(new Error('timeout')); } }, timeout);
+        this._send(m);
+      });
+    }
+    activeSymbols() { return this.call({ active_symbols: 'brief' }).then((d) => d.active_symbols); }
+    candles(symbol, g, count = 2000, end = 'latest') {
+      return this.call({ ticks_history: symbol, style: 'candles', granularity: g, count, end, adjust_start_time: 1 }).then((d) => ({ candles: d.candles || [], pip: d.pip_size }));
+    }
+    async candlesBack(symbol, g, total) {
+      let out = [], end = 'latest', pip;
+      while (out.length < total) {
+        const r = await this.candles(symbol, g, Math.min(2000, total - out.length), end);
+        pip = r.pip; if (!r.candles.length) break;
+        out = r.candles.concat(out);
+        const first = r.candles[0].epoch; end = String(first - 1);
+        if (r.candles.length < 2) break;
+      }
+      // de-dup
+      const seen = new Set(); out = out.filter((c) => (seen.has(c.epoch) ? false : seen.add(c.epoch)));
+      return { candles: out, pip };
+    }
+    subscribeCandles(symbol, g, cb, count = 2000) {
+      const s = { symbol, g, cb, count, first: null };
+      this.subs[symbol + ':' + g] = s;
+      return this._subscribe(s);
+    }
+    _subscribe(s) {
+      return this.call({ ticks_history: s.symbol, style: 'candles', granularity: s.g, count: s.count, end: 'latest', subscribe: 1, adjust_start_time: 1 })
+        .then((d) => { s.first = d; return d; });
+    }
+  }
+
+  function aggCandles(c, g) {
+    const out = []; let cur = null;
+    for (const x of c) {
+      const t = Math.floor(x.epoch / g) * g;
+      if (!cur || cur.epoch !== t) { if (cur) out.push(cur); cur = { epoch: t, open: x.open, high: x.high, low: x.low, close: x.close }; }
+      else { cur.high = Math.max(cur.high, x.high); cur.low = Math.min(cur.low, x.low); cur.close = x.close; }
+    }
+    if (cur) out.push(cur); return out;
+  }
+
+  // ---------- MT5 bridge feed (Weltrade or any MT5 broker) ----------
+  // Your own MT5 terminal runs the TradesWithMoxieBridge EA, which POSTs closed + forming bars to the server.
+  // This feed serves those bars to the engine exactly like the Deriv feed does.
+  class BridgeFeed {
+    constructor() { this.data = {}; this.subs = {}; this.waiters = []; }
+    // payload: { symbol, digits, m1:[[t,o,h,l,c],...], m15:[...], h1:[...] } (any subset)
+    ingest(p) {
+      const sym = p.symbol; if (!sym) return 0;
+      const d = this.data[sym] || (this.data[sym] = { 60: new Map(), 900: new Map(), 3600: new Map(), digits: p.digits });
+      if (p.digits != null) d.digits = p.digits;
+      let n = 0;
+      for (const [k, g] of [['m1', 60], ['m15', 900], ['h1', 3600]]) {
+        for (const r of p[k] || []) { if (!Array.isArray(r) || r.length < 5) continue; d[g].set(+r[0], { epoch: +r[0], open: +r[1], high: +r[2], low: +r[3], close: +r[4] }); n++; }
+        if (d[g].size > 6000) { const keys = [...d[g].keys()].sort((a, b) => a - b); for (const k2 of keys.slice(0, d[g].size - 5000)) d[g].delete(k2); }
+      }
+      d.updated = Date.now();
+      const s = this.subs[sym];
+      if (s && p.m1 && p.m1.length) {
+        const last = [...p.m1].sort((a, b) => a[0] - b[0]).slice(-2);
+        for (const r of last) s.cb({ symbol: sym, granularity: 60, open_time: +r[0], epoch: +r[0], open: +r[1], high: +r[2], low: +r[3], close: +r[4] });
+      }
+      this.waiters = this.waiters.filter((w) => !w());
+      return n;
+    }
+    _series(sym, g) { const d = this.data[sym]; return d ? [...d[g].values()].sort((a, b) => a.epoch - b.epoch) : []; }
+    _ready(sym) { const d = this.data[sym]; return d && d[60].size >= 300 && d[900].size >= 100 && d[3600].size >= 100; }
+    _wait(sym, ms = 600000) {
+      if (this._ready(sym)) return Promise.resolve();
+      return new Promise((res, rej) => { const t = setTimeout(() => rej(new Error('no MT5 bridge data yet for ' + sym)), ms); this.waiters.push(() => { if (this._ready(sym)) { clearTimeout(t); res(); return true; } return false; }); });
+    }
+    async connect() {}
+    async candles(sym, g, count = 2000, end = 'latest') {
+      await this._wait(sym);
+      const base = g === 120 || g === 300 ? 60 : g === 7200 || g === 14400 ? 3600 : g;
+      let c = this._series(sym, base);
+      if (end !== 'latest') c = c.filter((x) => x.epoch <= +end);
+      if (base !== g) c = aggCandles(c, g);
+      return { candles: c.slice(-count), pip: (this.data[sym] || {}).digits };
+    }
+    async candlesBack(sym, g, total) { return this.candles(sym, g, total); }
+    async subscribeCandles(sym, g, cb, count = 2000) {
+      await this._wait(sym); this.subs[sym] = { cb };
+      return { candles: this._series(sym, 60).slice(-count), pip_size: (this.data[sym] || {}).digits, subscription: { id: 'mt5:' + sym } };
+    }
+    status() { const o = {}; for (const k in this.data) o[k] = { m1: this.data[k][60].size, m15: this.data[k][900].size, h1: this.data[k][3600].size, updated: this.data[k].updated }; return o; }
+  }
+
+  // ---------- Live runner: wires feed(s) -> engine for a list of symbols ----------
+  // `feed` can be a single feed or a map { deriv: DerivFeed, weltrade: WeltradeFeed } keyed by symbol meta.source
+  async function startLive(engine, feedOrMap, symbols, opts = {}) {
+    const pick = (meta) => (feedOrMap.candles ? feedOrMap : feedOrMap[meta.source || 'deriv']);
+    const log = opts.log || (() => {});
+    const htf = [G.M2, G.M5, G.M15, G.H1, G.H2, G.H4];
+    const counts = { 120: 1500, 300: 1500, 900: 1500, 3600: 2000, 7200: 1200, 14400: 1000 };
+    const runOne = async (meta) => {
+      const sym = meta.symbol; engine.addSymbol(sym, meta);
+      const feed = pick(meta); if (!feed) { log('no feed for ' + sym); return; }
+      try {
+        for (const g of htf) {
+          const r = await feed.candles(sym, g, counts[g]);
+          engine.seed(sym, g, r.candles, { decimals: r.pip });
+        }
+        let seeded = false;
+        const first = await feed.subscribeCandles(sym, G.M1, (o) => {
+          if (!seeded) return; engine.onBar(sym, o); opts.onTick && opts.onTick(sym);
+        }, 2000);
+        engine.seed(sym, G.M1, first.candles || [], { decimals: first.pip_size });
+        engine.finishSeed(sym); seeded = true;
+        log('ready ' + sym);
+        opts.onReady && opts.onReady(sym);
+      } catch (e) {
+        log('failed ' + sym + ': ' + e.message + ' (retrying in 60s)'); opts.onError && opts.onError(sym, e);
+        setTimeout(() => runOne(meta), 60000); // feeds hiccup (rate limits, closed markets): keep trying
+      }
+    };
+    // limited concurrency so we don't hammer the API
+    const list = symbols.slice(); const workers = [];
+    for (let i = 0; i < (opts.concurrency || 3); i++) workers.push((async () => { while (list.length) await runOne(list.shift()); })());
+    await Promise.all(workers);
+  }
+
+  // ---------- Backtest: replays real 1m history through the identical engine ----------
+  async function backtest(feed, meta, days, cfg = {}, progress = () => {}) {
+    const sym = meta.symbol;
+    progress(sym, 'downloading 1m history');
+    const m1 = await feed.candlesBack(sym, 60, Math.min(days * 1440 + 360, 14000));
+    if (!m1.candles.length) throw new Error('no data for ' + sym);
+    const bars = m1.candles.map(toBar);
+    const startFeed = Math.ceil(bars[0].t / G.H4) * G.H4;
+    const eng = new Engine(Object.assign({}, cfg, { signalsEnabledFrom: startFeed + 3 * 3600 }));
+    eng.mode = 'backtest';
+    eng.addSymbol(sym, Object.assign({}, meta, { decimals: m1.pip }));
+    const st = eng.sym[sym];
+    for (const g of [G.M5, G.M15, G.H1, G.H2, G.H4]) {
+      progress(sym, 'downloading ' + TF_NAME[g]);
+      const end = String(startFeed - 1);
+      const r = await feed.candles(sym, g, 1500, end);
+      const closed = r.candles.filter((c) => c.epoch + g <= startFeed);
+      st.series[g].seed(closed, false);
+    }
+    st.ready = true;
+    progress(sym, 'replaying ' + bars.length + ' bars');
+    for (const b of bars) { if (b.t < startFeed) continue; eng.onBar(sym, b); }
+    // close anything still open at the end at last price (time exit) for honest accounting
+    const lastBar = last(bars);
+    for (const s of eng.openSignals(sym)) eng._close(s, st, s.status === 'PENDING' ? 'EXPIRED' : 'TIME_EXIT', lastBar.c, lastBar.t + 60);
+    return { signals: eng.signals, from: startFeed, to: lastBar.t, bars: bars.length };
+  }
+
+  // Trade-management presets (management lab, 23 Nov 2026)
+  const MANAGEMENT = {
+    // Regime lab, 24 Nov 2026: both windows together, ORB+ only
+    quality: { label: 'High quality', beAtR: 0, beLockR: 0, tp1Lock: 0.3, softStop: null, dyn: null, trail: { mode: 'pips', pips: 20, atr: 0.75, keepTp2: false },
+      minOrAtr: 0.6, maxOrAtr: 0.9, hours: { fromUtc: 6, toUtc: 18 } },   // 89% in profit, PF 3.85, 3.7R DD, +100.1R, ~6 signals a day
+    volume: { label: 'More signals', beAtR: 0, beLockR: 0, tp1Lock: 0.3, softStop: null, dyn: null, trail: { mode: 'pips', pips: 20, atr: 0.75, keepTp2: false },
+      minOrAtr: 0, maxOrAtr: 1.5, hours: null },                            // 87% in profit, PF 2.37, 7.0R DD, +214.8R, ~23 signals a day
+  };
+
+  const D = (symbol, name, market = 'synthetic') => ({ symbol, name, market, source: 'deriv' });
+  // Weltrade SyntX pairs arrive through your MT5 terminal (source 'mt5'), the same bridge model Aurum uses.
+  const W = (symbol) => ({ symbol, name: symbol.replace(/-/g, ' '), market: 'synthetic', source: 'mt5', broker: 'Weltrade' });
+  const DEFAULT_SYMBOLS = [
+    // Deriv synthetics
+    D('stpRNG', 'Step Index 100'), D('R_25', 'Volatility 25'), D('R_50', 'Volatility 50'), D('R_75', 'Volatility 75'), D('R_100', 'Volatility 100'),
+    D('1HZ25V', 'Volatility 25 (1s)'), D('1HZ75V', 'Volatility 75 (1s)'), D('BOOM1000', 'Boom 1000'), D('CRASH1000', 'Crash 1000'),
+    // Deriv gold & metals
+    D('frxXAUUSD', 'Gold (XAU/USD)', 'forex'), D('frxXAGUSD', 'Silver (XAG/USD)', 'forex'),
+    // Deriv forex
+    D('frxEURUSD', 'EUR/USD', 'forex'), D('frxGBPUSD', 'GBP/USD', 'forex'), D('frxUSDJPY', 'USD/JPY', 'forex'), D('frxAUDUSD', 'AUD/USD', 'forex'),
+    D('frxUSDCAD', 'USD/CAD', 'forex'), D('frxUSDCHF', 'USD/CHF', 'forex'), D('frxNZDUSD', 'NZD/USD', 'forex'),
+    D('frxGBPJPY', 'GBP/JPY', 'forex'), D('frxEURJPY', 'EUR/JPY', 'forex'), D('frxEURGBP', 'EUR/GBP', 'forex'),
+    // Deriv crypto
+    D('cryBTCUSD', 'BTC/USD', 'crypto'), D('cryETHUSD', 'ETH/USD', 'crypto'),
+  ];
+  // Weltrade SyntX pairs (MT5 bridge). Off by default for now; add them back in Settings.
+  const WELTRADE_SYMBOLS = [
+    W('FlipX-1'), W('FlipX-2'), W('FlipX-3'), W('FlipX-4'), W('FlipX-5'), W('FiboX'), W('QuadX'), W('PlusX-1'),
+    W('FX-Vol-20'), W('FX-Vol-40'), W('FX-Vol-60'), W('FX-Vol-99'), W('SFX-Vol-20'), W('SFX-Vol-40'),
+    W('GainX-400'), W('GainX-600'), W('PainX-400'), W('PainX-600'),
+  ];
+
+  return { smcRead, Engine, Series, DerivFeed, BridgeFeed, aggCandles, startLive, backtest, stats, trendOf, efficiency, pivots, fmt, toBar, decimalsOf, G, TF_NAME, DEFAULTS, DEFAULT_SYMBOLS, WELTRADE_SYMBOLS, MANAGEMENT, version: '1.15.1' };
+});

@@ -390,7 +390,7 @@
         try { q = await this.broker.quote(sig.symbol); } catch (e) { return skip(e.message); }
         const k = this.sizeFactor();
         const pz = k < 1 ? Object.assign({}, ps, { riskPct: ps.riskPct * k, riskUsd: ps.riskUsd * k, stake: Math.max(q.minStake, ps.stake * k) }) : ps;
-        const sz = sizeTrade({ price, sl: sig.sl, r1: sig.r1 || 1, r2: sig.r2, balance: this.balance || 0, set: pz, mults: q.mults, minStake: q.minStake });
+        const sz = sizeTrade({ price, sl: sig.sl, r1: sig.r1 || 1, r2: sig.runTgtR || sig.r2, balance: this.balance || 0, set: pz, mults: q.mults, minStake: q.minStake });
         if (!sz.skip && k < 1) sz.note = (sz.note ? sz.note + ', ' : '') + (k === 0.5 ? 'half' : 'quarter') + ' size: ' + (this.eq.peak - this.eq.r).toFixed(1) + 'R below peak';
         if (sz.skip) return skip(sz.skip);
         const openRisk = live.reduce((a, p) => a + p.risk, 0);
@@ -398,10 +398,10 @@
         if (lossToday + openRisk + sz.risk > this._lossLimit() + 1e-9) return skip(`would pass today's loss limit ($${this._lossLimit().toFixed(2)})`);
         const p = { sig, mode: this.set.mode, t: this.now(), day: d.key, risk: sz.risk, legs: [] };
         this.pos[sig.id] = p;
-        for (const leg of sz.legs) {
+        for (const [li, leg] of sz.legs.entries()) {
           try {
             const r = await this.broker.open({ symbol: sig.symbol, dir: sig.dir, stake: leg.stake, mult: leg.mult, sl$: leg.sl$, tp$: leg.tp$, price });
-            p.legs.push({ id: r.contractId, role: leg.role, stake: leg.stake, mult: leg.mult, sl$: leg.sl$, tp$: leg.tp$, entry: r.entry || price, open: true, profit: 0 });
+            p.legs.push({ id: r.contractId, role: leg.role, k: leg.role === 'half' ? 2 : li, stake: leg.stake, mult: leg.mult, sl$: leg.sl$, tp$: leg.tp$, entry: r.entry || price, open: true, profit: 0 });
           } catch (e) { this.note('error', `${sig.dir} ${sig.name}: order rejected: ${e.message}`, { sym: sig.symbol }); break; }
         }
         if (!p.legs.length) { delete this.pos[sig.id]; return null; }
@@ -415,6 +415,7 @@
       const s = p.sig.status;
       const threeSig = p.sig.sl12 != null; // engine runs the 3-position plan
       if (CLOSED.includes(s)) await this._closeLegs(p, () => true, s.replace(/_/g, ' ').toLowerCase());
+      else if (s === 'TP1_HIT' && p.sig.pos) await this._closeLegs(p, (l) => { const q = p.sig.pos[l.k == null ? 0 : l.k]; return q && !q.open; }, 'trailing stop'); // runner plan: each contract follows its engine position
       else if (s === 'TP1_HIT' && threeSig) { if (p.sig.open12 === false) await this._closeLegs(p, (l) => l.role === 'lock', 'back to TP1: TP1 locked'); } // nothing closes at TP1 itself
       else if (s === 'TP1_HIT') await this._closeLegs(p, (l) => l.role === 'tp1' || l.role === 'all' || l.role === 'lock', 'TP1 hit');
       this._syncStop(p);
@@ -459,7 +460,8 @@
       const sgn = sgnOf(s.dir), t = this.now();
       for (const l of p.legs) {
         if (!l.open || l.closing) continue;
-        const stop = s.sl12 != null && s.status === 'TP1_HIT' ? (l.role === 'half' ? s.sl3 : s.sl12) : s.slLive; // 3-position plan: each contract has its own stop
+        const q = s.pos && s.status === 'TP1_HIT' ? s.pos[l.k == null ? 0 : l.k] : null;
+        const stop = q ? s.entry + sgn * q.stopR * s.risk : s.sl12 != null && s.status === 'TP1_HIT' ? (l.role === 'half' ? s.sl3 : s.sl12) : s.slLive; // 3-position plan: each contract has its own stop
         const lossPx = Math.max(0, sgn * (l.entry - stop)); // price distance still at risk (a stop in profit leaves only the robot's own close)
         const want = Math.max(0.01, floorC(l.stake * l.mult * lossPx / l.entry));
         if (want >= l.sl$ - 0.01 || (l.syncT && t - l.syncT < 10000)) continue;
@@ -470,5 +472,5 @@
     }
   }
 
-  return { Robot, PaperBroker, DerivBroker, sizeTrade, ROBOT_DEFAULTS, MULTS, dayKey, version: '1.1.0' };
+  return { Robot, PaperBroker, DerivBroker, sizeTrade, ROBOT_DEFAULTS, MULTS, dayKey, version: '1.2.0' };
 });
