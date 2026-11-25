@@ -9,7 +9,7 @@
 <link rel="apple-touch-icon" href="icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Royal Trades">
-<title>Royal Trades v1.4.2 (main)</title>
+<title>Royal Trades v1.4.3 (main)</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
@@ -148,7 +148,7 @@ label.f input,label.f select{width:100%}
 </head>
 <body>
 <header class="top"><div class="wrap row">
-  <div class="logo"><div class="orb"></div><div>👑 Royal Trades<small>ORB+ signal terminal · v1.4.2 · <a href="v115/" style="color:inherit">open v1.15</a></small></div></div>
+  <div class="logo"><div class="orb"></div><div>👑 Royal Trades<small>ORB+ signal terminal · v1.4.3 · <a href="v115/" style="color:inherit">open v1.15</a></small></div></div>
   <nav class="tabs" id="tabs">
     <button data-v="signals" class="on">Live signals</button>
     <button data-v="scanner">Scanner</button>
@@ -450,6 +450,8 @@ async function bootLocal() {
   S.mode = 'local';
   engine = new M.Engine(S.cfg, { onSignal, onUpdate });
   S.signals = store.get('signals', []);
+  // v1.4.3: Royal Ladder removed. Its old trades move to a backup key so the list and stats show ORB+ only.
+  { const lad = S.signals.filter((x) => x.strategy === 'LADDER'); if (lad.length) { store.set('signals.ladder', store.get('signals.ladder', []).concat(lad)); S.signals = S.signals.filter((x) => x.strategy !== 'LADDER'); store.set('signals', S.signals); } }
   engine.restoreSignals(S.signals); S.signals = engine.signals;
   feed = makeFeeds(setStatus);
   try { await feed.deriv.connect(); } catch (e) { setStatus('error'); toast('Could not reach the Deriv feed. Check your connection; the terminal keeps retrying.'); }
