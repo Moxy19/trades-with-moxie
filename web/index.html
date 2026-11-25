@@ -528,7 +528,7 @@ function kpiHTML(st, extra) {
   <div class="kpi"><div class="l">Win rate (TP1+)</div><div class="v">${st.closed ? Math.round(st.winRate * 100) + '%' : '—'}</div><div class="s">${st.wins} of ${st.closed} closed</div></div>
   <div class="kpi"><div class="l">Net result</div><div class="v ${st.totalR >= 0 ? 'pos' : 'neg'}">${st.totalR > 0 ? '+' : ''}${st.totalR}R</div><div class="s">avg ${st.avgR.toFixed(2)}R / trade</div></div>
   <div class="kpi"><div class="l">Profit factor</div><div class="v">${st.closed ? pf : '—'}</div><div class="s">${st.tp2} TP2 · ${st.be} BE · ${st.sl} SL</div></div>
-  <div class="kpi"><div class="l">Max drawdown</div><div class="v">${st.maxDD}R</div><div class="s">peak-to-trough</div></div>`;
+  <div class="kpi"><div class="l">Max drawdown</div><div class="v">${st.maxDD}R</div><div class="s">${st.sizeNow < 1 ? `<b class="neg">Now ${st.ddNow}R below peak: trade ${st.sizeNow === 0.5 ? 'half' : 'quarter'} size until a new high</b>` : 'peak-to-trough · now ' + (st.ddNow || 0) + 'R below peak · half size from 2R, quarter from 3R'}</div></div>`;
 }
 
 // ---------- signal cards ----------
