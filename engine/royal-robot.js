@@ -388,10 +388,12 @@
       try {
         let q;
         try { q = await this.broker.quote(sig.symbol); } catch (e) { return skip(e.message); }
-        const k = this.sizeFactor();
+        const pairK = sig.size > 0 && sig.size < 1 ? sig.size : 1; // v1.16: weaker pairs come with size 0.5
+        const k = this.sizeFactor() * pairK;
         const pz = k < 1 ? Object.assign({}, ps, { riskPct: ps.riskPct * k, riskUsd: ps.riskUsd * k, stake: Math.max(q.minStake, ps.stake * k) }) : ps;
         const sz = sizeTrade({ price, sl: sig.sl, r1: sig.r1 || 1, r2: sig.runTgtR || sig.r2, balance: this.balance || 0, set: pz, mults: q.mults, minStake: q.minStake });
-        if (!sz.skip && k < 1) sz.note = (sz.note ? sz.note + ', ' : '') + (k === 0.5 ? 'half' : 'quarter') + ' size: ' + (this.eq.peak - this.eq.r).toFixed(1) + 'R below peak';
+        if (!sz.skip && pairK < 1) sz.note = (sz.note ? sz.note + ', ' : '') + 'half size: weaker pair';
+        if (!sz.skip && this.sizeFactor() < 1) sz.note = (sz.note ? sz.note + ', ' : '') + (this.sizeFactor() === 0.5 ? 'half' : 'quarter') + ' size: ' + (this.eq.peak - this.eq.r).toFixed(1) + 'R below peak';
         if (sz.skip) return skip(sz.skip);
         const openRisk = live.reduce((a, p) => a + p.risk, 0);
         const lossToday = Math.max(0, -d.realized);
