@@ -330,7 +330,7 @@ label.f input,label.f select{width:100%}
   <section class="view" id="v-settings">
     <div class="hero"><div><h1>Engine <span>settings</span></h1><p>Settings apply immediately and are saved in this browser.</p></div></div>
     <div class="panel" style="margin-bottom:14px"><h3>📱 Phone alerts</h3>
-      <div class="sub">New live signals are pushed to your phone through the free <b>ntfy</b> app (Android: Play Store, iPhone: App Store). In the app tap <b>+</b>, and subscribe to the topic below. One topic works for all Royal Trades pages (v1.4.3, v1.15.1, v1.16): each alert says which page sent it. Alerts only go out while this page is open on a computer or phone that is switched on.</div>
+      <div class="sub">New live signals are pushed to your phone through the free <b>ntfy</b> app (Android: Play Store, iPhone: App Store). In the app tap <b>+</b>, and subscribe to the topic below. One topic works for all Royal Trades pages; each page has its own on/off, and each alert says which page sent it. Alerts only go out while this page is open on a computer or phone that is switched on.</div>
       <div class="two" style="margin-top:10px">
         <label class="f">Topic (keep it private: anyone with it can read your alerts)<input id="phTopic" type="text" spellcheck="false" autocomplete="off"></label>
         <label class="f">Send<select id="phOn"><option value="syn">Synthetics only (Volatility, Step, Boom, Crash)</option><option value="all">All markets</option><option value="off">Off</option></select></label>
@@ -417,8 +417,8 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.se
 // Phone alerts through ntfy.sh. Topic and mode are shared by every Royal Trades page on this site (key rt.phone).
 const PHONE_LABEL = 'v1.4.3';
 const phone = {
-  get() { let o = null; try { o = JSON.parse(localStorage.getItem('rt.phone') || 'null'); } catch (e) {} if (!o || !o.topic) { const a = new Uint8Array(8); (window.crypto || {}).getRandomValues ? crypto.getRandomValues(a) : a.forEach((_, i) => (a[i] = Math.random() * 256)); o = { topic: 'royaltrades-' + [...a].map((b) => b.toString(36).padStart(2, '0')).join('').slice(0, 12), mode: 'syn' }; phone.set(o); } return o; },
-  set(o) { try { localStorage.setItem('rt.phone', JSON.stringify(o)); } catch (e) {} },
+  get() { let o = null; try { o = JSON.parse(localStorage.getItem('rt.phone') || 'null'); } catch (e) {} if (!o || !o.topic) { const a = new Uint8Array(8); (window.crypto || {}).getRandomValues ? crypto.getRandomValues(a) : a.forEach((_, i) => (a[i] = Math.random() * 256)); o = { topic: 'royaltrades-' + [...a].map((b) => b.toString(36).padStart(2, '0')).join('').slice(0, 12) }; phone.set(o); } o.mode = store.get('phoneMode', 'syn'); return o; },
+  set(o) { try { localStorage.setItem('rt.phone', JSON.stringify({ topic: o.topic })); } catch (e) {} if (o.mode) store.set('phoneMode', o.mode); }, // topic shared by all pages, on/off per page
   send(title, body, tags) { const o = phone.get(); if (!o.topic || o.mode === 'off') return Promise.resolve(false);
     return fetch('https://ntfy.sh/' + encodeURIComponent(o.topic), { method: 'POST', body, headers: { Title: title.replace(/[^\x20-\x7e]/g, ''), Tags: tags || 'crown', Priority: '4' } }).then((r) => r.ok).catch(() => false); },
   signal(sig) { const o = phone.get(); if (o.mode === 'off') return; if (o.mode === 'syn' && (sig.market || 'synthetic') !== 'synthetic') return;
@@ -653,7 +653,7 @@ $('#gradeSeg').addEventListener('click', (e) => { const b = e.target.closest('bu
 $('#q').addEventListener('input', (e) => { S.f.q = e.target.value; renderCards(); });
 $('#watchBtn').addEventListener('click', (e) => { S.f.watch = !S.f.watch; e.target.classList.toggle('primary', S.f.watch); renderCards(); });
 { const o = phone.get(); const t = document.getElementById('phTopic'), m = document.getElementById('phOn'), b = document.getElementById('phTest');
-  if (t) { t.value = o.topic; m.value = o.mode || 'syn';
+  if (t) { t.value = o.topic; m.value = o.mode;
     t.onchange = () => { const v = t.value.trim().replace(/[^A-Za-z0-9_-]/g, ''); if (v.length < 8) { toast('Use at least 8 letters or digits for the topic.'); t.value = phone.get().topic; return; } phone.set(Object.assign(phone.get(), { topic: v })); t.value = v; toast('Phone topic saved.', 2500); };
     m.onchange = () => phone.set(Object.assign(phone.get(), { mode: m.value }));
     b.onclick = async () => { const ok = await phone.send('Royal Trades test - ' + PHONE_LABEL, 'Phone alerts are working. New ' + (phone.get().mode === 'all' ? '' : 'synthetics ') + 'signals will show here.', 'white_check_mark'); toast(ok ? 'Test sent to topic ' + esc(phone.get().topic) + '.' : 'Could not reach ntfy.sh. Check the internet connection.', 4000); }; } }
