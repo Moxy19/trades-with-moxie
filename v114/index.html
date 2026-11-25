@@ -1,0 +1,2416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0a0b10">
+<link rel="manifest" href="../manifest.webmanifest">
+<link rel="icon" href="../icon-192.png">
+<link rel="apple-touch-icon" href="../icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Royal Trades">
+<title>Royal Trades v1.14.1 (archive)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+<style>
+:root{
+  --bg:#0a0b10;--bg2:#0f1118;--panel:#12141d;--panel2:#171a25;--line:#222636;--line2:#2c3144;
+  --text:#eceef5;--muted:#8b91a6;--dim:#5d6378;
+  --violet:#8b5cf6;--pink:#e879f9;--brand:linear-gradient(135deg,#8b5cf6 0%,#d946ef 55%,#f472b6 100%);
+  --buy:#22c55e;--buy2:rgba(34,197,94,.12);--sell:#f43f5e;--sell2:rgba(244,63,94,.12);
+  --gold:#f5b942;--blue:#60a5fa;--warn:#f59e0b;
+  --r:14px;--mono:'JetBrains Mono',ui-monospace,monospace;
+}
+*{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--text);font-family:Sora,system-ui,sans-serif;font-size:14px;-webkit-font-smoothing:antialiased}
+body{background-image:radial-gradient(1200px 500px at 85% -10%,rgba(139,92,246,.16),transparent 60%),radial-gradient(900px 400px at -10% 10%,rgba(217,70,239,.08),transparent 60%);min-height:100vh}
+a{color:inherit}button{font-family:inherit;cursor:pointer}
+.wrap{max-width:1280px;margin:0 auto;padding:0 20px}
+header.top{position:sticky;top:0;z-index:30;background:rgba(10,11,16,.82);backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}
+.top .row{display:flex;align-items:center;gap:16px;height:64px}
+.logo{display:flex;align-items:center;gap:10px;font-weight:700;font-size:17px;letter-spacing:-.2px;white-space:nowrap}
+.orb{width:28px;height:28px;border-radius:50%;background:var(--brand);box-shadow:0 0 18px rgba(217,70,239,.55),inset -4px -6px 10px rgba(0,0,0,.35);position:relative}
+.orb:after{content:"";position:absolute;left:7px;top:5px;width:8px;height:6px;border-radius:50%;background:rgba(255,255,255,.55);filter:blur(1px)}
+.logo small{display:block;font-size:10px;font-weight:500;color:var(--muted);letter-spacing:2px;text-transform:uppercase}
+nav.tabs{display:flex;gap:4px;margin-left:auto;overflow-x:auto;scrollbar-width:none}
+nav.tabs button{background:none;border:0;color:var(--muted);padding:8px 12px;border-radius:10px;font-size:13px;font-weight:500;white-space:nowrap}
+nav.tabs button:hover{color:var(--text);background:var(--panel)}
+nav.tabs button.on{color:#fff;background:var(--panel2);box-shadow:inset 0 0 0 1px var(--line2)}
+.pill{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;letter-spacing:.5px;padding:5px 10px;border-radius:999px;border:1px solid var(--line2);color:var(--muted);white-space:nowrap}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--dim)}
+.dot.live{background:var(--buy);box-shadow:0 0 0 0 rgba(34,197,94,.6);animation:pulse 1.8s infinite}
+.dot.warn{background:var(--warn)}.dot.err{background:var(--sell)}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(34,197,94,.55)}70%{box-shadow:0 0 0 8px rgba(34,197,94,0)}100%{box-shadow:0 0 0 0 rgba(34,197,94,0)}}
+.strip{display:flex;gap:8px;flex-wrap:wrap;padding:14px 0 4px}
+.hero{padding:26px 0 8px;display:flex;gap:24px;align-items:flex-end;flex-wrap:wrap}
+.hero h1{font-size:30px;line-height:1.15;margin:0;letter-spacing:-.6px;font-weight:700}
+.hero h1 span{background:var(--brand);-webkit-background-clip:text;background-clip:text;color:transparent}
+.hero p{color:var(--muted);margin:8px 0 0;max-width:640px;line-height:1.55}
+.kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin:18px 0 6px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px}
+.kpi .l{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1.2px}
+.kpi .v{font-size:22px;font-weight:600;margin-top:6px;font-family:var(--mono)}
+.kpi .s{font-size:11px;color:var(--dim);margin-top:2px}
+.view{display:none;padding:10px 0 60px}.view.on{display:block}
+.bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:14px 0}
+.seg{display:inline-flex;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:3px;gap:2px}
+.seg button{background:none;border:0;color:var(--muted);padding:7px 12px;border-radius:9px;font-size:12.5px;font-weight:500}
+.seg button.on{background:var(--panel2);color:#fff;box-shadow:inset 0 0 0 1px var(--line2)}
+.seg button .c{font-family:var(--mono);font-size:11px;opacity:.7;margin-left:4px}
+input,select{background:var(--panel);border:1px solid var(--line);color:var(--text);border-radius:10px;padding:9px 12px;font-family:inherit;font-size:13px;outline:none}
+input:focus,select:focus{border-color:var(--violet)}
+.search{flex:1;min-width:180px}
+.btn{background:var(--panel2);border:1px solid var(--line2);color:var(--text);border-radius:10px;padding:8px 14px;font-size:13px;font-weight:500}
+.btn:hover{border-color:var(--violet)}
+.btn.primary{background:var(--brand);border:0;color:#fff;font-weight:600}
+.btn.sm{padding:5px 10px;font-size:12px;border-radius:8px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px}
+.card{background:linear-gradient(180deg,var(--panel) 0%,var(--bg2) 100%);border:1px solid var(--line);border-radius:18px;padding:16px 16px 14px;position:relative;overflow:hidden}
+.card.buy{border-top:2px solid var(--buy)}.card.sell{border-top:2px solid var(--sell)}
+.card .hd{display:flex;align-items:center;gap:8px}
+.card .sym{font-weight:600;font-size:13px;letter-spacing:.3px}
+.card .meta{font-family:var(--mono);font-size:10.5px;color:var(--muted);letter-spacing:.6px}
+.chip{font-family:var(--mono);font-size:10px;letter-spacing:.8px;padding:3px 7px;border-radius:6px;border:1px solid var(--line2);color:var(--muted);text-transform:uppercase;white-space:nowrap}
+.chip.scalp{color:var(--warn);border-color:rgba(245,158,11,.4)}
+.card .hd .chip{flex-shrink:0}
+.chip.trend{color:var(--blue);border-color:rgba(96,165,250,.35)}
+.chip.royalty{color:#f5c542;border-color:rgba(245,197,66,.5);background:rgba(245,197,66,.08)}
+.grade{margin-left:auto;font-weight:700;font-size:12px;padding:3px 9px;border-radius:8px;color:#16110a;background:var(--gold)}
+.grade.B{background:#c9ced9}.grade.A{background:#f5c96a}
+.status{font-family:var(--mono);font-size:10px;letter-spacing:1px;padding:4px 8px;border-radius:999px;border:1px solid}
+.st-ACTIVE{color:var(--buy);border-color:rgba(34,197,94,.45)}.st-PENDING{color:var(--blue);border-color:rgba(96,165,250,.45)}
+.st-TP1_HIT{color:var(--gold);border-color:rgba(245,185,66,.5)}.st-TP2_HIT{color:#0b0d12;background:var(--buy);border-color:var(--buy)}
+.st-TP5_HIT{color:#0b0d12;background:var(--buy);border-color:var(--buy)}.st-BE_EARLY{color:var(--buy);border-color:var(--buy)}.st-DYN_STOP{color:#f59e0b;border-color:#f59e0b}.st-SOFT_EXIT{color:#f59e0b;border-color:#f59e0b}.st-TRAIL_EXIT{color:#0b0d12;background:var(--buy);border-color:var(--buy)}.st-SL_HIT{color:#fff;background:var(--sell);border-color:var(--sell)}.st-BE_HIT{color:var(--gold);border-color:rgba(245,185,66,.5)}
+.st-EXPIRED,.st-CANCELLED,.st-TIME_EXIT{color:var(--muted);border-color:var(--line2)}
+.dir{display:flex;align-items:center;gap:10px;margin:10px 0 6px}
+.dir b{font-size:26px;letter-spacing:-.5px}.buy .dir b{color:var(--buy)}.sell .dir b{color:var(--sell)}
+.dir .live{margin-left:auto;text-align:right;font-family:var(--mono)}
+.dir .live .p{font-size:15px}.dir .live .r{font-size:11px}
+.pos{color:var(--buy)}.neg{color:var(--sell)}
+.lv{display:grid;grid-template-columns:1fr auto;row-gap:0}
+.lv div{padding:8px 0;border-bottom:1px solid var(--line);font-size:13px}
+.lv div:nth-child(odd){color:var(--muted)}
+.lv div:nth-child(even){font-family:var(--mono);text-align:right}
+.lv .tag{font-size:10px;color:var(--dim);margin-left:6px}
+.track{position:relative;height:6px;border-radius:6px;margin:14px 0 6px;background:linear-gradient(90deg,var(--sell) 0%,var(--sell) var(--z),var(--buy) var(--z),var(--buy) 100%);opacity:.9}
+.track .m{position:absolute;top:-4px;width:2px;height:14px;background:#fff;border-radius:2px;box-shadow:0 0 8px #fff;left:var(--p)}
+.track .t{position:absolute;top:-3px;width:1px;height:12px;background:rgba(255,255,255,.5);left:var(--t1)}
+.ft{display:flex;align-items:center;gap:8px;margin-top:10px;font-size:11.5px;color:var(--muted)}
+.ft .sp{margin-left:auto;display:flex;gap:6px}
+.why{display:none;margin-top:12px;padding:12px;border-radius:12px;background:var(--bg);border:1px solid var(--line);font-size:12.5px;line-height:1.6;color:#cfd3e0}
+.why.on{display:block}
+.why ul{list-style:none;padding:0;margin:10px 0 0;display:grid;gap:4px}
+.why li{display:flex;gap:8px;font-size:12px}.why li .k{color:var(--buy)}.why li .x{color:var(--sell)}.why li .pt{margin-left:auto;font-family:var(--mono);color:var(--dim)}
+.biasrow{display:flex;gap:5px;margin-top:8px;flex-wrap:wrap}
+.b{font-family:var(--mono);font-size:10px;padding:3px 6px;border-radius:6px;background:var(--panel2);color:var(--muted)}
+.b.UP{color:var(--buy);background:var(--buy2)}.b.DOWN{color:var(--sell);background:var(--sell2)}
+.empty{padding:50px 20px;text-align:center;color:var(--muted);border:1px dashed var(--line2);border-radius:18px}
+table{width:100%;border-collapse:collapse}
+th{font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);font-weight:500;text-align:left;padding:10px;border-bottom:1px solid var(--line)}
+td{padding:10px;border-bottom:1px solid var(--line);font-size:13px}
+td.n,th.n{text-align:right;font-family:var(--mono)}
+tr.click{cursor:pointer}tr.click:hover td{background:var(--panel)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:18px}
+.panel h3{margin:0 0 4px;font-size:16px}.panel .sub{color:var(--muted);font-size:12.5px;margin-bottom:14px;line-height:1.5}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.three{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+label.f{display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--muted)}
+label.f input,label.f select{width:100%}
+.out{font-family:var(--mono);font-size:26px;font-weight:600;margin:6px 0}
+#chart,#eqchart,#btchart{height:460px;border-radius:14px;overflow:hidden;border:1px solid var(--line)}
+#eqchart,#btchart{height:260px}
+.toast{position:fixed;right:18px;bottom:18px;z-index:60;display:flex;flex-direction:column;gap:8px}
+.toast div{background:var(--panel2);border:1px solid var(--line2);border-left:3px solid var(--violet);padding:12px 14px;border-radius:12px;max-width:340px;font-size:13px;box-shadow:0 10px 30px rgba(0,0,0,.4);animation:in .25s ease}
+@keyframes in{from{transform:translateY(8px);opacity:0}to{transform:none;opacity:1}}
+.symlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:6px;max-height:360px;overflow:auto;padding:2px}
+.symlist label{display:flex;gap:8px;align-items:center;font-size:12.5px;padding:7px 9px;border-radius:9px;background:var(--bg2);border:1px solid var(--line)}
+.note{font-size:12px;color:var(--dim);line-height:1.55;margin-top:10px}
+.disc{text-align:center;color:var(--dim);font-size:12px;padding:20px 0 40px}
+.progress{height:4px;background:var(--line);border-radius:4px;overflow:hidden;margin:10px 0}.progress i{display:block;height:100%;background:var(--brand);width:0}
+@media (max-width:900px){.kpis{grid-template-columns:repeat(2,1fr)}.two,.three{grid-template-columns:1fr}.hero h1{font-size:24px}.top .row{height:auto;flex-wrap:wrap;padding:10px 0}nav.tabs{width:100%;margin:0}}
+
+/* robot */
+.rb-hero{display:grid;grid-template-columns:auto 1fr;gap:22px;align-items:center;background:radial-gradient(600px 240px at 0% 0%,rgba(217,70,239,.22),transparent 70%),var(--panel);border:1px solid var(--line);border-radius:22px;padding:22px;margin:18px 0}
+.rb-go{width:132px;height:132px;border-radius:50%;border:0;color:#fff;font-weight:700;font-size:20px;letter-spacing:1px;background:var(--brand);box-shadow:0 0 0 8px rgba(217,70,239,.12),0 12px 40px rgba(217,70,239,.35)}
+.rb-go.on{background:linear-gradient(135deg,#f43f5e,#be123c);box-shadow:0 0 0 8px rgba(244,63,94,.14),0 12px 40px rgba(244,63,94,.35);animation:rbpulse 2.2s infinite}
+.rb-go small{display:block;font-size:11px;font-weight:500;letter-spacing:.5px;opacity:.85;margin-top:4px}
+@keyframes rbpulse{50%{box-shadow:0 0 0 14px rgba(244,63,94,.06),0 12px 40px rgba(244,63,94,.35)}}
+.rb-line{font-family:var(--mono);font-size:13px;color:var(--muted);margin:6px 0 12px}
+.rb-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.rb-stats div{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.rb-stats b{display:block;font-family:var(--mono);font-size:18px;margin-top:2px}.rb-stats span{font-size:11px;color:var(--muted)}
+.rb-j{max-height:420px;overflow:auto}.rb-j td{font-size:12px}.rb-j .t{font-family:var(--mono);color:var(--muted);white-space:nowrap}
+.rb-warn{border:1px solid rgba(245,158,11,.4);background:rgba(245,158,11,.08);color:#fcd34d;border-radius:12px;padding:10px 12px;font-size:12px;margin-top:10px}
+.rb-pairs td{padding:6px 10px}.rb-pairs select,.rb-pairs input{padding:5px 8px}
+.chk{display:flex;flex-wrap:wrap;gap:12px;font-size:13px}.chk label{display:flex;gap:6px;align-items:center}
+@media (max-width:900px){.rb-hero{grid-template-columns:1fr;justify-items:center;text-align:center}.rb-stats{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
+<body>
+<header class="top"><div class="wrap row">
+  <div class="logo"><div class="orb"></div><div>👑 Royal Trades<small>ORB+ signal terminal · v1.14.1 (archive) · <a href="../" style="color:inherit">open v1.4.3</a> · <a href="../v115/" style="color:inherit">v1.15.1</a> · <a href="../v116/" style="color:inherit">v1.16</a></small></div></div>
+  <nav class="tabs" id="tabs">
+    <button data-v="signals" class="on">Live signals</button>
+    <button data-v="scanner">Scanner</button>
+    <button data-v="chart">Chart</button>
+    <button data-v="perf">Performance</button>
+    <button data-v="backtest">Backtest</button>
+    <button data-v="robot">🤖 Robot</button>
+    <button data-v="risk">Risk tools</button>
+    <button data-v="settings">Settings</button>
+  </nav>
+</div></header>
+
+<main class="wrap">
+  <div class="strip" id="strip"></div>
+
+  <!-- SIGNALS -->
+  <section class="view on" id="v-signals">
+    <div class="hero">
+      <div><h1>Live signals, <span>graded and explained</span></h1>
+      <p>Each setup is an ORB+ breakout checked across 4H, 2H, 1H, 15m, 5m, 2m and 1m. Weak setups and choppy markets are filtered out, and every trade is tracked live from entry to its final TP or SL.</p></div>
+    </div>
+    <div class="kpis" id="kpis"></div>
+    <div class="bar">
+      <div class="seg" id="mkSeg"></div>
+      <div class="seg" id="viewSeg"><button data-k="active" class="on">Active</button><button data-k="history">History</button></div>
+      <div class="seg" id="gradeSeg"><button data-k="ALL" class="on">All grades</button><button data-k="A">A & A+</button><button data-k="A+">A+ only</button></div>
+      <input class="search" id="q" placeholder="Search pair…">
+      <button class="btn" id="watchBtn">★ Watchlist</button>
+      <button class="btn" id="alertBtn">🔔 Alerts</button>
+    </div>
+    <div class="grid" id="cards"></div>
+    <div class="disc">Signals are educational, not financial advice. Risk 1–2% per trade at most. You make every trading decision.</div>
+  </section>
+
+  <!-- SCANNER -->
+  <section class="view" id="v-scanner">
+    <div class="hero"><div><h1>Market <span>scanner</span></h1><p>This is what the engine sees right now on every pair: the trend on each timeframe, trend quality, where price sits against the current opening range, and what it is waiting for.</p></div></div>
+    <div class="panel" style="padding:6px 6px 0"><table><thead><tr><th>Market</th><th class="n">Price</th><th>4H</th><th>2H</th><th>1H</th><th>15m</th><th>5m</th><th class="n">Trend quality</th><th>Opening range</th><th>Engine read</th></tr></thead><tbody id="scanBody"></tbody></table></div>
+  </section>
+
+  <!-- CHART -->
+  <section class="view" id="v-chart">
+    <div class="bar"><select id="chSym"></select><div class="seg" id="chTf"></div><span class="pill" id="chInfo">—</span><button class="btn sm" id="chReset" title="Fit the price axis and jump to the latest candle (or double-click the chart)">Reset view</button></div>
+    <div id="chart"></div>
+    <div class="note">Shows candles with EMA 9, 21, 50 and 200, the current opening range (dashed), B/S tags for every signal on this pair, and the entry, SL and TP lines of the open trade.</div>
+  </section>
+
+  <!-- PERFORMANCE -->
+  <section class="view" id="v-perf">
+    <div class="hero"><div><h1>Captured <span>performance</span></h1><p>Every signal this terminal has fired, tracked to its outcome. Results are in R, where 1R is the amount risked. Half the position closes at TP1, the SL then moves to entry, and the rest runs to TP2.</p></div></div>
+    <div class="kpis" id="perfKpis"></div>
+    <div id="eqchart"></div>
+    <div class="two" style="margin-top:14px"><div class="panel"><h3>By grade</h3><table id="tGrade"></table></div><div class="panel"><h3>By trade type</h3><table id="tKind"></table></div></div>
+    <div class="panel" style="margin-top:14px"><h3>By strategy</h3><table id="tStrat"></table></div>
+    <div class="panel" style="margin-top:14px"><h3>By market</h3><table id="tSym"></table></div>
+  </section>
+
+  <!-- BACKTEST -->
+  <section class="view" id="v-backtest">
+    <div class="hero"><div><h1>Backtest on <span>real Deriv data</span></h1><p>This replays real 1-minute history through the same engine that runs live, so there's no look-ahead. When TP and SL are both touched inside one candle, the SL is counted first, so the results lean conservative.</p></div></div>
+    <div class="panel">
+      <div class="three">
+        <label class="f">Days of history<select id="btDays"><option>2</option><option selected>4</option><option>7</option></select></label>
+        <label class="f">1H trend rule<select id="btMode"><option value="compare" selected>Compare strict vs adaptive</option><option value="adaptive">Adaptive only</option><option value="strict">Strict only</option></select></label>
+        <label class="f">&nbsp;<button class="btn primary" id="btRun">Run backtest</button></label>
+      </div>
+      <div class="note">Markets: the ones selected in Settings. Each market downloads about 6–8 requests of history, so a full run takes a minute or two.</div>
+      <div class="progress"><i id="btProg"></i></div><div class="note" id="btLog"></div>
+    </div>
+    <div id="btOut" style="margin-top:14px"></div>
+    <div id="btchart" style="margin-top:14px;display:none"></div>
+  </section>
+
+  <!-- RISK -->
+  <section class="view" id="v-risk">
+    <div class="hero"><div><h1>Risk <span>tools</span></h1><p>Size every trade from the stop, not from a feeling. The small-account plan shows what disciplined compounding looks like from $10.</p></div></div>
+    <div class="two">
+      <div class="panel"><h3>Lot size calculator</h3><div class="sub">For MT5, enter the contract value per 1.00 lot per 1.0 price move from the symbol's specification. On Deriv synthetics this is usually 1 (check it in MT5 under Symbol, Specification).</div>
+        <div class="two">
+          <label class="f">Account balance ($)<input id="lcBal" type="number" value="10"></label>
+          <label class="f">Risk per trade (%)<input id="lcRisk" type="number" value="2" step="0.1"></label>
+          <label class="f">Entry<input id="lcEntry" type="number" step="any"></label>
+          <label class="f">Stop loss<input id="lcSl" type="number" step="any"></label>
+          <label class="f">Value per 1.00 lot per 1.0 move ($)<input id="lcVal" type="number" value="1" step="any"></label>
+          <label class="f">Minimum lot / step<input id="lcMin" type="number" value="0.001" step="any"></label>
+        </div>
+        <div class="out" id="lcOut">—</div><div class="note" id="lcNote"></div>
+      </div>
+      <div class="panel"><h3>Small-account plan</h3><div class="sub">These are your stages, run at a fixed % risk and using the average R this terminal has actually captured, or the backtest's average R if no live trades have closed yet.</div>
+        <div class="two"><label class="f">Risk per trade (%)<input id="gpRisk" type="number" value="2" step="0.5"></label><label class="f">Average R per trade<input id="gpR" type="number" value="0.25" step="0.05"></label></div>
+        <table id="gpTable" style="margin-top:10px"></table>
+      </div>
+    </div>
+    <div class="panel" style="margin-top:14px"><h3>Challenge mode</h3><div class="sub">For prop-firm or self-imposed limits. Once today's loss reaches the cap, the terminal shows you're done for the day.</div>
+      <div class="three"><label class="f">Account size ($)<input id="chBal" type="number" value="10000"></label><label class="f">Max daily loss (%)<input id="chDd" type="number" value="5"></label><label class="f">Loss so far today ($)<input id="chLoss" type="number" value="0"></label></div>
+      <div class="out" id="chOut"></div>
+    </div>
+  </section>
+
+
+  <!-- ROBOT -->
+  <section class="view" id="v-robot">
+    <div class="rb-hero">
+      <button class="rb-go" id="rbGo">START<small id="rbGoSub">Paper</small></button>
+      <div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><h2 style="margin:0;font-size:22px">👑 Royal Robot</h2><span class="pill" id="rbPill"><span class="dot"></span>stopped</span><span class="pill" id="rbAcct">no account</span></div>
+        <div class="rb-line" id="rbLine">Takes Royal Trades signals and places the trades for you. Start in Paper or on a Deriv demo account.</div>
+        <div class="rb-stats">
+          <div><span>Balance</span><b id="rbBal">—</b></div>
+          <div><span>Today's trades</span><b id="rbDay">0/8</b></div>
+          <div><span>Today's P/L</span><b id="rbPnl">$0.00</b></div>
+          <div><span>Open now</span><b id="rbOpenN">0</b></div>
+        </div>
+        <div class="bar" style="margin-top:12px"><button class="btn sm" id="rbCloseAll">Close all positions</button><button class="btn sm" id="rbResume" style="display:none">Lift today's pause</button><button class="btn sm" id="rbCopy">Copy history</button></div>
+      </div>
+    </div>
+    <div class="two">
+      <div class="panel"><h3>Account</h3>
+        <div class="two">
+          <label class="f">Mode<select id="rbMode"><option value="off">Off</option><option value="paper">Paper: no money, simulated</option><option value="demo">Deriv demo account</option><option value="real">Deriv REAL account</option></select></label>
+          <label class="f">Paper starting balance ($)<input id="rbPaperBal" type="number" min="1" step="1"></label>
+        </div>
+        <div id="rbDerivBox">
+          <div class="two" style="margin-top:10px">
+            <label class="f">Deriv App ID<input id="rbApp" autocomplete="off" placeholder="from developers.deriv.com"></label>
+            <label class="f">Account ID (optional)<input id="rbAccId" autocomplete="off" placeholder="first demo/real account"></label>
+          </div>
+          <div class="bar" style="margin-top:10px"><button class="btn primary" id="rbLogin">Log in with Deriv</button><span class="sub" id="rbLoginInfo" style="margin:0"></span></div>
+          <label class="f" style="margin-top:10px">Or paste an API token (Personal Access Token with the trade scope)<input id="rbTok" type="password" autocomplete="off" spellcheck="false" placeholder="paste token"></label>
+          <div class="chk" style="margin-top:8px"><label><input type="checkbox" id="rbRemember"> Remember the token on this device</label></div>
+          <div class="sub" style="margin-top:6px">"Log in with Deriv" needs only the App ID: sign in at Deriv and the robot connects, with no token to copy. The app must be registered once at developers.deriv.com as an OAuth app with the <b>trade</b> scope and this page's address as its redirect URL. For a token instead, make the App ID and token at <a href="https://developers.deriv.com" target="_blank" rel="noopener">developers.deriv.com</a>. Give the token the <b>trade</b> scope only, never payments. The token stays in this browser and goes only to Deriv. Without "remember" it is forgotten when you close the tab.</div>
+          <div id="rbRealBox" class="rb-warn" style="display:none">Real money. Signals lose too: even the best ORB+ backtest has losing days. Type <b>REAL</b> to confirm: <input id="rbRealOk" style="width:90px;margin-left:6px"></div>
+        </div>
+      </div>
+      <div class="panel"><h3>Money per trade</h3>
+        <div class="two">
+          <label class="f">Size trades by<select id="rbSizing"><option value="risk%">% of balance at risk</option><option value="risk$">Fixed $ at risk</option><option value="stake">Fixed stake (lot size)</option></select></label>
+          <label class="f" id="rbRiskPctL">Risk per trade (%)<input id="rbRiskPct" type="number" min="0.1" max="5" step="0.1"></label>
+          <label class="f" id="rbRiskUsdL">Risk per trade ($)<input id="rbRiskUsd" type="number" min="0.01" step="0.01"></label>
+          <label class="f" id="rbStakeL">Stake per trade ($)<input id="rbStake" type="number" min="1" step="0.5"></label>
+          <label class="f">Multiplier<select id="rbMult"><option value="auto">Auto (stop costs exactly the risk)</option><option>10</option><option>20</option><option>30</option><option>40</option><option>50</option><option>100</option><option>200</option><option>300</option><option>400</option><option>500</option><option>1000</option></select></label>
+          <label class="f">At TP1<select id="rbTp1"><option value="auto">Close half, run half (when the stake allows)</option><option value="half">Always close half, run half</option><option value="all">Close everything at TP1</option></select></label>
+          <label class="f">Never risk more than (% of balance)<input id="rbMaxRisk" type="number" min="0.5" max="10" step="0.5"></label>
+          <label class="f">Max stake per trade ($)<input id="rbMaxStake" type="number" min="1" step="1"></label>
+        </div>
+        <div class="sub" id="rbSizeNote" style="margin-top:8px"></div>
+      </div>
+    </div>
+    <div class="two" style="margin-top:14px">
+      <div class="panel"><h3>Safety limits</h3>
+        <div class="three">
+          <label class="f">Max open trades<input id="rbMaxOpen" type="number" min="1" max="10"></label>
+          <label class="f">Max trades a day<input id="rbMaxDay" type="number" min="1" max="50"></label>
+          <label class="f">Daily loss limit (%)<input id="rbDayLoss" type="number" min="1" max="50" step="0.5"></label>
+          <label class="f">Pause after losses in a row<input id="rbConsec" type="number" min="1" max="10"></label>
+          <label class="f">Stop below balance ($)<input id="rbMinBal" type="number" min="0" step="1"></label>
+          <label class="f">Skip if price ran (R)<input id="rbSlip" type="number" min="0" max="1" step="0.05"></label>
+        </div>
+      </div>
+      <div class="panel"><h3>Which signals</h3>
+        <div class="sub">Grades</div><div class="chk" id="rbGrades"><label><input type="checkbox" value="A+"> A+</label><label><input type="checkbox" value="A"> A</label><label><input type="checkbox" value="B"> B</label></div>
+        <div class="sub" style="margin-top:10px">Markets</div><div class="chk" id="rbMarkets"><label><input type="checkbox" value="synthetic"> Synthetics</label><label><input type="checkbox" value="forex"> Gold &amp; forex</label><label><input type="checkbox" value="crypto"> Crypto</label></div>
+        <div class="two" style="margin-top:10px">
+          <label class="f">Direction<select id="rbDirs"><option value="both">Buy and sell</option><option value="buy">Buy only</option><option value="sell">Sell only</option></select></label>
+          <label class="f">👑 Royalty markets<select id="rbRoyal"><option value="1">Skip (no proven edge)</option><option value="0">Trade them too</option></select></label>
+        </div>
+      </div>
+    </div>
+    <div class="panel" style="margin-top:14px"><h3>Pairs</h3><div class="sub">Per-pair settings override the ones above. Leave a box empty to use the main setting.</div>
+      <div style="overflow:auto"><table class="rb-pairs"><thead><tr><th>Pair</th><th>Trade</th><th>Direction</th><th>Stake ($)</th><th>Max a day</th></tr></thead><tbody id="rbPairs"></tbody></table></div>
+    </div>
+    <div class="two" style="margin-top:14px">
+      <div class="panel"><h3>Open positions</h3><table><thead><tr><th>Pair</th><th>Side</th><th class="n">Stake</th><th class="n">Risk</th><th class="n">P/L</th></tr></thead><tbody id="rbOpen"></tbody></table></div>
+      <div class="panel"><h3>Robot history</h3><div class="rb-j"><table><tbody id="rbJournal"></tbody></table></div></div>
+    </div>
+    <div class="disc">The robot is educational software, not financial advice. Automated trading can lose money fast. Results in backtests and Paper mode leave out spreads, commission and slippage. Run it on a demo account first, keep risk at 1–2% per trade, and only trade money you can afford to lose. On Deriv, trades use Multipliers: the stop loss and take profit sit at Deriv, so they still work if this tab closes. The robot's early exits (locking profit, trailing, cutting early) only happen while the tab or server is running.</div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section class="view" id="v-settings">
+    <div class="hero"><div><h1>Engine <span>settings</span></h1><p>Settings apply immediately and are saved in this browser.</p></div></div>
+    <div class="panel" style="margin-bottom:14px"><h3>📱 Phone alerts</h3>
+      <div class="sub">New live signals are pushed to your phone through the free <b>ntfy</b> app (Android: Play Store, iPhone: App Store). In the app tap <b>+</b>, and subscribe to the topic below. One topic works for all Royal Trades pages; each page has its own on/off, and each alert says which page sent it. Alerts only go out while this page is open on a computer or phone that is switched on.</div>
+      <div class="two" style="margin-top:10px">
+        <label class="f">Topic (keep it private: anyone with it can read your alerts)<input id="phTopic" type="text" spellcheck="false" autocomplete="off"></label>
+        <label class="f">Send<select id="phOn"><option value="syn">Synthetics only (Volatility, Step, Boom, Crash)</option><option value="all">All markets</option><option value="off">Off</option></select></label>
+      </div>
+      <button class="btn sm" id="phTest" style="margin-top:8px">Send test alert</button>
+    </div>
+    <div class="two">
+      <div class="panel"><h3>Strategy</h3>
+        <div class="two">
+          <label class="f">1H trend rule<select id="sMode"><option value="adaptive">Adaptive (counter-1H scalps when 1H is weak)</option><option value="strict">Strict (never against 1H)</option></select></label>
+          <label class="f">Trade management<select id="sMgmt"><option value="quality">High quality: compact ranges, 08:00–20:00 SAST only (about 6 signals a day)</option><option value="volume">More signals: every session and range size (about 23 a day, deeper drawdowns)</option></select></label>
+          <label class="f">Minimum grade to publish<select id="sGrade"><option value="62">B and above</option><option value="74">A and above</option><option value="85">A+ only</option></select></label>
+          <label class="f">Opening range resets every<select id="sBlock"><option value="3600">1 hour</option><option value="7200">2 hours</option><option value="14400">4 hours</option><option value="86400">Day (00:00 UTC)</option></select></label>
+          <label class="f">Opening range length<select id="sOrm"><option value="5">5 minutes</option><option value="10">10 minutes</option><option value="15">15 minutes</option><option value="30">30 minutes</option></select></label>
+          <label class="f">Chop filter (15m trend quality floor)<select id="sChop"><option value="0">Off (default: tested best)</option><option value="0.15">Light (0.15)</option><option value="0.22">Normal (0.22)</option><option value="0.3">Strict (0.30)</option></select></label>
+          <label class="f">5m confirmation<select id="sM5"><option value="momentum">Last 5m candle with the trade (default)</option><option value="side">5m close on the right side of EMA21</option><option value="notAgainst">5m trend not against</option><option value="aligned">5m trend aligned (strictest)</option><option value="off">Off</option></select></label>
+          <label class="f">Loss guard after SL<select id="sGuard"><option value="1">On: no same-direction re-entry until structure resets</option><option value="0">Off</option></select></label>
+        </div>
+      </div>
+      <div class="panel"><h3>Connection</h3>
+        <div class="sub" id="connInfo"></div>
+        <label class="f">Signal server URL (optional — leave empty to run the engine in this browser)<input id="sServer" placeholder="https://your-server.example.com"></label>
+        <label class="f" style="margin-top:10px">Server access key (if your server uses one)<input id="sKey" placeholder="optional"></label>
+        <div class="bar"><button class="btn" id="sSave">Save & reconnect</button><button class="btn" id="sClear">Clear signal history</button><button class="btn" id="sExport">Copy history (JSON)</button></div>
+      </div>
+    </div>
+    <div class="panel" style="margin-top:14px"><h3>Markets to scan</h3><div class="sub">Deriv markets (Step, Volatility, Boom/Crash, Jump, gold, crypto) stream live in any browser. Weltrade SyntX pairs (FlipX, FiboX, QuadX, FX Vol, SFX Vol, GainX, PainX…), marked MT5, come from your own MT5 terminal through the Moxie bridge EA and run on the Royal Trades server.</div>
+      <div class="bar"><button class="btn sm" id="symDefault">Default set</button><button class="btn sm" id="symNone">None</button><input id="symQ" placeholder="Filter…" style="flex:1"></div>
+      <div class="symlist" id="symList"></div>
+    </div>
+  </section>
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+/*!
+ * Royal Trades — ORB+ Engine
+ * Multi-timeframe Opening Range Breakout engine with live trade capture.
+ * Runs identically in the browser (window.MoxieEngine) and in Node (require).
+ *
+ * Pipeline per symbol:
+ *   1m ticks  ->  aggregate into 2m / 15m / 1H / 2H / 4H  ->  closed-bar indicators (no repaint)
+ *   every closed 2m bar -> ORB+ setups (Break, Retest) -> multi-TF filters & score -> signal
+ *   every tick -> track open signals (pending fill, SL, TP1 -> BE, TP2, expiry, time exit)
+ */
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) module.exports = factory();
+  else root.MoxieEngine = factory();
+})(typeof self !== 'undefined' ? self : this, function () {
+  'use strict';
+
+  const G = { M1: 60, M2: 120, M5: 300, M15: 900, H1: 3600, H2: 7200, H4: 14400 };
+  const TF_LIST = [G.M1, G.M2, G.M5, G.M15, G.H1, G.H2, G.H4];
+  const TF_NAME = { 60: '1m', 120: '2m', 300: '5m', 900: '15m', 3600: '1H', 7200: '2H', 14400: '4H' };
+  const EMA_LENS = [9, 21, 50, 200];
+
+  const DEFAULTS = {
+    orBlock: 3600,          // session block in seconds (3600 = new opening range every hour)
+    orMinutes: 15,          // opening range length
+    bufferFrac: 0.15,       // breakout must clear the edge by this fraction of range height (tuned on 7d real data)
+    trendMode: 'adaptive',  // 'strict' = only with 1H trend; 'adaptive' = also counter-1H scalps when 1H is weak
+    minScore: 74,           // publish threshold (A grade). SL lab 23 Nov: scores under 74 won 37% (-0.28R each)
+    minScalpScore: 80,      // counter-1H scalps need more confluence
+    // Stop-loss lab, 23 Nov 2026 (593 ORB+ trades, ~21 days synthetics / ~30 days forex & crypto). Each filter
+    // removed trades that lost money in both halves of the data.
+    // Regime lab, 24 Nov 2026 (ORB+ only, two separate ~20-trading-day windows): compact opening ranges (0.6–0.9× the 15m ATR)
+    // in the active session (06:00–18:00 UTC) gave 89% of trades in profit, profit factor 3.85, 3.7R max drawdown and +100.1R
+    // over both windows (unseen window alone: 87%, PF 2.80, 3.7R, +43.8R), against PF 2.37 and 7.0R drawdown without them.
+    minOrAtr: 0.6,          // skip when the opening range is narrower than this × the 15m ATR (0 = off)
+    hours: { fromUtc: 6, toUtc: 18 }, // only signal inside these UTC hours (08:00–20:00 SAST); null = always
+    needH4: false,          // require the 4H trend to agree with the trade
+    skipLate: false,        // late-entry filter (score 95+ with 2H and 4H aligned). v1.12 had it on; v1.12.1 turns it off at the user's request (more trades, more total R; it also did worse on the unseen window)
+    maxOrAtr: 0.9,          // skip when the opening range is wider than this × the 15m ATR (regime lab; was 1.5)
+    quiet: { markets: ['forex'], fromUtc: 4, toUtc: 8 },  // no forex/metals ORB+ 06:00–10:00 SAST (London-open fakeouts: 42% win, -9R)
+    orbOff: ['frxNZDUSD', 'frxUSDCHF', 'frxEURUSD', '1HZ25V', 'R_75', 'frxUSDJPY', 'frxUSDCAD'],  // ORB+ lost in both halves on these markets
+    chopMin: 0,             // optional 15m efficiency floor (0..1). Off by default: in walk-forward tests it removed more winners than losers
+    maxRiskAtr: 1.8,        // stop distance cap in 15m ATRs
+    minRiskAtr: 0.35,       // stop distance floor in 15m ATRs (avoid noise stops)
+    minRoomR: 1.0,          // need at least 1R to nearest 1H obstacle
+    pendingExpiryMin: 30,   // unfilled limit orders expire
+    maxHoldMin: 360,        // time exit after 6h
+    partialAtTp1: 0.5,      // fraction closed at TP1 (rest runs to TP2 with SL at entry)
+    three: true,            // v1.14.1 (user plan): 3 equal positions, nothing moves before TP1. At TP1: positions 1-2 SL -> TP1, position 3 SL -> halfway entry/TP1; all 3 aim for TP2
+    // Management lab, 23 Nov 2026 (v1.5.1 rules, 24 markets): moving the stop to entry at +0.5R lifted ORB+ from +83.8R to
+    // +99.8R (both halves better; stop-outs 44% -> 25%). Partial size, TP2 distance and holding time made no real difference.
+    // Stop-out lab, 24 Nov 2026 (23 markets, ~20 days): locking +0.05R at +0.3R and cutting any trade whose 5m candle closes
+    // 0.6R against it cut full stop-outs from 26% to 9% of trades and lifted wins from 74% to 79%, for the same profit
+    // (+109.9R vs +111.5R; both halves positive). Earlier: trailing lab, 23 Nov 2026 (see README).
+    // v1.14 (user rule): no stop move or profit lock before TP1. beAtR/beLockR/dyn off; the stop only moves once TP1 is touched.
+    beAtR: 0,               // 0 = off. (was 0.15; 87–88% of trades closed in profit in both lab windows) Move the stop to entry (+ beLockR) once a trade has been this many R in profit before TP1
+    beLockR: 0,             // R locked in by that early stop move (makes "breakeven" a small win)
+    tp1Lock: 0.3,           // at TP1 the stop moves to entry + this many R
+    tp1LockAtTp1: false,    // true: at TP1 the runner's stop moves to TP1 itself (3-position plan: 2 close at TP1, 1 runs)
+    trail: { mode: 'pips', pips: 20, atr: 0.75, keepTp2: false }, // after TP1: trail 'pips' (forex & metals) or 'atr' (× 15m ATR) behind the best price; keepTp2 false = let the runner go
+    slOfTp: null,           // { ref: 'tp1'|'tp2', k }: stop distance as a fraction of a target's distance (tested: worse for ORB+)
+    // Dynamic-stop lab, 24 Nov 2026 (23 markets, ~20 days, on top of v1.8): trailing the stop 1R behind the best price,
+    // never past half of the TP1 distance, until TP1: ORB+ +134.4R vs +106.3R, full stop-outs 9% -> 1%, wins 78% vs 79%;
+    dyn: null,              // was { dist: 1, cap: 0.5, whole: false }. { dist, cap, whole }: dynamic stop that trails dist × risk behind the best price, never past cap × the TP1 distance (whole: for the whole trade, else until TP1)
+    softStop: { r: 0.6, tf: 300 }, // before the stop has moved: exit at the close of a 5m candle that closes 0.6R or more against the trade
+    lossGuard: true,        // block same-direction re-entry after SL until structure resets
+    retest: false,          // ORB retest continuation setups (off: they lost money in real-data tests)
+    triggerTf: 120,         // candle that must close beyond the range: 120 = 2m, 300 = 5m
+    m5Filter: 'momentum',   // 5m gate (default momentum: best in real-data tests, both halves): 'off' | 'aligned' (5m trend with trade) | 'notAgainst' | 'side' (5m close on right side of EMA21) | 'momentum' (last 5m candle with trade)
+    m5Score: true,          // add +5 score when the 5m trend agrees
+    // Per-market profiles from real-data backtests (22 Nov 2026). Keys: a symbol, or a source ('mt5' = Weltrade via MT5 bridge).
+    overrides: { mt5: { m5Filter: 'off', m5Score: false } },     // 5m gate hurt Weltrade SyntX (34% vs 43% win)
+    // "Royalty" markets: ORB+ lost money in the 23 Nov 2026 strategy lab (20,000 1m bars each: ~14 days synthetics,
+    // ~20 days forex/crypto) or, for Weltrade SyntX, in the 7-day test. Signals carry a Royalty tag: watch or minimum size.
+    unproven: ['mt5', 'stpRNG', 'R_75', '1HZ25V', 'frxEURUSD', 'frxUSDJPY', 'frxUSDCHF', 'frxNZDUSD', 'frxGBPJPY', 'frxEURGBP', 'cryETHUSD'],
+    entryMode: 'auto',      // 'auto' = limit back at the edge when the trigger candle over-extends; 'market' = always market; 'skip' = skip over-extended breaks
+    r1Min: 1.0, r1Max: 1.5, // TP1 bounds in R (measured move = range height; tuned: losers often reached 0.5-0.9R first)
+    r2Min: 1.8, r2Max: 3,   // TP2 bounds in R (2x range height)
+    signalsEnabledFrom: 0,  // epoch; used by backtests to warm up
+  };
+
+  // ---------- helpers ----------
+  const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+  const last = (a, k = 1) => a[a.length - k];
+  const num = (x) => (typeof x === 'string' ? parseFloat(x) : x);
+  const uid = () => Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-4);
+  function decimalsOf(pip) {
+    if (pip == null) return 2;
+    if (pip >= 1 && Number.isInteger(pip)) return pip; // ticks_history gives decimals count
+    const s = String(pip);
+    if (s.includes('e-')) return parseInt(s.split('e-')[1], 10);
+    const i = s.indexOf('.');
+    return i < 0 ? 0 : s.length - i - 1;
+  }
+  function fmt(p, d) { return p == null || isNaN(p) ? '—' : Number(p).toFixed(d == null ? 2 : d); }
+  function toBar(c) {
+    return { t: num(c.open_time != null ? c.open_time : c.epoch), o: num(c.open), h: num(c.high), l: num(c.low), c: num(c.close) };
+  }
+
+  // ---------- Series: closed bars + incremental indicators ----------
+  class Series {
+    constructor(g, max = 3000) {
+      this.g = g; this.max = max; this.bars = []; this.forming = null;
+      this.ema = {}; EMA_LENS.forEach((n) => (this.ema[n] = []));
+      this.atr = [];
+    }
+    pushClosed(b) {
+      const prev = last(this.bars);
+      this.bars.push(b);
+      for (const n of EMA_LENS) {
+        const arr = this.ema[n]; const p = last(arr);
+        arr.push(p == null ? b.c : p + (2 / (n + 1)) * (b.c - p));
+      }
+      const tr = prev ? Math.max(b.h - b.l, Math.abs(b.h - prev.c), Math.abs(b.l - prev.c)) : b.h - b.l;
+      const pa = last(this.atr);
+      this.atr.push(pa == null ? tr : (pa * 13 + tr) / 14);
+      if (this.bars.length > this.max) {
+        const cut = this.bars.length - Math.floor(this.max * 0.8);
+        this.bars.splice(0, cut); this.atr.splice(0, cut);
+        for (const n of EMA_LENS) this.ema[n].splice(0, cut);
+      }
+    }
+    // Feed a (possibly partial) 1m bar. Returns the bar that just closed, if any.
+    update(b) {
+      const bucket = Math.floor(b.t / this.g) * this.g;
+      const f = this.forming;
+      if (!f) { this.forming = { t: bucket, o: b.o, h: b.h, l: b.l, c: b.c }; return null; }
+      if (bucket > f.t) {
+        this.pushClosed(f);
+        this.forming = { t: bucket, o: b.o, h: b.h, l: b.l, c: b.c };
+        return f;
+      }
+      if (bucket === f.t) {
+        if (this.g === 60) { f.h = Math.max(f.h, b.h); f.l = Math.min(f.l, b.l); f.c = b.c; }
+        else { f.h = Math.max(f.h, b.h); f.l = Math.min(f.l, b.l); f.c = b.c; }
+      }
+      return null;
+    }
+    seed(candles, treatLastAsForming = true) {
+      const bars = candles.map(toBar).sort((a, b) => a.t - b.t);
+      const closed = treatLastAsForming ? bars.slice(0, -1) : bars;
+      for (const b of closed) this.pushClosed(b);
+      this.forming = treatLastAsForming && bars.length ? { ...last(bars) } : null;
+    }
+    get n() { return this.bars.length; }
+    e(n, k = 1) { return last(this.ema[n], k); }
+    get atrv() { return last(this.atr); }
+    get close() { return this.forming ? this.forming.c : (last(this.bars) || {}).c; }
+  }
+
+  // fractal pivots on closed bars (left=right=2)
+  function pivots(s, lookback = 150, w = 2) {
+    const b = s.bars, n = b.length, highs = [], lows = [];
+    for (let i = Math.max(w, n - lookback); i < n - w; i++) {
+      let hi = true, lo = true;
+      for (let k = 1; k <= w; k++) {
+        if (b[i].h <= b[i - k].h || b[i].h < b[i + k].h) hi = false;
+        if (b[i].l >= b[i - k].l || b[i].l > b[i + k].l) lo = false;
+      }
+      if (hi) highs.push({ i, t: b[i].t, p: b[i].h });
+      if (lo) lows.push({ i, t: b[i].t, p: b[i].l });
+    }
+    return { highs, lows };
+  }
+
+  // Trend read for one timeframe (closed bars only)
+  function trendOf(s) {
+    const out = { dir: 'FLAT', score: 0, strength: 0, parts: {} };
+    if (!s || s.n < 30) return out;
+    const c = last(s.bars).c, e21 = s.e(21), e50 = s.e(50), e200 = s.e(200);
+    const slope = e50 - (s.ema[50][s.n - 6] != null ? s.ema[50][s.n - 6] : e50);
+    let sc = 0;
+    if (s.n >= 200) { sc += e50 > e200 ? 1 : -1; out.parts.stack = e50 > e200 ? 'EMA50>200' : 'EMA50<200'; }
+    sc += c > e50 ? 1 : -1;
+    sc += slope > 0 ? 1 : -1;
+    const pv = pivots(s, 120);
+    if (pv.highs.length >= 2 && pv.lows.length >= 2) {
+      const hh = last(pv.highs).p > last(pv.highs, 2).p, hl = last(pv.lows).p > last(pv.lows, 2).p;
+      if (hh && hl) { sc += 1; out.parts.structure = 'HH/HL'; }
+      else if (!hh && !hl) { sc -= 1; out.parts.structure = 'LH/LL'; }
+      else out.parts.structure = 'mixed';
+    }
+    out.score = sc;
+    out.dir = sc >= 2 ? 'UP' : sc <= -2 ? 'DOWN' : 'FLAT';
+    out.strength = Math.min(1, Math.abs(sc) / 4);
+    out.above21 = c > e21; out.e21over50 = e21 > e50; out.close = c; out.e21 = e21; out.e50 = e50;
+    return out;
+  }
+
+  // Kaufman efficiency ratio over n closed bars: 1 = clean trend, 0 = pure chop
+  function efficiency(s, n = 16) {
+    if (!s || s.n < n + 1) return 0.5;
+    const b = s.bars, end = b.length - 1;
+    const change = Math.abs(b[end].c - b[end - n].c);
+    let path = 0; for (let i = end - n + 1; i <= end; i++) path += Math.abs(b[i].c - b[i - 1].c);
+    return path === 0 ? 0 : change / path;
+  }
+
+  const dirSign = (d) => (d === 'BUY' ? 1 : -1);
+  const want = (d) => (d === 'BUY' ? 'UP' : 'DOWN');
+  const against = (d) => (d === 'BUY' ? 'DOWN' : 'UP');
+
+  // ---------- Engine ----------
+  class Engine {
+    constructor(cfg = {}, hooks = {}) {
+      this.cfg = Object.assign({}, DEFAULTS, cfg);
+      this.hooks = hooks; // onSignal(sig), onUpdate(sig, prevStatus), onReject(info)
+      this.sym = {};      // symbol state
+      this.signals = [];  // all signals (open + closed)
+      this.mode = 'live'; // 'live' (exact tick order) | 'backtest' (bar extremes, pessimistic)
+    }
+    setConfig(c) { Object.assign(this.cfg, c); }
+
+    addSymbol(symbol, meta = {}) {
+      if (this.sym[symbol]) return this.sym[symbol];
+      const st = {
+        symbol, name: meta.name || symbol, market: meta.market || 'synthetic', source: meta.source || 'deriv', dec: decimalsOf(meta.pip != null ? meta.pip : meta.decimals),
+        series: {}, block: null, price: null, lastT: 0, guard: { BUY: null, SELL: null }, ready: false,
+      };
+      for (const g of TF_LIST) st.series[g] = new Series(g, g === 60 ? 3000 : 2500);
+      this.sym[symbol] = st; return st;
+    }
+
+    // seed history for one timeframe. For g=60 also rebuilds the current opening range.
+    seed(symbol, g, candles, opts = {}) {
+      const st = this.sym[symbol]; if (!st || !candles || !candles.length) return;
+      if (opts.decimals != null) st.dec = decimalsOf(opts.decimals);
+      const s = st.series[g];
+      s.seed(candles, opts.forming !== false);
+      if (g === 60) {
+        for (const b of s.bars) this._orUpdate(st, b, true);
+        if (s.forming) { st.price = s.forming.c; st.lastT = s.forming.t; }
+      }
+    }
+    // after all timeframes seeded: mark breakouts that already happened in the current block
+    finishSeed(symbol) {
+      const st = this.sym[symbol]; if (!st) return;
+      const tg = this.cfg.triggerTf === G.M5 ? G.M5 : G.M2;
+      const b = st.block, s2 = st.series[tg];
+      if (b && b.done) {
+        const buf = (b.hi - b.lo) * this.cfg.bufferFrac;
+        for (const x of s2.bars) {
+          if (x.t + tg <= b.orEnd || x.t < b.start) continue;
+          if (x.c > b.hi + buf) b.brokeUp = b.retestUp = true;
+          if (x.c < b.lo - buf) b.brokeDn = b.retestDn = true;
+        }
+      }
+      st.ready = true;
+      // replay closed 1m history through open signals restored from storage
+      for (const sig of this.openSignals(symbol)) {
+        for (const x of st.series[60].bars) if (x.t >= (sig.lastT || sig.createdAt)) this._track(sig, st, x.h, x.l, x.t + 60, x.c, true);
+      }
+    }
+
+    restoreSignals(list) {
+      for (const s of list || []) if (!this.signals.find((x) => x.id === s.id)) this.signals.push(s);
+      this.signals.sort((a, b) => a.createdAt - b.createdAt);
+    }
+    openSignals(symbol) {
+      return this.signals.filter((s) => (!symbol || s.symbol === symbol) && ['PENDING', 'ACTIVE', 'TP1_HIT'].includes(s.status));
+    }
+
+    // Live: feed every 1m ohlc update (Deriv 'ohlc' message or candle). Backtest: feed each closed 1m bar.
+    onBar(symbol, raw) {
+      const st = this.sym[symbol]; if (!st) return;
+      const bar = raw.t != null ? raw : toBar(raw);
+      if (!isFinite(bar.c)) return;
+      const s1 = st.series[60];
+      const prevForming = s1.forming;
+      // 1) aggregate into every timeframe, collecting closures
+      const closed = {};
+      for (const g of TF_LIST) { const c = st.series[g].update(bar); if (c) closed[g] = c; }
+      if (closed[60]) this._orUpdate(st, closed[60], false);
+      st.price = bar.c; st.lastT = bar.t;
+      // 2) strategy on closed 2m bar
+      const trig = this.cfg.triggerTf === G.M5 ? G.M5 : G.M2;
+      if (closed[trig] && st.ready) this._evaluate(st, closed[trig], trig);
+      // 3) track open signals with the newest data
+      const isNewMinute = !prevForming || bar.t > prevForming.t;
+      let hi = bar.c, lo = bar.c;
+      if (this.mode === 'backtest') { hi = bar.h; lo = bar.l; }
+      const now = this.mode === 'backtest' ? bar.t + 60 : Math.max(bar.t, Math.floor(Date.now() / 1000));
+      for (const sig of this.openSignals(symbol)) {
+        if (sig.createdAt > now) continue;
+        this._track(sig, st, hi, lo, now, bar.c, isNewMinute);
+      }
+      for (const g of [G.M5, G.M15]) if (closed[g]) this._softStops(st, closed[g], g);
+    }
+    // Soft stops: a candle that closes against the trade cuts it at that close instead of waiting for the full stop.
+    _softStops(st, cb, g) {
+      const cfg = this.cfg, T = cb.t + g;
+      for (const sig of this.openSignals(st.symbol)) {
+        if (!sig.filledAt || sig.filledAt > cb.t) continue;      // only candles that opened after the fill
+        const d = dirSign(sig.dir), rNow = (d * (cb.c - sig.entry)) / sig.risk;
+        const ss = cfg.softStop;
+        if (!ss || ss.tf !== g || sig.status !== 'ACTIVE' || sig.beArmed) continue;
+        if (rNow <= -ss.r) this._close(sig, st, 'SOFT_EXIT', cb.c, T);
+      }
+    }
+
+    // ---------- opening range ----------
+    _orUpdate(st, b1, seeding) {
+      const cfg = this.cfg;
+      const start = Math.floor(b1.t / cfg.orBlock) * cfg.orBlock;
+      if (!st.block || st.block.start !== start) {
+        st.block = { start, end: start + cfg.orBlock, orEnd: start + cfg.orMinutes * 60, hi: null, lo: null, done: false,
+          brokeUp: false, brokeDn: false, retestUp: false, retestDn: false };
+        // new block resets the loss guard only if structure changed (handled in guard check)
+      }
+      const b = st.block;
+      if (b1.t < b.orEnd) {
+        b.hi = b.hi == null ? b1.h : Math.max(b.hi, b1.h);
+        b.lo = b.lo == null ? b1.l : Math.min(b.lo, b1.l);
+      }
+      if (b1.t + 60 >= b.orEnd && b.hi != null) b.done = true;
+    }
+
+    // ---------- setups ----------
+    _evaluate(st, bar2, tg = G.M2) {
+      const cfg = this.cfg, b = st.block;
+      const T = bar2.t + tg;
+      if (!b || !b.done || T <= b.orEnd || T > b.end) return;
+      if (T < cfg.signalsEnabledFrom) return;
+      const h = b.hi - b.lo; if (!(h > 0)) return;
+      const buf = h * cfg.bufferFrac, mid = (b.hi + b.lo) / 2;
+      const cands = [];
+      if (!b.brokeUp && bar2.c > b.hi + buf) { b.brokeUp = true; cands.push({ dir: 'BUY', setup: 'ORB Break' }); }
+      if (!b.brokeDn && bar2.c < b.lo - buf) { b.brokeDn = true; cands.push({ dir: 'SELL', setup: 'ORB Break' }); }
+      if (cfg.retest) {
+        if (b.brokeUp && !b.retestUp && !cands.length && bar2.l <= b.hi + 0.25 * h && bar2.l > mid && bar2.c > b.hi && bar2.c > bar2.o) {
+          b.retestUp = true; cands.push({ dir: 'BUY', setup: 'ORB Retest' });
+        }
+        if (b.brokeDn && !b.retestDn && !cands.length && bar2.h >= b.lo - 0.25 * h && bar2.h < mid && bar2.c < b.lo && bar2.c < bar2.o) {
+          b.retestDn = true; cands.push({ dir: 'SELL', setup: 'ORB Retest' });
+        }
+      }
+      for (const c of cands) this._consider(st, c, bar2, T, h, mid);
+    }
+
+    _cfgFor(st) {
+      const o = this.cfg.overrides || {};
+      return Object.assign({}, this.cfg, o[st.source] || {}, o[st.symbol] || {});
+    }
+    _consider(st, cand, bar2, T, h, mid) {
+      const cfg = this._cfgFor(st), b = st.block, dir = cand.dir, sgn = dirSign(dir);
+      const S = st.series;
+      const reject = (why) => { this.hooks.onReject && this.hooks.onReject({ symbol: st.symbol, dir, setup: cand.setup, t: T, why }); return null; };
+      if (this.openSignals(st.symbol).length) return reject('Trade already open on this pair');
+
+      const tH4 = trendOf(S[G.H4]), tH2 = trendOf(S[G.H2]), tH1 = trendOf(S[G.H1]), t15 = trendOf(S[G.M15]);
+      const atr15 = S[G.M15].atrv || h;
+      if ((cfg.orbOff || []).includes(st.symbol)) return reject('ORB+ is off on this market (it lost money in testing)');
+      if (cfg.maxOrAtr && h > cfg.maxOrAtr * atr15) return reject('Opening range too wide (' + (h / atr15).toFixed(1) + '× ATR): breakouts from wide ranges usually fail');
+      if (cfg.quiet && (cfg.quiet.markets || []).includes(st.market)) {
+        const hu = new Date(T * 1000).getUTCHours();
+        if (hu >= cfg.quiet.fromUtc && hu < cfg.quiet.toUtc) return reject('Quiet window (London open): breakouts fail more often');
+      }
+      // Regime filters (regime lab, 24 Nov 2026): compact ranges in the active session, with the 4H behind the trade
+      if (cfg.minOrAtr && h < cfg.minOrAtr * atr15) return reject('Opening range too tight (' + (h / atr15).toFixed(2) + '× ATR): no clean breakout regime');
+      if (cfg.hours) { const hu = new Date(T * 1000).getUTCHours(); if (hu < cfg.hours.fromUtc || hu >= cfg.hours.toUtc) return reject('Outside the active session (' + cfg.hours.fromUtc + ':00–' + cfg.hours.toUtc + ':00 UTC)'); }
+      if (cfg.needH4 && tH4.dir !== want(dir)) return reject('4H trend not behind the trade');
+      const er15 = efficiency(S[G.M15], 16);
+      const m1 = S[G.M1];
+      const mom1 = m1.n > 21 && (sgn > 0 ? last(m1.bars).c > m1.e(9) && m1.e(9) > m1.e(21) : last(m1.bars).c < m1.e(9) && m1.e(9) < m1.e(21));
+      // 5m read: trend, side of EMA21, last-candle momentum
+      const s5 = S[G.M5], t5 = trendOf(s5), l5 = last(s5.bars);
+      const side5 = !!l5 && s5.n > 21 && (sgn > 0 ? l5.c > s5.e(21) : l5.c < s5.e(21));
+      const mom5 = !!l5 && s5.n > 9 && (sgn > 0 ? l5.c > l5.o && l5.c > s5.e(9) : l5.c < l5.o && l5.c < s5.e(9));
+      if (cfg.m5Filter === 'aligned' && t5.dir !== want(dir)) return reject('5m trend not aligned');
+      if (cfg.m5Filter === 'notAgainst' && t5.dir === against(dir)) return reject('5m trend against');
+      if (cfg.m5Filter === 'side' && !side5) return reject('5m closed on the wrong side of EMA21');
+      if (cfg.m5Filter === 'momentum' && !mom5) return reject('Last 5m candle not with the trade');
+
+      // --- the 1H rule (strict or adaptive) ---
+      let kind = 'TREND';
+      if (tH1.dir === want(dir)) kind = 'TREND';
+      else if (cfg.trendMode === 'strict') return reject('Against / without 1H trend (strict mode)');
+      else {
+        // adaptive: counter-1H scalp only if 1H is weak, 15m strongly with us, 1m momentum, 4H not against
+        const h1Strong = tH1.dir === against(dir) && Math.abs(tH1.score) >= 3;
+        if (h1Strong) return reject('Strong 1H trend against — blocked');
+        if (t15.dir !== want(dir)) return reject('Counter-1H scalp needs 15m aligned');
+        if (!mom1) return reject('Counter-1H scalp needs 1m momentum');
+        if (tH4.dir === against(dir)) return reject('Counter-1H scalp with 4H against — blocked');
+        kind = 'SCALP';
+      }
+      // --- 15m must not be against (check 15m and 1H always) ---
+      const m15ok = t15.dir === want(dir) || (t15.dir === 'FLAT' && (sgn > 0 ? t15.above21 : !t15.above21));
+      if (!m15ok) return reject('15m not aligned');
+      // --- higher-TF veto: 2H and 4H both against ---
+      if (tH4.dir === against(dir) && tH2.dir === against(dir)) return reject('2H and 4H both against');
+      // --- chop filter ---
+      if (er15 < cfg.chopMin) return reject('15m is ranging (efficiency ' + er15.toFixed(2) + ')');
+      // --- loss guard: no same-direction re-entry after SL until a fresh opening range AND 15m swing confirms ---
+      const g = st.guard[dir];
+      if (cfg.lossGuard && g) {
+        const pv = pivots(S[G.M15], 60);
+        const fresh = sgn > 0 ? pv.lows.some((p) => p.t > g.t && p.p > g.level) : pv.highs.some((p) => p.t > g.t && p.p < g.level);
+        if (b.start <= g.block || !fresh) return reject('Loss guard: waiting for structure reset after SL');
+        st.guard[dir] = null;
+      }
+
+      // --- entry ---
+      const edge = sgn > 0 ? b.hi : b.lo;
+      const dist = Math.abs(bar2.c - edge);
+      let entryType = 'MARKET', entry = bar2.c;
+      if (cand.setup === 'ORB Break' && dist > 0.4 * h) {
+        if (cfg.entryMode === 'skip') return reject('Breakout candle over-extended from the range');
+        if (cfg.entryMode === 'auto') { entryType = 'LIMIT'; entry = edge + sgn * 0.15 * h; }
+      }
+      // --- stop: beyond range midpoint or the recent 2m swing, whichever protects better ---
+      const s2 = S[G.M2].bars.slice(-3);
+      const swing = sgn > 0 ? Math.min(...s2.map((x) => x.l)) : Math.max(...s2.map((x) => x.h));
+      let sl = sgn > 0 ? Math.min(mid, swing) : Math.max(mid, swing);
+      sl -= sgn * 0.05 * atr15;
+      let risk = Math.abs(entry - sl);
+      if (risk > cfg.maxRiskAtr * atr15) {
+        // try the tighter of the two references before giving up
+        const alt = (sgn > 0 ? Math.max(mid, swing) : Math.min(mid, swing)) - sgn * 0.05 * atr15;
+        if (Math.abs(entry - alt) <= cfg.maxRiskAtr * atr15 && sgn * (entry - alt) > 0) { sl = alt; risk = Math.abs(entry - sl); }
+        else return reject('Stop would be too wide (' + (risk / atr15).toFixed(1) + '× ATR)');
+      }
+      if (risk < cfg.minRiskAtr * atr15) { risk = cfg.minRiskAtr * atr15; sl = entry - sgn * risk; }
+
+      // --- room to the nearest 1H obstacle ---
+      const pvH1 = pivots(S[G.H1], 200);
+      const obs = sgn > 0 ? pvH1.highs.map((p) => p.p).filter((p) => p > entry) : pvH1.lows.map((p) => p.p).filter((p) => p < entry);
+      const nearest = obs.length ? (sgn > 0 ? Math.min(...obs) : Math.max(...obs)) : null;
+      const roomR = nearest == null ? 99 : Math.abs(nearest - entry) / risk;
+      if (roomR < cfg.minRoomR) return reject('No room: 1H level ' + roomR.toFixed(2) + 'R away');
+
+      // --- targets ---
+      let r1 = clamp(h / risk, cfg.r1Min, kind === 'SCALP' ? Math.min(cfg.r1Max, cfg.r1Min + 0.2) : cfg.r1Max);
+      let r2 = kind === 'SCALP' ? clamp(1.6 * h / risk, r1 + 0.3, Math.max(r1 + 0.3, cfg.r2Min)) : clamp((2 * h) / risk, Math.max(cfg.r2Min, r1 + 0.8), cfg.r2Max);
+      if (nearest != null && roomR < r1) r1 = Math.max(1.0, roomR * 0.95);
+      if (nearest != null && roomR < r2 && roomR > r1 + 0.3) r2 = roomR * 0.97;
+      let tp1 = entry + sgn * r1 * risk, tp2 = entry + sgn * r2 * risk;
+      if (cfg.slOfTp) {   // stop distance = k × the distance to TP1 or TP2 (targets stay where they are)
+        const ref = cfg.slOfTp.ref === 'tp1' ? tp1 : tp2, nr = cfg.slOfTp.k * Math.abs(ref - entry);
+        if (nr > 0) { risk = nr; sl = entry - sgn * risk; r1 = Math.abs(tp1 - entry) / risk; r2 = Math.abs(tp2 - entry) / risk; }
+      }
+
+      // --- score (0..100) ---
+      const reasons = [];
+      let score = 0;
+      const add = (pts, ok, label, detail) => { score += pts; reasons.push({ ok, pts, label, detail }); };
+      if (kind === 'TREND') add(15 + Math.round(10 * tH1.strength), true, '1H trend ' + tH1.dir, tH1.parts.structure ? tH1.parts.structure + ', ' + (tH1.parts.stack || '') : tH1.parts.stack || '');
+      else add(6, true, '1H weak/flat — scalp only', '1H score ' + tH1.score);
+      add(tH4.dir === want(dir) ? 15 : tH4.dir === 'FLAT' ? 7 : 0, tH4.dir !== against(dir), '4H ' + tH4.dir, '');
+      add(tH2.dir === want(dir) ? 10 : tH2.dir === 'FLAT' ? 5 : 0, tH2.dir !== against(dir), '2H ' + tH2.dir, '');
+      add(t15.dir === want(dir) ? 15 : 8, true, '15m ' + (t15.dir === want(dir) ? 'aligned' : 'neutral, right side of EMA21'), '');
+      add(mom1 ? 10 : 0, mom1, '1m momentum', mom1 ? 'EMA9 > EMA21 in trade direction' : 'not confirmed');
+      add(cfg.m5Score && t5.dir === want(dir) ? 5 : 0, t5.dir !== against(dir), '5m ' + t5.dir + (side5 ? ', right side of EMA21' : ''), mom5 ? 'last 5m candle with the trade' : '');
+      const body = Math.abs(bar2.c - bar2.o), rng = bar2.h - bar2.l || 1e-9;
+      const closePos = sgn > 0 ? (bar2.c - bar2.l) / rng : (bar2.h - bar2.c) / rng;
+      add((body / rng >= 0.5 ? 5 : 0) + (closePos >= 0.7 ? 5 : 0), body / rng >= 0.5, '2m trigger candle', Math.round((body / rng) * 100) + '% body, closed ' + Math.round(closePos * 100) + '% toward ' + (sgn > 0 ? 'high' : 'low'));
+      const hq = h / atr15;
+      add(hq >= 0.6 && hq <= 2.5 ? 10 : hq >= 0.4 && hq <= 3.5 ? 5 : 0, hq >= 0.4 && hq <= 3.5, 'Range quality', (hq).toFixed(2) + '× 15m ATR');
+      add(roomR >= 2 ? 5 : 0, roomR >= 2, 'Room to 1H structure', roomR >= 99 ? 'open sky' : roomR.toFixed(1) + 'R');
+      reasons.push({ ok: true, pts: 0, label: '15m trend quality', detail: 'efficiency ' + er15.toFixed(2) });
+      score = Math.min(100, score);
+      const minS = kind === 'SCALP' ? cfg.minScalpScore : cfg.minScore;
+      if (score < minS) return reject('Score ' + score + ' below ' + minS);
+      // Loss review, 24 Nov 2026: when every timeframe is already aligned (score 95+ with the 2H and 4H both behind the
+      // trade) the move is usually late; those trades lost 9–16% of the time against 4–6% for the rest.
+      if (cfg.skipLate && score >= 95 && tH4.dir === want(dir) && tH2.dir === want(dir)) return reject('Late entry: every timeframe already aligned (score ' + score + ')');
+      const grade = score >= 85 ? 'A+' : score >= 74 ? 'A' : 'B';
+
+      const sig = {
+        id: uid(), symbol: st.symbol, name: st.name, market: st.market, source: st.source, dec: st.dec,
+        setup: cand.setup, kind, dir, tf: TF_NAME[cfg.triggerTf === G.M5 ? G.M5 : G.M2], entryType, entry, sl, slLive: sl, tp1, tp2, risk, r1, r2,
+        score, grade, reasons, unproven: (cfg.unproven || []).includes(st.symbol) || (cfg.unproven || []).includes(st.source),
+        bias: { H4: tH4.dir, H2: tH2.dir, H1: tH1.dir, M15: t15.dir, M5: t5.dir, M1: mom1 ? want(dir) : 'FLAT' },
+        or: { hi: b.hi, lo: b.lo, start: b.start, end: b.end, orEnd: b.orEnd },
+        status: entryType === 'LIMIT' ? 'PENDING' : 'ACTIVE',
+        createdAt: T, filledAt: entryType === 'LIMIT' ? null : T, tp1At: null, closedAt: null, lastT: T,
+        result: null, mfeR: 0, maeR: 0, price: bar2.c, exit: null, atr15, peak: null,
+      };
+      sig.text = this.narrative(sig, { atr15, er15, h, roomR, nearest });
+      this.signals.push(sig);
+      this.hooks.onSignal && this.hooks.onSignal(sig);
+      return sig;
+    }
+
+    // ---------- live trade capture ----------
+    _close(sig, st, status, exitPrice, t) {
+      const prev = sig.status, sgn = dirSign(sig.dir);
+      const rNow = (sgn * (exitPrice - sig.entry)) / sig.risk;
+      const p = this.cfg.partialAtTp1;
+      let R = 0;
+      if (sig.threeR != null) R = sig.threeR;  // 3-position plan sets its own result
+      else if (status === 'SL_HIT') R = -1;
+      else if (status === 'TP2_HIT') R = p * sig.r1 + (1 - p) * sig.r2;
+      else if (status === 'BE_HIT' || status === 'TRAIL_EXIT') R = p * sig.r1 + (1 - p) * rNow;
+      else if (status === 'BE_EARLY' || status === 'SOFT_EXIT' || status === 'DYN_STOP') R = rNow;  // stopped at entry (or the locked level) before TP1
+      else if (status === 'TIME_EXIT') R = sig.tp1At ? p * sig.r1 + (1 - p) * rNow : rNow;
+      else R = 0; // EXPIRED / CANCELLED never filled
+      sig.status = status; sig.closedAt = t; sig.exit = exitPrice; sig.result = Math.round(R * 100) / 100; sig.lastT = t;
+      if (status === 'SL_HIT') {
+        // arm the loss guard for this direction
+        st.guard[sig.dir] = { t, block: st.block ? st.block.start : 0, level: sig.dir === 'BUY' ? Math.min(sig.sl, sig.entry) : Math.max(sig.sl, sig.entry) };
+      }
+      this.hooks.onUpdate && this.hooks.onUpdate(sig, prev);
+    }
+
+    _better(sgn, a, b) { if (a == null) return b; if (b == null) return a; return sgn > 0 ? Math.max(a, b) : Math.min(a, b); }
+    _dynCap(sig, dy, sgn) { return sig.entry + sgn * (dy.cap == null ? 0.5 : dy.cap) * Math.abs(sig.tp1 - sig.entry); }
+    // Dynamic stop: follows the best price at dist × risk, never past cap × the TP1 distance. Applies from the next bar.
+    _dyn(sig, dy, sgn) {
+      const best = sig.entry + sgn * sig.mfeR * sig.risk;
+      const cand = this._better(-sgn, best - sgn * dy.dist * sig.risk, this._dynCap(sig, dy, sgn));
+      const cur = sig.beArmed || sig.dynMoved || sig.status === 'TP1_HIT' ? sig.slLive : sig.sl;
+      if (sgn > 0 ? cand > cur + 1e-12 : cand < cur - 1e-12) { sig.slLive = cand; sig.dynMoved = true; }
+    }
+    _track(sig, st, hi, lo, t, price, _newMin) {
+      const sgn = dirSign(sig.dir), cfg = this.cfg;
+      const fav = sgn > 0 ? hi : lo, adv = sgn > 0 ? lo : hi;
+      const prev = sig.status;
+      sig.price = price; sig.lastT = t;
+      if (sig.status === 'PENDING') {
+        if (t - sig.createdAt > cfg.pendingExpiryMin * 60) return this._close(sig, st, 'EXPIRED', price, t);
+        const filled = sgn > 0 ? adv <= sig.entry : adv >= sig.entry;
+        if (!filled) {
+          if (sgn > 0 ? fav >= sig.tp1 : fav <= sig.tp1) return this._close(sig, st, 'CANCELLED', price, t); // ran away without us
+          return;
+        }
+        sig.status = 'ACTIVE'; sig.filledAt = t;
+        this.hooks.onUpdate && this.hooks.onUpdate(sig, prev);
+      }
+      // excursions
+      sig.mfeR = Math.max(sig.mfeR, (sgn * (fav - sig.entry)) / sig.risk);
+      sig.maeR = Math.min(sig.maeR, (sgn * (adv - sig.entry)) / sig.risk);
+      if (sig.status === 'ACTIVE') {
+        const stop = sig.beArmed || sig.dynMoved ? sig.slLive : sig.sl;
+        const slHit = sgn > 0 ? adv <= stop : adv >= stop;
+        const tp1Hit = sgn > 0 ? fav >= sig.tp1 : fav <= sig.tp1;
+        if (slHit) return this._close(sig, st, sgn * (stop - sig.entry) >= -1e-12 && (sig.beArmed || sig.dynMoved) ? 'BE_EARLY' : sig.dynMoved ? 'DYN_STOP' : 'SL_HIT', stop, t); // pessimistic if both in one bar
+        // early breakeven: armed from the next bar once the trade has run beAtR in profit
+        if (cfg.beAtR && !sig.beArmed && sig.mfeR >= cfg.beAtR && !tp1Hit) { sig.beArmed = true; sig.slLive = this._better(sgn, sig.slLive, sig.entry + sgn * (cfg.beLockR || 0) * sig.risk); this.hooks.onUpdate && this.hooks.onUpdate(sig, 'ACTIVE'); }
+        if (cfg.dyn && !tp1Hit) this._dyn(sig, cfg.dyn, sgn);
+        if (tp1Hit) {
+          sig.status = 'TP1_HIT'; sig.tp1At = t;
+          if (cfg.three) { sig.sl12 = sig.tp1; sig.sl3 = sig.entry + 0.5 * (sig.tp1 - sig.entry); sig.open12 = true; sig.slLive = sig.sl12; this.hooks.onUpdate && this.hooks.onUpdate(sig, 'ACTIVE');
+            if (sgn > 0 ? fav >= sig.tp2 : fav <= sig.tp2) { sig.threeR = sig.r2; return this._close(sig, st, 'TP2_HIT', sig.tp2, t); }
+            return; } // the new stops apply from the next bar/tick
+          else { sig.slLive = this._better(sgn, sig.dynMoved || sig.beArmed ? sig.slLive : null, cfg.tp1LockAtTp1 ? sig.tp1 : sig.entry + sgn * (cfg.tp1Lock || 0) * sig.risk); sig.peak = sig.tp1;
+          if (cfg.dyn && cfg.dyn.whole) sig.slLive = this._better(-sgn, sig.slLive, this._dynCap(sig, cfg.dyn, sgn));
+          this.hooks.onUpdate && this.hooks.onUpdate(sig, 'ACTIVE');
+          if (sgn > 0 ? fav >= sig.tp2 : fav <= sig.tp2) return this._close(sig, st, 'TP2_HIT', sig.tp2, t);
+          if (this.mode === 'backtest') return; // BE can't be ordered inside the same bar; check next bar
+          }
+        }
+      }
+      if (sig.status === 'TP1_HIT' && cfg.three) {
+        // stops first (pessimistic): positions 1-2 at TP1, position 3 halfway between entry and TP1
+        if (sig.open12 && (sgn > 0 ? adv <= sig.sl12 : adv >= sig.sl12)) { sig.open12 = false; sig.slLive = sig.sl3; this.hooks.onUpdate && this.hooks.onUpdate(sig, 'TP1_HIT'); }
+        const bank = sig.open12 ? null : 2 * sig.r1;
+        if (!sig.open12 && (sgn > 0 ? adv <= sig.sl3 : adv >= sig.sl3)) { sig.threeR = (bank + 0.5 * sig.r1) / 3; return this._close(sig, st, 'TRAIL_EXIT', sig.sl3, t); }
+        if (sgn > 0 ? fav >= sig.tp2 : fav <= sig.tp2) { sig.threeR = sig.open12 ? sig.r2 : (bank + sig.r2) / 3; return this._close(sig, st, 'TP2_HIT', sig.tp2, t); }
+        if (sig.filledAt && t - sig.filledAt > cfg.maxHoldMin * 60) { const rNow = (sgn * (price - sig.entry)) / sig.risk; sig.threeR = sig.open12 ? rNow : (bank + rNow) / 3; return this._close(sig, st, 'TIME_EXIT', price, t); }
+        return;
+      }
+      if (sig.status === 'TP1_HIT') {
+        const tr = cfg.trail || {}, keepTp2 = tr.mode === 'off' || tr.keepTp2 !== false;
+        const stop = sig.slLive != null ? sig.slLive : sig.entry;
+        if (sgn > 0 ? adv <= stop : adv >= stop) return this._close(sig, st, Math.abs(stop - sig.entry) < 1e-12 ? 'BE_HIT' : 'TRAIL_EXIT', stop, t); // stop first (pessimistic)
+        if (keepTp2 && (sgn > 0 ? fav >= sig.tp2 : fav <= sig.tp2)) return this._close(sig, st, 'TP2_HIT', sig.tp2, t);
+        if (cfg.dyn && cfg.dyn.whole) this._dyn(sig, cfg.dyn, sgn);
+        if (tr.mode && tr.mode !== 'off') {   // trail behind the best price; the new stop applies from the next bar
+          sig.peak = sig.peak == null ? fav : sgn > 0 ? Math.max(sig.peak, fav) : Math.min(sig.peak, fav);
+          const pip = tr.mode === 'pips' && st.market === 'forex' ? Math.pow(10, -Math.max(0, st.dec - 1)) : null;
+          const dist = pip ? tr.pips * pip : (tr.atr || 0.75) * (sig.atr15 || sig.risk);
+          const cand = sig.peak - sgn * dist;
+          const capped = cfg.dyn && cfg.dyn.whole ? this._better(-sgn, cand, this._dynCap(sig, cfg.dyn, sgn)) : cand;
+          if (sgn > 0 ? capped > sig.slLive : capped < sig.slLive) sig.slLive = capped;
+        }
+      }
+      if ((sig.status === 'ACTIVE' || sig.status === 'TP1_HIT') && sig.filledAt && t - sig.filledAt > cfg.maxHoldMin * 60) {
+        return this._close(sig, st, 'TIME_EXIT', price, t);
+      }
+    }
+
+    // ---------- reading ----------
+    snapshot(symbol) {
+      const st = this.sym[symbol]; if (!st) return null;
+      const S = st.series, b = st.block;
+      const tr = { H4: trendOf(S[G.H4]).dir, H2: trendOf(S[G.H2]).dir, H1: trendOf(S[G.H1]).dir, M15: trendOf(S[G.M15]).dir, M5: trendOf(S[G.M5]).dir };
+      const er = efficiency(S[G.M15], 16);
+      let orState = 'forming';
+      if (b && b.done) orState = st.price > b.hi ? 'above' : st.price < b.lo ? 'below' : 'inside';
+      const open = this.openSignals(symbol)[0] || null;
+      let look = 'Waiting';
+      if (open) look = 'In trade';
+      else if (tr.H1 === 'FLAT' && this.cfg.trendMode === 'strict') look = 'No 1H trend';
+      else if (er < this.cfg.chopMin) look = 'Ranging — standing aside';
+      else if (tr.H1 === 'UP' && tr.M15 !== 'DOWN') look = b && b.brokeUp ? 'Bull break done — watching retest' : 'Watching for BUY break';
+      else if (tr.H1 === 'DOWN' && tr.M15 !== 'UP') look = b && b.brokeDn ? 'Bear break done — watching retest' : 'Watching for SELL break';
+      else look = 'Timeframes disagree';
+      return { symbol, name: st.name, market: st.market, dec: st.dec, price: st.price, t: st.lastT, trend: tr, er,
+        or: b ? { hi: b.hi, lo: b.lo, done: b.done, start: b.start, end: b.end, state: orState } : null,
+        open: open ? open.id : null, look, ready: st.ready };
+    }
+
+    narrative(sig, x) {
+      const d = sig.dec, side = sig.dir === 'BUY' ? 'above' : 'below', edge = sig.dir === 'BUY' ? sig.or.hi : sig.or.lo;
+      const lines = [];
+      lines.push(`${sig.dir} ${sig.name} — ${sig.setup}${sig.kind === 'SCALP' ? ' (counter-1H scalp)' : ''}, grade ${sig.grade} (${sig.score}/100).`);
+      if (sig.kind === 'TREND') lines.push(`The 1H trend is ${sig.bias.H1.toLowerCase()}, and the 4H reads ${sig.bias.H4.toLowerCase()} while the 2H reads ${sig.bias.H2.toLowerCase()}. The 15m is ${sig.bias.M15 === 'FLAT' ? 'neutral but on the right side of its EMA21' : 'aligned'}.`);
+      else lines.push(`The 1H trend is weak (${sig.bias.H1.toLowerCase()}), so this is taken as a short scalp. The 15m and 1m momentum are carrying it, and targets are kept tight.`);
+      lines.push(`Price closed ${side} the opening range ${sig.dir === 'BUY' ? 'high' : 'low'} at ${fmt(edge, d)} (range ${fmt(sig.or.lo, d)}–${fmt(sig.or.hi, d)}).`);
+      lines.push(sig.entryType === 'LIMIT'
+        ? `The candle ran too far from the edge, so the entry is a limit back at ${fmt(sig.entry, d)}. If it isn't filled within ${this.cfg.pendingExpiryMin} min, the setup is cancelled.`
+        : `The entry is at market, ${fmt(sig.entry, d)}.`);
+      lines.push(`The SL at ${fmt(sig.sl, d)} sits beyond the range midpoint and the recent 2m swing. Risk is ${(sig.risk / x.atr15).toFixed(2)}× the 15m ATR.`);
+      lines.push(`TP1 ${fmt(sig.tp1, d)} (${sig.r1.toFixed(2)}R) and TP2 ${fmt(sig.tp2, d)} (${sig.r2.toFixed(2)}R). ${x.nearest != null ? `The next 1H structure is ${x.roomR.toFixed(1)}R away at ${fmt(x.nearest, d)}.` : 'There is no 1H structure in the way.'}`);
+      if (sig.unproven) lines.push('Royalty: this market runs the Royalty strategy, which has no proven edge in backtests yet. Watch it, or trade the smallest size only.');
+      { const c = this.cfg, tr = c.trail || {};
+        const pre = [c.beAtR ? `at +${c.beAtR}R move the SL to entry${c.beLockR ? ' +' + c.beLockR + 'R' : ''}` : '', c.softStop ? `close early if a ${c.softStop.tf / 60}m candle closes ${c.softStop.r}R against you` : '', c.dyn ? `trail the SL ${c.dyn.dist}R behind the best price, but never past ${fmt(sig.entry + dirSign(sig.dir) * (c.dyn.cap == null ? 0.5 : c.dyn.cap) * Math.abs(sig.tp1 - sig.entry), sig.dec)} (halfway to TP1)` : ''].filter(Boolean).join('; ');
+        const post = tr.mode && tr.mode !== 'off' ? `trail the rest ${sig.market === 'forex' && tr.mode === 'pips' ? tr.pips + ' pips' : tr.atr + '× the 15m ATR'} behind price${tr.keepTp2 === false ? ' (TP2 is a guide)' : ''}` : 'let the rest run to TP2';
+        if (c.three) lines.push(`Management: open 3 equal positions with the same SL. ${pre ? 'Before TP1, ' + pre + '. ' : 'Nothing moves before TP1. '}At TP1, move the SL of positions 1 and 2 to TP1 (${fmt(sig.tp1, d)}) and the SL of position 3 halfway, to ${fmt(sig.entry + 0.5 * (sig.tp1 - sig.entry), d)}. All 3 aim for TP2.`); else
+        lines.push(`Management: ${pre ? 'before TP1, ' + pre + '. ' : ''}Close ${Math.round(c.partialAtTp1 * 100)}% at TP1 and move the SL to entry${c.tp1Lock ? ' +' + c.tp1Lock + 'R' : ''}, then ${post}.`); }
+      return lines.join(' ');
+    }
+  }
+
+  // ---------- stats ----------
+  function stats(list) {
+    const closed = list.filter((s) => s.result != null && !['EXPIRED', 'CANCELLED'].includes(s.status));
+    const wins = closed.filter((s) => s.result > 0);
+    const sumR = closed.reduce((a, s) => a + s.result, 0);
+    const gross = closed.filter((s) => s.result > 0).reduce((a, s) => a + s.result, 0);
+    const loss = -closed.filter((s) => s.result < 0).reduce((a, s) => a + s.result, 0);
+    let eq = 0, peak = 0, dd = 0; const curve = [];
+    for (const s of [...closed].sort((a, b) => a.closedAt - b.closedAt)) { eq += s.result; peak = Math.max(peak, eq); dd = Math.max(dd, peak - eq); curve.push({ t: s.closedAt, v: Math.round(eq * 100) / 100 }); }
+    const count = (st) => closed.filter((s) => s.status === st).length;
+    const group = (key) => {
+      const o = {};
+      for (const s of closed) { const k = key(s); o[k] = o[k] || { n: 0, w: 0, t1: 0, R: 0 }; o[k].n++; o[k].R += s.result; if (s.result > 0) o[k].w++; if (s.tp1At) o[k].t1++; }
+      for (const k in o) o[k].R = Math.round(o[k].R * 100) / 100;
+      return o;
+    };
+    return {
+      total: list.length, closed: closed.length, open: list.filter((s) => ['PENDING', 'ACTIVE', 'TP1_HIT'].includes(s.status)).length,
+      expired: list.filter((s) => s.status === 'EXPIRED' || s.status === 'CANCELLED').length,
+      wins: wins.length, winRate: closed.length ? wins.length / closed.length : 0,
+      tp1Hits: closed.filter((s) => s.tp1At).length, tp1Rate: closed.length ? closed.filter((s) => s.tp1At).length / closed.length : 0,
+      sl: count('SL_HIT'), tp2: count('TP2_HIT') + count('TP5_HIT'), be: count('BE_HIT'), timeExit: count('TIME_EXIT'),
+      totalR: Math.round(sumR * 100) / 100, avgR: closed.length ? sumR / closed.length : 0,
+      profitFactor: loss ? gross / loss : gross ? Infinity : 0, maxDD: Math.round(dd * 100) / 100, curve,
+      ddNow: Math.round((peak - eq) * 100) / 100, sizeNow: peak - eq >= 3 ? 0.25 : peak - eq >= 2 ? 0.5 : 1, // drawdown rule: half size from 2R below the peak, quarter from 3R
+      byGrade: group((s) => s.grade), bySymbol: group((s) => s.name), byKind: group((s) => s.kind), bySetup: group((s) => s.setup), byStrategy: group(() => 'ORB+'),
+    };
+  }
+
+  // ---------- Deriv public feed (browser + Node 22) ----------
+  class DerivFeed {
+    constructor(opts = {}) {
+      this.url = opts.url || 'wss://api.derivws.com/trading/v1/options/ws/public';
+      this.onStatus = opts.onStatus || (() => {});
+      this.WS = opts.WebSocket || (typeof WebSocket !== 'undefined' ? WebSocket : null);
+      this.req = 1; this.pending = {}; this.subs = {}; this.ws = null; this.alive = false; this.queue = [];
+    }
+    connect() {
+      return new Promise((resolve, reject) => {
+        if (!this.WS) return reject(new Error('No WebSocket available'));
+        this.onStatus('connecting');
+        const ws = new this.WS(this.url); this.ws = ws;
+        let opened = false;
+        ws.onopen = () => {
+          opened = true; this.alive = true; this.onStatus('live');
+          this.ping = setInterval(() => this._send({ ping: 1 }), 25000);
+          const q = this.queue; this.queue = []; q.forEach((m) => this._send(m));
+          // re-subscribe after reconnect
+          for (const key in this.subs) { const s = this.subs[key]; this._subscribe(s).catch(() => {}); }
+          resolve();
+        };
+        ws.onmessage = (e) => this._onMessage(e.data);
+        ws.onerror = () => { if (!opened) reject(new Error('WebSocket error')); };
+        ws.onclose = () => {
+          this.alive = false; clearInterval(this.ping); this.onStatus('reconnecting');
+          for (const id in this.pending) { this.pending[id].reject(new Error('closed')); delete this.pending[id]; }
+          setTimeout(() => this.connect().catch(() => {}), 3000);
+        };
+      });
+    }
+    _send(m) { if (this.ws && this.alive && this.ws.readyState === 1) this.ws.send(JSON.stringify(m)); else this.queue.push(m); }
+    _onMessage(raw) {
+      let d; try { d = JSON.parse(raw); } catch (e) { return; }
+      if (d.msg_type === 'ohlc' && d.ohlc) {
+        const key = d.ohlc.symbol + ':' + d.ohlc.granularity; const s = this.subs[key];
+        if (s) s.cb(d.ohlc);
+        return;
+      }
+      const id = d.req_id; if (id && this.pending[id]) {
+        const p = this.pending[id]; delete this.pending[id];
+        if (d.error) p.reject(Object.assign(new Error(d.error.message || d.error.code), { code: d.error.code })); else p.resolve(d);
+      }
+    }
+    call(m, timeout = 20000) {
+      return new Promise((resolve, reject) => {
+        const id = this.req++; m.req_id = id; this.pending[id] = { resolve, reject };
+        setTimeout(() => { if (this.pending[id]) { delete this.pending[id]; reject(new Error('timeout')); } }, timeout);
+        this._send(m);
+      });
+    }
+    activeSymbols() { return this.call({ active_symbols: 'brief' }).then((d) => d.active_symbols); }
+    candles(symbol, g, count = 2000, end = 'latest') {
+      return this.call({ ticks_history: symbol, style: 'candles', granularity: g, count, end, adjust_start_time: 1 }).then((d) => ({ candles: d.candles || [], pip: d.pip_size }));
+    }
+    async candlesBack(symbol, g, total) {
+      let out = [], end = 'latest', pip;
+      while (out.length < total) {
+        const r = await this.candles(symbol, g, Math.min(2000, total - out.length), end);
+        pip = r.pip; if (!r.candles.length) break;
+        out = r.candles.concat(out);
+        const first = r.candles[0].epoch; end = String(first - 1);
+        if (r.candles.length < 2) break;
+      }
+      // de-dup
+      const seen = new Set(); out = out.filter((c) => (seen.has(c.epoch) ? false : seen.add(c.epoch)));
+      return { candles: out, pip };
+    }
+    subscribeCandles(symbol, g, cb, count = 2000) {
+      const s = { symbol, g, cb, count, first: null };
+      this.subs[symbol + ':' + g] = s;
+      return this._subscribe(s);
+    }
+    _subscribe(s) {
+      return this.call({ ticks_history: s.symbol, style: 'candles', granularity: s.g, count: s.count, end: 'latest', subscribe: 1, adjust_start_time: 1 })
+        .then((d) => { s.first = d; return d; });
+    }
+  }
+
+  function aggCandles(c, g) {
+    const out = []; let cur = null;
+    for (const x of c) {
+      const t = Math.floor(x.epoch / g) * g;
+      if (!cur || cur.epoch !== t) { if (cur) out.push(cur); cur = { epoch: t, open: x.open, high: x.high, low: x.low, close: x.close }; }
+      else { cur.high = Math.max(cur.high, x.high); cur.low = Math.min(cur.low, x.low); cur.close = x.close; }
+    }
+    if (cur) out.push(cur); return out;
+  }
+
+  // ---------- MT5 bridge feed (Weltrade or any MT5 broker) ----------
+  // Your own MT5 terminal runs the TradesWithMoxieBridge EA, which POSTs closed + forming bars to the server.
+  // This feed serves those bars to the engine exactly like the Deriv feed does.
+  class BridgeFeed {
+    constructor() { this.data = {}; this.subs = {}; this.waiters = []; }
+    // payload: { symbol, digits, m1:[[t,o,h,l,c],...], m15:[...], h1:[...] } (any subset)
+    ingest(p) {
+      const sym = p.symbol; if (!sym) return 0;
+      const d = this.data[sym] || (this.data[sym] = { 60: new Map(), 900: new Map(), 3600: new Map(), digits: p.digits });
+      if (p.digits != null) d.digits = p.digits;
+      let n = 0;
+      for (const [k, g] of [['m1', 60], ['m15', 900], ['h1', 3600]]) {
+        for (const r of p[k] || []) { if (!Array.isArray(r) || r.length < 5) continue; d[g].set(+r[0], { epoch: +r[0], open: +r[1], high: +r[2], low: +r[3], close: +r[4] }); n++; }
+        if (d[g].size > 6000) { const keys = [...d[g].keys()].sort((a, b) => a - b); for (const k2 of keys.slice(0, d[g].size - 5000)) d[g].delete(k2); }
+      }
+      d.updated = Date.now();
+      const s = this.subs[sym];
+      if (s && p.m1 && p.m1.length) {
+        const last = [...p.m1].sort((a, b) => a[0] - b[0]).slice(-2);
+        for (const r of last) s.cb({ symbol: sym, granularity: 60, open_time: +r[0], epoch: +r[0], open: +r[1], high: +r[2], low: +r[3], close: +r[4] });
+      }
+      this.waiters = this.waiters.filter((w) => !w());
+      return n;
+    }
+    _series(sym, g) { const d = this.data[sym]; return d ? [...d[g].values()].sort((a, b) => a.epoch - b.epoch) : []; }
+    _ready(sym) { const d = this.data[sym]; return d && d[60].size >= 300 && d[900].size >= 100 && d[3600].size >= 100; }
+    _wait(sym, ms = 600000) {
+      if (this._ready(sym)) return Promise.resolve();
+      return new Promise((res, rej) => { const t = setTimeout(() => rej(new Error('no MT5 bridge data yet for ' + sym)), ms); this.waiters.push(() => { if (this._ready(sym)) { clearTimeout(t); res(); return true; } return false; }); });
+    }
+    async connect() {}
+    async candles(sym, g, count = 2000, end = 'latest') {
+      await this._wait(sym);
+      const base = g === 120 || g === 300 ? 60 : g === 7200 || g === 14400 ? 3600 : g;
+      let c = this._series(sym, base);
+      if (end !== 'latest') c = c.filter((x) => x.epoch <= +end);
+      if (base !== g) c = aggCandles(c, g);
+      return { candles: c.slice(-count), pip: (this.data[sym] || {}).digits };
+    }
+    async candlesBack(sym, g, total) { return this.candles(sym, g, total); }
+    async subscribeCandles(sym, g, cb, count = 2000) {
+      await this._wait(sym); this.subs[sym] = { cb };
+      return { candles: this._series(sym, 60).slice(-count), pip_size: (this.data[sym] || {}).digits, subscription: { id: 'mt5:' + sym } };
+    }
+    status() { const o = {}; for (const k in this.data) o[k] = { m1: this.data[k][60].size, m15: this.data[k][900].size, h1: this.data[k][3600].size, updated: this.data[k].updated }; return o; }
+  }
+
+  // ---------- Live runner: wires feed(s) -> engine for a list of symbols ----------
+  // `feed` can be a single feed or a map { deriv: DerivFeed, weltrade: WeltradeFeed } keyed by symbol meta.source
+  async function startLive(engine, feedOrMap, symbols, opts = {}) {
+    const pick = (meta) => (feedOrMap.candles ? feedOrMap : feedOrMap[meta.source || 'deriv']);
+    const log = opts.log || (() => {});
+    const htf = [G.M2, G.M5, G.M15, G.H1, G.H2, G.H4];
+    const counts = { 120: 1500, 300: 1500, 900: 1500, 3600: 2000, 7200: 1200, 14400: 1000 };
+    const runOne = async (meta) => {
+      const sym = meta.symbol; engine.addSymbol(sym, meta);
+      const feed = pick(meta); if (!feed) { log('no feed for ' + sym); return; }
+      try {
+        for (const g of htf) {
+          const r = await feed.candles(sym, g, counts[g]);
+          engine.seed(sym, g, r.candles, { decimals: r.pip });
+        }
+        let seeded = false;
+        const first = await feed.subscribeCandles(sym, G.M1, (o) => {
+          if (!seeded) return; engine.onBar(sym, o); opts.onTick && opts.onTick(sym);
+        }, 2000);
+        engine.seed(sym, G.M1, first.candles || [], { decimals: first.pip_size });
+        engine.finishSeed(sym); seeded = true;
+        log('ready ' + sym);
+        opts.onReady && opts.onReady(sym);
+      } catch (e) {
+        log('failed ' + sym + ': ' + e.message + ' (retrying in 60s)'); opts.onError && opts.onError(sym, e);
+        setTimeout(() => runOne(meta), 60000); // feeds hiccup (rate limits, closed markets): keep trying
+      }
+    };
+    // limited concurrency so we don't hammer the API
+    const list = symbols.slice(); const workers = [];
+    for (let i = 0; i < (opts.concurrency || 3); i++) workers.push((async () => { while (list.length) await runOne(list.shift()); })());
+    await Promise.all(workers);
+  }
+
+  // ---------- Backtest: replays real 1m history through the identical engine ----------
+  async function backtest(feed, meta, days, cfg = {}, progress = () => {}) {
+    const sym = meta.symbol;
+    progress(sym, 'downloading 1m history');
+    const m1 = await feed.candlesBack(sym, 60, Math.min(days * 1440 + 360, 14000));
+    if (!m1.candles.length) throw new Error('no data for ' + sym);
+    const bars = m1.candles.map(toBar);
+    const startFeed = Math.ceil(bars[0].t / G.H4) * G.H4;
+    const eng = new Engine(Object.assign({}, cfg, { signalsEnabledFrom: startFeed + 3 * 3600 }));
+    eng.mode = 'backtest';
+    eng.addSymbol(sym, Object.assign({}, meta, { decimals: m1.pip }));
+    const st = eng.sym[sym];
+    for (const g of [G.M5, G.M15, G.H1, G.H2, G.H4]) {
+      progress(sym, 'downloading ' + TF_NAME[g]);
+      const end = String(startFeed - 1);
+      const r = await feed.candles(sym, g, 1500, end);
+      const closed = r.candles.filter((c) => c.epoch + g <= startFeed);
+      st.series[g].seed(closed, false);
+    }
+    st.ready = true;
+    progress(sym, 'replaying ' + bars.length + ' bars');
+    for (const b of bars) { if (b.t < startFeed) continue; eng.onBar(sym, b); }
+    // close anything still open at the end at last price (time exit) for honest accounting
+    const lastBar = last(bars);
+    for (const s of eng.openSignals(sym)) eng._close(s, st, s.status === 'PENDING' ? 'EXPIRED' : 'TIME_EXIT', lastBar.c, lastBar.t + 60);
+    return { signals: eng.signals, from: startFeed, to: lastBar.t, bars: bars.length };
+  }
+
+  // Trade-management presets (management lab, 23 Nov 2026)
+  const MANAGEMENT = {
+    // Regime lab, 24 Nov 2026: both windows together, ORB+ only
+    quality: { label: 'High quality', beAtR: 0, beLockR: 0, tp1Lock: 0.3, softStop: { r: 0.6, tf: 300 }, dyn: null, trail: { mode: 'pips', pips: 20, atr: 0.75, keepTp2: false },
+      minOrAtr: 0.6, maxOrAtr: 0.9, hours: { fromUtc: 6, toUtc: 18 } },   // 89% in profit, PF 3.85, 3.7R DD, +100.1R, ~6 signals a day
+    volume: { label: 'More signals', beAtR: 0, beLockR: 0, tp1Lock: 0.3, softStop: { r: 0.6, tf: 300 }, dyn: null, trail: { mode: 'pips', pips: 20, atr: 0.75, keepTp2: false },
+      minOrAtr: 0, maxOrAtr: 1.5, hours: null },                            // 87% in profit, PF 2.37, 7.0R DD, +214.8R, ~23 signals a day
+  };
+
+  const D = (symbol, name, market = 'synthetic') => ({ symbol, name, market, source: 'deriv' });
+  // Weltrade SyntX pairs arrive through your MT5 terminal (source 'mt5'), the same bridge model Aurum uses.
+  const W = (symbol) => ({ symbol, name: symbol.replace(/-/g, ' '), market: 'synthetic', source: 'mt5', broker: 'Weltrade' });
+  const DEFAULT_SYMBOLS = [
+    // Deriv synthetics
+    D('stpRNG', 'Step Index 100'), D('R_25', 'Volatility 25'), D('R_50', 'Volatility 50'), D('R_75', 'Volatility 75'), D('R_100', 'Volatility 100'),
+    D('1HZ25V', 'Volatility 25 (1s)'), D('1HZ75V', 'Volatility 75 (1s)'), D('BOOM1000', 'Boom 1000'), D('CRASH1000', 'Crash 1000'),
+    // Deriv gold & metals
+    D('frxXAUUSD', 'Gold (XAU/USD)', 'forex'), D('frxXAGUSD', 'Silver (XAG/USD)', 'forex'),
+    // Deriv forex
+    D('frxEURUSD', 'EUR/USD', 'forex'), D('frxGBPUSD', 'GBP/USD', 'forex'), D('frxUSDJPY', 'USD/JPY', 'forex'), D('frxAUDUSD', 'AUD/USD', 'forex'),
+    D('frxUSDCAD', 'USD/CAD', 'forex'), D('frxUSDCHF', 'USD/CHF', 'forex'), D('frxNZDUSD', 'NZD/USD', 'forex'),
+    D('frxGBPJPY', 'GBP/JPY', 'forex'), D('frxEURJPY', 'EUR/JPY', 'forex'), D('frxEURGBP', 'EUR/GBP', 'forex'),
+    // Deriv crypto
+    D('cryBTCUSD', 'BTC/USD', 'crypto'), D('cryETHUSD', 'ETH/USD', 'crypto'),
+  ];
+  // Weltrade SyntX pairs (MT5 bridge). Off by default for now; add them back in Settings.
+  const WELTRADE_SYMBOLS = [
+    W('FlipX-1'), W('FlipX-2'), W('FlipX-3'), W('FlipX-4'), W('FlipX-5'), W('FiboX'), W('QuadX'), W('PlusX-1'),
+    W('FX-Vol-20'), W('FX-Vol-40'), W('FX-Vol-60'), W('FX-Vol-99'), W('SFX-Vol-20'), W('SFX-Vol-40'),
+    W('GainX-400'), W('GainX-600'), W('PainX-400'), W('PainX-600'),
+  ];
+
+  return { Engine, Series, DerivFeed, BridgeFeed, aggCandles, startLive, backtest, stats, trendOf, efficiency, pivots, fmt, toBar, decimalsOf, G, TF_NAME, DEFAULTS, DEFAULT_SYMBOLS, WELTRADE_SYMBOLS, MANAGEMENT, version: '1.14.1' };
+});
+
+</script>
+<script>
+/**
+ * Royal Trades Robot: executes Royal Trades ORB+ signals automatically.
+ *
+ * Educational software, not financial advice. Automated trading can lose money quickly. Test in Paper or on a Deriv
+ * demo account first, and only use money you can afford to lose.
+ *
+ *   signal (engine / server stream) -> Robot: filters, safety limits, sizing -> Broker: Paper | Deriv (Multipliers)
+ *
+ * Deriv execution uses Deriv's Options API (developers.deriv.com): a Personal Access Token (PAT) plus App ID is exchanged
+ * for a one-time WebSocket URL (POST /trading/v1/options/accounts/{id}/otp), then MULTUP / MULTDOWN contracts are bought
+ * with a broker-side stop loss (= the money at risk) and take profit. The robot then mirrors the engine's management:
+ * half closes at TP1, the rest is closed when the engine closes the trade (stop, lock, trail, cut early, time exit).
+ *
+ * The token is never logged, never written to the journal and never sent anywhere but api.derivws.com.
+ * Runs in the browser (terminal Robot tab) and in Node 22+ (server/server.js with ROBOT_MODE).
+ */
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) module.exports = factory();
+  else root.RoyalRobot = factory();
+})(typeof self !== 'undefined' ? self : this, function () {
+  'use strict';
+
+  const ROBOT_DEFAULTS = {
+    mode: 'off',            // 'off' | 'paper' (no money, simulated) | 'demo' (Deriv demo account) | 'real' (Deriv real account)
+    sizing: 'risk%',        // 'risk%' = % of balance lost if the stop is hit | 'risk$' = fixed $ lost at the stop | 'stake' = fixed stake ("lot size")
+    riskPct: 1,             // % of balance at risk per trade (1–2% suggested)
+    riskUsd: 0.2,           // $ at risk per trade when sizing = 'risk$'
+    stake: 1,               // stake per trade when sizing = 'stake'
+    multiplier: 'auto',     // 'auto' (picked so the stop costs exactly the money at risk) or a number such as 100
+    maxRiskPct: 3,          // hard cap: never risk more than this % of balance on one trade (a minimum stake can force more)
+    maxStake: 5,            // hard cap on stake per trade, $
+    atTp1: 'auto',          // 'half' = two contracts, one closes at TP1 and one runs | 'all' = close everything at TP1 | 'auto' = half when the stake allows
+    grades: ['A+', 'A'],    // grades to trade
+    dirs: 'both',           // 'both' | 'buy' | 'sell'
+    markets: ['synthetic'], // 'synthetic' | 'forex' (gold & forex) | 'crypto'
+    skipRoyalty: true,      // skip 👑 Royalty markets (no proven edge)
+    pairs: {},              // per-pair overrides: { R_75: { off: true } | { dirs: 'buy', stake: 2, maxTrades: 3, riskPct: 0.5 } }
+    maxOpen: 2,             // max signals traded at the same time
+    oneVsSymbol: true,      // never two positions on the same market
+    maxPerDay: 8,           // max new trades per day (SAST)
+    maxDailyLossPct: 6,     // stop for the day when the day's losses (closed + open risk) would pass this % of the start-of-day balance
+    maxConsecLosses: 3,     // stop for the day after this many losing trades in a row
+    minBalance: 3,          // never trade below this balance
+    maxSlipR: 0.3,          // skip when price has already run this many R past the entry
+    maxAgeSec: 180,         // skip signals older than this when the robot sees them
+    paperBalance: 10,       // starting balance for Paper mode
+    ddRule: true,           // v1.11.1 drawdown rule on the robot's own results: half size from 2R below its peak, quarter from 3R, full again at a new high
+  };
+
+  const MULTS = [1, 5, 10, 20, 30, 40, 50, 60, 80, 100, 150, 200, 300, 400, 500, 600, 800, 1000, 1500, 2000];
+  const CLOSED = ['SL_HIT', 'TP2_HIT', 'TP5_HIT', 'BE_HIT', 'BE_EARLY', 'TRAIL_EXIT', 'SOFT_EXIT', 'DYN_STOP', 'TIME_EXIT', 'EXPIRED', 'CANCELLED'];
+  const cents = (x) => Math.round(x * 100) / 100;
+  const floorC = (x) => Math.floor(x * 100 + 1e-9) / 100;
+  const sgnOf = (dir) => (dir === 'BUY' ? 1 : -1);
+  // SAST trading day (UTC+2)
+  const dayKey = (ms) => new Date(ms + 2 * 3600e3).toISOString().slice(0, 10);
+
+  /**
+   * Size a trade for Multipliers. Loss at the stop ≈ stake × multiplier × |entry − SL| / entry.
+   * Returns { legs: [{ stake, mult, sl$, tp$ }], risk, exposure, note } or { skip }.
+   */
+  function sizeTrade(o) {
+    const { price, sl, r1, balance, set, mults, minStake } = o;
+    const f = Math.abs(price - sl) / price;
+    if (!(f > 0)) return { skip: 'stop is at the entry price' };
+    const allowed = (mults && mults.length ? mults : MULTS).filter((m) => m * f < 0.9).sort((a, b) => b - a); // stop must sit well before Deriv's stop-out
+    if (!allowed.length) return { skip: 'stop too far for any multiplier' };
+    const cap = (balance * set.maxRiskPct) / 100;
+    const wantHalf = set.atTp1 === 'half' || set.atTp1 === 'auto';
+    let stake, mult, note = '';
+    if (set.sizing === 'stake') {
+      stake = +set.stake;
+      if (set.multiplier !== 'auto') mult = +set.multiplier;
+      else mult = allowed[allowed.length - 1]; // smallest multiplier: least exposure for a fixed stake
+      if (!allowed.includes(mult)) mult = allowed.reduce((b, m) => (Math.abs(m - mult) < Math.abs(b - mult) ? m : b), allowed[0]);
+    } else {
+      const target = set.sizing === 'risk$' ? +set.riskUsd : (balance * set.riskPct) / 100;
+      if (!(target > 0)) return { skip: 'risk is 0' };
+      const legsWanted = wantHalf ? 2 : 1;
+      const tryLegs = (n) => {
+        if (set.multiplier !== 'auto') { const m = +set.multiplier; if (!allowed.includes(m)) return null; return { m, s: target / (m * f), n }; }
+        for (const m of allowed) { const s = target / (m * f); if (s >= n * minStake) return { m, s, n }; } // largest multiplier that still meets the minimum stake: least money tied up
+        const m = allowed[allowed.length - 1]; return { m, s: n * minStake, n, forced: true };
+      };
+      let t = tryLegs(legsWanted);
+      if (t && t.forced && legsWanted === 2 && set.atTp1 === 'auto') t = tryLegs(1);
+      if (!t) return { skip: 'multiplier ×' + set.multiplier + ' is not allowed for this stop' };
+      stake = Math.max(t.s, t.n * minStake); mult = t.m;
+      if (t.forced) note = 'minimum stake';
+    }
+    if (stake > set.maxStake) { stake = set.maxStake; note = 'stake capped at $' + set.maxStake; }
+    if (stake > balance) return { skip: `stake $${stake.toFixed(2)} is more than the balance` };
+    let n = set.atTp1 === 'all' ? 1 : set.atTp1 === 'half' ? 2 : stake / 2 >= minStake ? 2 : 1;
+    if (n === 2 && stake / 2 < minStake) { if (set.atTp1 === 'half') stake = 2 * minStake; else n = 1; }
+    const legStake = floorC(stake / n);
+    if (legStake < minStake) return { skip: `stake under Deriv's $${minStake} minimum` };
+    const legRisk = cents(legStake * mult * f);
+    const risk = cents(legRisk * n);
+    if (legRisk < 0.01) return { skip: 'risk rounds to $0.00' };
+    if (risk > cap + 1e-9) return { skip: `needs $${risk.toFixed(2)} at risk (${((risk / balance) * 100).toFixed(1)}%), over the ${set.maxRiskPct}% cap` };
+    const legs = [];
+    for (let i = 0; i < n; i++) {
+      const role = n === 1 ? 'all' : i === 0 ? 'tp1' : 'runner';
+      legs.push({ role, stake: legStake, mult, sl$: legRisk, tp$: role === 'runner' ? null : cents(Math.max(0.01, legRisk * r1)) });
+    }
+    return { legs, risk, exposure: cents(legStake * n * mult), note };
+  }
+
+  // ---------------- Paper broker (no money; prices from the engine) ----------------
+  class PaperBroker {
+    constructor(opts = {}) {
+      this.kind = 'paper'; this.balance = opts.balance == null ? 10 : opts.balance; this.currency = 'USD';
+      this.minStake = 1; this.c = {}; this.n = 1; this.handlers = {}; this.last = {};
+    }
+    on(ev, fn) { (this.handlers[ev] = this.handlers[ev] || []).push(fn); }
+    emit(ev, d) { (this.handlers[ev] || []).forEach((f) => f(d)); }
+    async connect() { return { accountId: 'PAPER', accountType: 'paper', balance: this.balance, currency: this.currency }; }
+    async disconnect() {}
+    async quote() { return { mults: MULTS, minStake: this.minStake }; }
+    async open(o) {
+      const px = o.price; if (!(px > 0)) throw new Error('no price');
+      if (o.stake > this.balance) throw new Error('insufficient balance');
+      const id = 'P' + this.n++;
+      this.balance = cents(this.balance - o.stake);
+      this.c[id] = { id, symbol: o.symbol, dir: o.dir, stake: o.stake, mult: o.mult, sl$: o.sl$, tp$: o.tp$, entry: px, profit: 0, open: true };
+      this.emit('balance', this.balance);
+      return { contractId: id, buyPrice: o.stake, entry: px };
+    }
+    _pnl(c, px) { return cents(c.stake * c.mult * sgnOf(c.dir) * (px - c.entry) / c.entry); }
+    mark(symbol, px) {
+      this.last[symbol] = px;
+      for (const id in this.c) {
+        const c = this.c[id]; if (!c.open || c.symbol !== symbol) continue;
+        c.profit = this._pnl(c, px);
+        if (c.profit <= -c.sl$) this._settle(c, -c.sl$, 'stop loss');
+        else if (c.tp$ != null && c.profit >= c.tp$) this._settle(c, c.tp$, 'take profit');
+        else if (c.profit <= -c.stake) this._settle(c, -c.stake, 'stop out');
+      }
+    }
+    _settle(c, profit, why) {
+      c.open = false; c.profit = cents(profit); this.balance = cents(this.balance + c.stake + c.profit);
+      this.emit('balance', this.balance); this.emit('contract', { contractId: c.id, sold: true, profit: c.profit, why });
+    }
+    async close(id) { const c = this.c[id]; if (!c || !c.open) return { profit: c ? c.profit : 0 }; this._settle(c, this._pnl(c, this.last[c.symbol] ?? c.entry), 'closed by robot'); return { profit: c.profit }; }
+    async update(id, lim) { const c = this.c[id]; if (c && c.open) { if (lim.sl$ != null) c.sl$ = lim.sl$; if ('tp$' in lim) c.tp$ = lim.tp$; } return true; }
+    async openContracts() { return Object.values(this.c).filter((c) => c.open).map((c) => c.id); }
+  }
+
+  // ---------------- Deriv broker (Options API, Multipliers) ----------------
+  class DerivBroker {
+    constructor(opts = {}) {
+      this.kind = 'deriv';
+      this.token = opts.token; this.appId = String(opts.appId || ''); this.want = opts.accountType; // 'demo' | 'real'
+      this.accountId = opts.accountId || ''; this.rest = opts.rest || 'https://api.derivws.com';
+      this.WS = opts.WebSocket || (typeof WebSocket !== 'undefined' ? WebSocket : null);
+      this.fetch = opts.fetch || (typeof fetch !== 'undefined' ? fetch.bind(globalThis) : null);
+      this.handlers = {}; this.req = 1; this.pending = {}; this.ws = null; this.alive = false; this.closing = false;
+      this.quotes = {}; this.watch = new Set(); this.currency = 'USD'; this.balance = null; this.minStake = 1;
+      Object.defineProperty(this, 'token', { enumerable: false, writable: true, value: opts.token }); // keeps it out of JSON.stringify
+    }
+    on(ev, fn) { (this.handlers[ev] = this.handlers[ev] || []).push(fn); }
+    emit(ev, d) { (this.handlers[ev] || []).forEach((f) => f(d)); }
+    async _api(path, method = 'GET', body) {
+      const r = await this.fetch(this.rest + path, { method, headers: Object.assign({ Authorization: 'Bearer ' + this.token, 'Deriv-App-ID': this.appId }, body ? { 'content-type': 'application/json' } : {}), body: body ? JSON.stringify(body) : undefined });
+      let j = null; try { j = await r.json(); } catch (e) {}
+      if (!r.ok) { const m = j && (j.error && (j.error.message || j.error.code) || j.message || (j.errors && j.errors[0] && j.errors[0].message)); throw new Error(`Deriv ${r.status}${m ? ': ' + m : ''}`); }
+      return j;
+    }
+    async accounts() { const j = await this._api('/trading/v1/options/accounts'); return (j && j.data) || []; }
+    async connect() {
+      if (!this.token || !this.appId) throw new Error('Enter your Deriv App ID and API token');
+      if (this.want !== 'demo' && this.want !== 'real') throw new Error('account type must be demo or real');
+      const list = await this.accounts();
+      let acc = this.accountId ? list.find((a) => a.account_id === this.accountId) : list.find((a) => a.account_type === this.want && a.status !== 'inactive');
+      if (!acc) throw new Error(this.accountId ? `Account ${this.accountId} not found on this token` : `No ${this.want} options account on this token`);
+      if (acc.account_type !== this.want) throw new Error(`Account ${acc.account_id} is a ${acc.account_type} account, but the robot is set to ${this.want}`); // safety: never trade real by accident
+      this.accountId = acc.account_id; this.currency = acc.currency || 'USD'; this.balance = acc.balance;
+      await this._open();
+      const b = await this.call({ balance: 1, subscribe: 1 }).catch(() => null);
+      if (b && b.balance) { this.balance = b.balance.balance; this.currency = b.balance.currency || this.currency; }
+      return { accountId: this.accountId, accountType: acc.account_type, balance: this.balance, currency: this.currency };
+    }
+    async _open() {
+      const j = await this._api(`/trading/v1/options/accounts/${encodeURIComponent(this.accountId)}/otp`, 'POST');
+      const url = j && j.data && j.data.url;
+      if (!url) throw new Error('Deriv did not return a WebSocket URL');
+      const u = new URL(url);
+      if (u.hostname !== new URL(this.rest).hostname || !u.pathname.endsWith('/ws/' + this.want)) throw new Error('Deriv returned an unexpected WebSocket address'); // never a real socket in demo mode
+      await new Promise((resolve, reject) => {
+        const ws = new this.WS(url); this.ws = ws; let opened = false;
+        ws.onopen = () => { opened = true; this.alive = true; this.ping = setInterval(() => this._send({ ping: 1 }), 25000); this.emit('status', 'connected'); resolve(); };
+        ws.onmessage = (e) => this._onMessage(e.data);
+        ws.onerror = () => { if (!opened) reject(new Error('Deriv WebSocket error')); };
+        ws.onclose = () => {
+          this.alive = false; clearInterval(this.ping);
+          for (const id in this.pending) { this.pending[id].reject(new Error('connection closed')); delete this.pending[id]; }
+          if (this.closing) { this.emit('status', 'disconnected'); return; }
+          this.emit('status', 'reconnecting');
+          setTimeout(() => this._reconnect(), 3000);
+        };
+      });
+    }
+    async _reconnect() {
+      if (this.closing) return;
+      try {
+        await this._open(); // a fresh one-time password every time
+        await this.call({ balance: 1, subscribe: 1 }).catch(() => {});
+        for (const id of this.watch) this._watch(id);
+      } catch (e) { this.emit('status', 'reconnecting'); setTimeout(() => this._reconnect(), 10000); }
+    }
+    async disconnect() { this.closing = true; try { this.ws && this.ws.close(); } catch (e) {} }
+    _send(m) { if (this.ws && this.alive) this.ws.send(JSON.stringify(m)); else throw new Error('not connected'); }
+    call(m, timeout = 20000) {
+      return new Promise((resolve, reject) => {
+        const id = this.req++; m.req_id = id; this.pending[id] = { resolve, reject };
+        setTimeout(() => { if (this.pending[id]) { delete this.pending[id]; reject(new Error('Deriv timeout')); } }, timeout);
+        try { this._send(m); } catch (e) { delete this.pending[id]; reject(e); }
+      });
+    }
+    _onMessage(raw) {
+      let d; try { d = JSON.parse(raw); } catch (e) { return; }
+      if (d.msg_type === 'balance' && d.balance && !d.error) { this.balance = d.balance.balance; this.emit('balance', this.balance); }
+      if (d.msg_type === 'proposal_open_contract' && d.proposal_open_contract && !d.error) {
+        const c = d.proposal_open_contract;
+        if (c.contract_id) {
+          const sold = !!c.is_sold || (c.status && c.status !== 'open');
+          this.emit('contract', { contractId: c.contract_id, sold, profit: c.profit, entry: c.entry_spot != null ? +c.entry_spot : null, why: sold ? (c.status || 'sold') : null });
+          if (sold) this.watch.delete(c.contract_id);
+        }
+      }
+      const id = d.req_id; if (id && this.pending[id]) {
+        const p = this.pending[id]; delete this.pending[id];
+        if (d.error) p.reject(Object.assign(new Error(d.error.message || d.error.code), { code: d.error.code })); else p.resolve(d);
+      }
+    }
+    async quote(symbol) {
+      const q = this.quotes[symbol]; if (q && Date.now() - q.t < 6 * 3600e3) return q;
+      const d = await this.call({ contracts_for: symbol });
+      const av = ((d.contracts_for && d.contracts_for.available) || []).filter((x) => x.contract_type === 'MULTUP' || x.contract_type === 'MULTDOWN' || x.contract_category === 'multiplier');
+      const mults = [...new Set(av.flatMap((x) => x.multiplier_range || []).map(Number))].filter((x) => x > 0).sort((a, b) => a - b);
+      if (!mults.length) throw new Error('Multipliers are not offered on ' + symbol);
+      return (this.quotes[symbol] = { mults, minStake: this.minStake, t: Date.now() });
+    }
+    async open(o) {
+      const lim = { stop_loss: o.sl$ }; if (o.tp$ != null) lim.take_profit = o.tp$;
+      const p = await this.call({ proposal: 1, amount: o.stake, basis: 'stake', contract_type: o.dir === 'BUY' ? 'MULTUP' : 'MULTDOWN', currency: this.currency, multiplier: o.mult, underlying_symbol: o.symbol, limit_order: lim });
+      const pr = p.proposal;
+      const b = await this.call({ buy: pr.id, price: pr.ask_price });
+      const id = b.buy.contract_id; this.watch.add(id); this._watch(id);
+      return { contractId: id, buyPrice: b.buy.buy_price, entry: pr.spot != null ? +pr.spot : null };
+    }
+    _watch(id) { this.call({ proposal_open_contract: 1, contract_id: id, subscribe: 1 }).catch(() => {}); }
+    async close(id) { const d = await this.call({ sell: id, price: 0 }); return { soldFor: d.sell && d.sell.sold_for }; }
+    async update(id, lim) {
+      const l = {}; if (lim.sl$ != null) l.stop_loss = lim.sl$; if ('tp$' in lim) l.take_profit = lim.tp$;
+      await this.call({ contract_update: 1, contract_id: id, limit_order: l }); return true;
+    }
+    async openContracts() { const d = await this.call({ portfolio: 1 }); return ((d.portfolio && d.portfolio.contracts) || []).map((c) => c.contract_id); }
+  }
+
+  // ---------------- Robot ----------------
+  class Robot {
+    constructor(settings, opts = {}) {
+      this.set = Object.assign({}, ROBOT_DEFAULTS, settings || {});
+      this.now = opts.now || (() => Date.now());
+      this.store = opts.store || null; // { get(k), set(k, v) } for journal and positions (never the token)
+      this.onChange = opts.onChange || (() => {});
+      this.log = opts.log || (() => {});
+      this.broker = null; this.running = false; this.status = 'stopped'; this.account = null; this.balance = null;
+      this.pos = {}; this.wait = {}; this.journal = []; this.day = null; this.halt = null; this.startedAt = 0; this.busy = new Set();
+      if (this.store) {
+        this.journal = this.store.get('robot.journal') || [];
+        this.day = this.store.get('robot.day') || null;
+        this.pos = this.store.get('robot.pos') || {};
+        this.eq = this.store.get('robot.eq') || null;
+      }
+      if (!this.eq) this.eq = { r: 0, peak: 0 };
+    }
+    setSettings(s) { this.set = Object.assign({}, ROBOT_DEFAULTS, this.set, s || {}); this._changed(); }
+    _save() { if (!this.store) return; this.store.set('robot.journal', this.journal.slice(-300)); this.store.set('robot.day', this.day); this.store.set('robot.pos', this._posForSave()); this.store.set('robot.eq', this.eq); }
+    _posForSave() { const o = {}; for (const k in this.pos) { const p = this.pos[k]; o[k] = Object.assign({}, p, { sig: { id: p.sig.id, symbol: p.sig.symbol, name: p.sig.name, dir: p.sig.dir } }); } return o; }
+    _changed() { this._save(); this.onChange(this.state()); }
+    note(type, msg, extra) {
+      const e = Object.assign({ t: this.now(), type, msg }, extra || {});
+      this.journal.push(e); if (this.journal.length > 400) this.journal.splice(0, this.journal.length - 300);
+      this.log(`[robot] ${type}: ${msg}`); this._changed(); return e;
+    }
+    _today() {
+      const k = dayKey(this.now());
+      if (!this.day || this.day.key !== k) { this.day = { key: k, startBal: this.balance, trades: 0, realized: 0, wins: 0, losses: 0, consec: 0 }; if (this.halt && this.halt.day) this.halt = null; }
+      if (this.day.startBal == null && this.balance != null) this.day.startBal = this.balance;
+      return this.day;
+    }
+    async start(broker) {
+      if (this.running) return;
+      if (this.set.mode === 'off') throw new Error('Choose Paper, Demo or Real first');
+      this.broker = broker; this.status = 'connecting'; this._changed();
+      broker.on('balance', (b) => { this.balance = b; this._changed(); });
+      broker.on('contract', (c) => this._onContract(c));
+      broker.on('status', (s) => { this.status = s === 'connected' ? 'running' : s; this._changed(); });
+      try { this.account = await broker.connect(); }
+      catch (e) { this.status = 'error'; this.note('error', 'Could not connect: ' + e.message); throw e; }
+      this.balance = this.account.balance; this.running = true; this.status = 'running'; this.startedAt = this.now(); this.halt = null;
+      this._today();
+      // reconcile positions remembered from an earlier session with the broker
+      const known = Object.values(this.pos).filter((p) => p.mode === this.set.mode);
+      if (known.length && broker.kind !== 'paper') {
+        try {
+          const open = new Set((await broker.openContracts()).map(String));
+          for (const p of known) for (const l of p.legs) if (l.open && !open.has(String(l.id))) { l.open = false; l.closedWhy = 'closed while the robot was off'; }
+          for (const p of known) if (p.legs.every((l) => !l.open)) delete this.pos[p.sig.id];
+        } catch (e) {}
+      } else if (broker.kind === 'paper') { for (const k in this.pos) if (this.pos[k].mode === 'paper') delete this.pos[k]; }
+      this.note('info', `Robot started · ${this.account.accountType === 'paper' ? 'Paper (no real money)' : 'Deriv ' + this.account.accountType + ' ' + this.account.accountId} · balance ${this.account.currency || 'USD'} ${(+this.balance).toFixed(2)}`);
+    }
+    async stop(closeAll = false) {
+      if (closeAll) await this.closeAll('robot stopped');
+      this.running = false; this.status = 'stopped';
+      if (this.broker) { try { await this.broker.disconnect(); } catch (e) {} }
+      this.note('info', 'Robot stopped' + (closeAll ? ' and all positions closed' : '. Open positions keep their broker stop loss and take profit.'));
+    }
+    async closeAll(why) { for (const k in this.pos) await this._closeLegs(this.pos[k], () => true, why); }
+    state() {
+      const d = this.day || {};
+      const openPos = Object.values(this.pos).filter((p) => p.legs.some((l) => l.open));
+      return {
+        mode: this.set.mode, running: this.running, status: this.status, account: this.account, balance: this.balance,
+        today: { trades: d.trades || 0, max: this.set.maxPerDay, realized: cents(d.realized || 0), wins: d.wins || 0, losses: d.losses || 0, consec: d.consec || 0, lossLimit: this._lossLimit() },
+        open: openPos.map((p) => ({ id: p.sig.id, name: p.sig.name, symbol: p.sig.symbol, dir: p.sig.dir, risk: p.risk, stake: p.legs.reduce((a, l) => a + l.stake, 0), mult: p.legs[0] && p.legs[0].mult, legs: p.legs.length, profit: cents(p.legs.reduce((a, l) => a + (l.profit || 0), 0)), opened: p.t })),
+        halt: this.halt, sizeFactor: this.sizeFactor(), ddR: cents(this.eq.peak - this.eq.r), journal: this.journal.slice(-150),
+      };
+    }
+    _lossLimit() { const b = (this.day && this.day.startBal) || this.balance || 0; return cents((b * this.set.maxDailyLossPct) / 100); }
+    sizeFactor() { if (!this.set.ddRule) return 1; const dd = this.eq.peak - this.eq.r; return dd >= 3 ? 0.25 : dd >= 2 ? 0.5 : 1; }
+    pairSet(sym) { return Object.assign({}, this.set, (this.set.pairs && this.set.pairs[sym]) || {}); }
+
+    // ---- signal intake ----
+    onSignal(sig) { return this._consider(sig); }
+    onUpdate(sig, prev) {
+      const p = this.pos[sig.id];
+      if (p) { p.sig = sig; return this._manage(p, prev); }
+      if (this.wait[sig.id] && sig.status === 'ACTIVE') { delete this.wait[sig.id]; return this._consider(sig); }
+      if (this.wait[sig.id] && CLOSED.includes(sig.status)) delete this.wait[sig.id];
+    }
+    /** Called on price ticks: feeds Paper prices and keeps broker stops in step with the engine's moving stop. */
+    tick(symbol, price) {
+      if (this.broker && this.broker.kind === 'paper' && price > 0) this.broker.mark(symbol, price);
+      for (const k in this.pos) { const p = this.pos[k]; if (p.sig.symbol === symbol) this._syncStop(p); }
+    }
+    async _consider(sig) {
+      if (!this.running || this.set.mode === 'off') return null;
+      if (this.pos[sig.id] || this.busy.has(sig.id)) return null;
+      const skip = (why) => { this.note('skip', `${sig.dir} ${sig.name}: ${why}`, { sym: sig.symbol, sig: sig.id }); return null; };
+      const ps = this.pairSet(sig.symbol);
+      if (ps.off) return skip('pair is switched off in the robot');
+      if ((sig.source || 'deriv') !== 'deriv' && this.broker.kind !== 'paper') return skip('not a Deriv market (Weltrade/MT5 signals need the MT5 robot)');
+      if (!ps.grades.includes(sig.grade)) return skip(`grade ${sig.grade} is not in the robot's grades`);
+      if (ps.dirs === 'buy' && sig.dir !== 'BUY') return skip('robot set to BUY only');
+      if (ps.dirs === 'sell' && sig.dir !== 'SELL') return skip('robot set to SELL only');
+      const mk = sig.market === 'synthetic' ? 'synthetic' : sig.market === 'crypto' ? 'crypto' : 'forex';
+      if (!ps.markets.includes(mk)) return skip(`${mk} markets are off in the robot`);
+      if (ps.skipRoyalty && sig.unproven) return skip('👑 Royalty market (no proven edge)');
+      if ((sig.createdAt || 0) * 1000 < this.startedAt - 1000) return null; // signals from before the robot started: never back-trade
+      if (sig.status === 'PENDING') { this.wait[sig.id] = true; this.note('info', `${sig.dir} ${sig.name}: limit order, waiting for the engine to fill it`, { sym: sig.symbol }); return null; }
+      if (sig.status !== 'ACTIVE') return null;
+      const age = this.now() / 1000 - (sig.filledAt || sig.createdAt || 0);
+      if (age > ps.maxAgeSec) return skip(`signal is ${Math.round(age)}s old`);
+      const d = this._today();
+      if (this.halt) return skip('robot paused: ' + this.halt.why);
+      if (d.trades >= ps.maxPerDay) return skip(`daily limit reached (${d.trades}/${ps.maxPerDay})`);
+      const live = Object.values(this.pos).filter((p) => p.legs.some((l) => l.open));
+      if (live.length >= ps.maxOpen) return skip(`max open trades (${ps.maxOpen}) reached`);
+      if (ps.oneVsSymbol && live.some((p) => p.sig.symbol === sig.symbol)) return skip('already in a trade on this market');
+      if (ps.maxTrades && Object.values(this.pos).filter((p) => p.sig.symbol === sig.symbol && p.day === d.key).length >= ps.maxTrades) return skip(`pair limit (${ps.maxTrades} a day) reached`);
+      if (this.balance != null && this.balance < ps.minBalance) return skip(`balance under the $${ps.minBalance} floor`);
+      const price = sig.price || sig.entry, sgn = sgnOf(sig.dir), runR = (sgn * (price - sig.entry)) / sig.risk;
+      if (runR > ps.maxSlipR) return skip(`price already ${runR.toFixed(2)}R past the entry`);
+      if (sgn * (price - sig.sl) <= 0) return skip('price is already beyond the stop');
+
+      this.busy.add(sig.id);
+      try {
+        let q;
+        try { q = await this.broker.quote(sig.symbol); } catch (e) { return skip(e.message); }
+        const k = this.sizeFactor();
+        const pz = k < 1 ? Object.assign({}, ps, { riskPct: ps.riskPct * k, riskUsd: ps.riskUsd * k, stake: Math.max(q.minStake, ps.stake * k) }) : ps;
+        const sz = sizeTrade({ price, sl: sig.sl, r1: sig.r1 || 1, balance: this.balance || 0, set: pz, mults: q.mults, minStake: q.minStake });
+        if (!sz.skip && k < 1) sz.note = (sz.note ? sz.note + ', ' : '') + (k === 0.5 ? 'half' : 'quarter') + ' size: ' + (this.eq.peak - this.eq.r).toFixed(1) + 'R below peak';
+        if (sz.skip) return skip(sz.skip);
+        const openRisk = live.reduce((a, p) => a + p.risk, 0);
+        const lossToday = Math.max(0, -d.realized);
+        if (lossToday + openRisk + sz.risk > this._lossLimit() + 1e-9) return skip(`would pass today's loss limit ($${this._lossLimit().toFixed(2)})`);
+        const p = { sig, mode: this.set.mode, t: this.now(), day: d.key, risk: sz.risk, legs: [] };
+        this.pos[sig.id] = p;
+        for (const leg of sz.legs) {
+          try {
+            const r = await this.broker.open({ symbol: sig.symbol, dir: sig.dir, stake: leg.stake, mult: leg.mult, sl$: leg.sl$, tp$: leg.tp$, price });
+            p.legs.push({ id: r.contractId, role: leg.role, stake: leg.stake, mult: leg.mult, sl$: leg.sl$, tp$: leg.tp$, entry: r.entry || price, open: true, profit: 0 });
+          } catch (e) { this.note('error', `${sig.dir} ${sig.name}: order rejected: ${e.message}`, { sym: sig.symbol }); break; }
+        }
+        if (!p.legs.length) { delete this.pos[sig.id]; return null; }
+        d.trades++;
+        this.note('open', `${sig.dir} ${sig.name} · ${p.legs.length === 2 ? '2 × ' : ''}$${p.legs[0].stake.toFixed(2)} stake ×${p.legs[0].mult} · risk $${p.risk.toFixed(2)}${sz.note ? ' (' + sz.note + ')' : ''} · SL $${p.legs[0].sl$.toFixed(2)}${p.legs[0].tp$ != null ? ' · TP $' + p.legs[0].tp$.toFixed(2) : ''}`, { sym: sig.symbol, sig: sig.id, grade: sig.grade, dir: sig.dir, entry: price });
+        if (p.sig.status !== 'ACTIVE') this._manage(p, 'ACTIVE'); // engine moved on while we were buying
+        return p;
+      } finally { this.busy.delete(sig.id); }
+    }
+    async _manage(p, prev) {
+      const s = p.sig.status;
+      if (s === 'TP1_HIT') await this._closeLegs(p, (l) => l.role === 'tp1' || l.role === 'all', 'TP1 hit');
+      else if (CLOSED.includes(s)) await this._closeLegs(p, () => true, s.replace(/_/g, ' ').toLowerCase());
+      this._syncStop(p);
+    }
+    async _closeLegs(p, which, why) {
+      for (const l of p.legs) {
+        if (!l.open || !which(l) || l.closing) continue;
+        l.closing = true; l.closedWhy = why;
+        try { const r = await this.broker.close(l.id); if (l.open && r && r.profit != null) this._legClosed(p, l, r.profit, why); else if (l.open) l.closedWhy = why; }
+        catch (e) { if (!/sold|expired|not found|already/i.test(e.message)) this.note('error', `${p.sig.name}: could not close contract ${l.id}: ${e.message}`); }
+        finally { l.closing = false; }
+      }
+    }
+    _onContract(c) {
+      for (const k in this.pos) {
+        const p = this.pos[k]; const l = p.legs.find((x) => String(x.id) === String(c.contractId)); if (!l) continue;
+        if (c.entry && !l.entryFixed) { l.entry = c.entry; l.entryFixed = true; }
+        if (c.profit != null) l.profit = +c.profit;
+        if (c.sold && l.open) this._legClosed(p, l, +c.profit || 0, l.closedWhy || c.why || 'closed');
+        else this.onChange(this.state());
+        return;
+      }
+    }
+    _legClosed(p, l, profit, why) {
+      l.open = false; l.profit = cents(profit); l.closedWhy = why;
+      if (p.legs.some((x) => x.open)) { this._changed(); return; }
+      const net = cents(p.legs.reduce((a, x) => a + (x.profit || 0), 0)), d = this._today();
+      d.realized = cents(d.realized + net);
+      if (p.risk > 0) { this.eq.r = Math.round((this.eq.r + net / p.risk) * 100) / 100; this.eq.peak = Math.max(this.eq.peak, this.eq.r); }
+      if (net < 0) { d.losses++; d.consec++; } else if (net > 0) { d.wins++; d.consec = 0; } // $0.00 (a cent-rounded lock) is neither
+      this.note('close', `${p.sig.dir} ${p.sig.name} closed (${why}) · ${net >= 0 ? '+' : '−'}$${Math.abs(net).toFixed(2)}${p.risk ? ' (' + (net / p.risk >= 0 ? '+' : '') + (net / p.risk).toFixed(2) + 'R)' : ''}`, { sym: p.sig.symbol, sig: p.sig.id, pnl: net });
+      delete this.pos[p.sig.id];
+      if (d.consec >= this.set.maxConsecLosses) this._halt(`${d.consec} losses in a row`);
+      else if (-d.realized >= this._lossLimit() - 1e-9 && this._lossLimit() > 0) this._halt(`daily loss limit hit (−$${(-d.realized).toFixed(2)})`);
+      this._changed();
+    }
+    _halt(why) { this.halt = { why, t: this.now(), day: true }; this.note('halt', 'Robot paused until tomorrow (SAST): ' + why); }
+    resume() { this.halt = null; this.note('info', 'Pause lifted by you'); }
+    /** Tighten the broker stop loss as the engine's stop moves toward entry (a stop loss on Deriv can only cap a loss). */
+    _syncStop(p) {
+      const s = p.sig; if (!s || s.slLive == null || !this.broker) return;
+      const sgn = sgnOf(s.dir), t = this.now();
+      for (const l of p.legs) {
+        if (!l.open || l.closing) continue;
+        const lossPx = Math.max(0, sgn * (l.entry - s.slLive)); // price distance still at risk
+        const want = Math.max(0.01, floorC(l.stake * l.mult * lossPx / l.entry));
+        if (want >= l.sl$ - 0.01 || (l.syncT && t - l.syncT < 10000)) continue;
+        l.syncT = t;
+        const was = l.sl$; l.sl$ = want;
+        this.broker.update(l.id, { sl$: want }).catch((e) => { l.sl$ = was; if (!l.syncErr) { l.syncErr = true; this.note('info', `${s.name}: broker stop not tightened (${e.message}); the robot will still close it when the engine does`); } });
+      }
+    }
+  }
+
+  return { Robot, PaperBroker, DerivBroker, sizeTrade, ROBOT_DEFAULTS, MULTS, dayKey, version: '1.0.0' };
+});
+
+</script>
+<script>
+(() => {
+'use strict';
+const M = window.MoxieEngine;
+const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const store = {
+  get(k, d) { try { const v = localStorage.getItem('twm114.' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem('twm114.' + k, JSON.stringify(v)); } catch (e) {} },
+};
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const fmt = M.fmt;
+const MARKETS = { ALL: 'All', synthetic: 'Synthetics', forex: 'Gold & Forex', crypto: 'Crypto' };
+
+// ---------- state ----------
+const S = {
+  cfg: Object.assign({}, M.DEFAULTS, store.get('cfg', {})),
+  symbols: store.get('symbols', M.DEFAULT_SYMBOLS),
+  allSymbols: store.get('allSymbols', null),
+  signals: [], snaps: {}, status: 'offline', lastTick: 0, mode: 'local',
+  f: { market: 'ALL', view: 'active', grade: 'ALL', q: '', watch: false },
+  watch: new Set(store.get('watch', [])),
+  alerts: store.get('alerts', false), sound: store.get('sound', true),
+  server: store.get('server', ''), key: store.get('key', ''),
+};
+delete S.cfg.signalsEnabledFrom;
+S.cfg.unproven = M.DEFAULTS.unproven; S.cfg.overrides = M.DEFAULTS.overrides;
+S.cfg.maxOrAtr = M.DEFAULTS.maxOrAtr; S.cfg.quiet = M.DEFAULTS.quiet; S.cfg.orbOff = M.DEFAULTS.orbOff;
+function applyMgmt(k) { const m = M.MANAGEMENT[k] || M.MANAGEMENT.quality; S.cfg.minOrAtr = m.minOrAtr; S.cfg.maxOrAtr = m.maxOrAtr; S.cfg.hours = m.hours ? Object.assign({}, m.hours) : null; S.cfg.beAtR = m.beAtR; S.cfg.beLockR = m.beLockR; S.cfg.tp1Lock = m.tp1Lock; S.cfg.softStop = m.softStop ? Object.assign({}, m.softStop) : null; S.cfg.dyn = m.dyn ? Object.assign({}, m.dyn) : null; S.cfg.trail = Object.assign({}, m.trail); }
+if (!M.MANAGEMENT[store.get('mgmt', 'volume')]) store.set('mgmt', 'quality'); // old preset names (profit/winrate) move to the v1.10 default
+// v1.13.1: back to yesterday's signal flow (pre-v1.10 entry filters, ~23 signals a day) once per browser; drop v1.13's extra Boom/Crash markets
+if (store.get('mgmtVer', 0) < 1) { store.set('mgmt', 'volume'); store.set('mgmtVer', 1); }
+applyMgmt(store.get('mgmt', 'volume'));
+if (store.get('cfgVer', 0) < 2) { S.cfg.minScore = Math.max(S.cfg.minScore || 0, M.DEFAULTS.minScore); S.cfg.minScalpScore = Math.max(S.cfg.minScalpScore || 0, M.DEFAULTS.minScalpScore); store.set('cfgVer', 2); } // research-driven, not user settings
+S.symbols = S.symbols.map((x) => Object.assign({ source: 'deriv' }, x, x.source === 'weltrade' ? { source: 'mt5' } : {}));
+// v1.3 (Royal Trades): Deriv only for now, plus gold, forex and crypto. Runs once per browser.
+if (store.get('symVer', 0) < 3) {
+  S.symbols = S.symbols.filter((x) => x.source !== 'mt5');
+  for (const d of M.DEFAULT_SYMBOLS) if (!S.symbols.find((x) => x.symbol === d.symbol)) S.symbols.push(d);
+  store.set('symbols', S.symbols); store.set('symVer', 3);
+}
+if (store.get('symVer', 0) < 5) {
+  const extra = ['BOOM300N', 'BOOM500', 'BOOM600', 'BOOM900', 'CRASH300N', 'CRASH500', 'CRASH600', 'CRASH900'];
+  S.symbols = S.symbols.filter((x) => !extra.includes(x.symbol)); store.set('symbols', S.symbols); store.set('symVer', 5);
+}
+let engine = null, feed = null, es = null;
+
+// ---------- toast / alerts ----------
+function toast(html, ms = 6000) { const d = document.createElement('div'); d.innerHTML = html; $('#toast').appendChild(d); setTimeout(() => d.remove(), ms); }
+let actx = null;
+function beep(up = true) {
+  if (!S.sound) return;
+  try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); const o = actx.createOscillator(), g = actx.createGain();
+    o.type = 'sine'; o.frequency.setValueAtTime(up ? 660 : 440, actx.currentTime); o.frequency.exponentialRampToValueAtTime(up ? 990 : 330, actx.currentTime + .18);
+    g.gain.setValueAtTime(.0001, actx.currentTime); g.gain.exponentialRampToValueAtTime(.2, actx.currentTime + .02); g.gain.exponentialRampToValueAtTime(.0001, actx.currentTime + .35);
+    o.connect(g); g.connect(actx.destination); o.start(); o.stop(actx.currentTime + .4); } catch (e) {}
+}
+// Notifications: through the service worker when hosted (required on Android and installed iPhone apps), else the page API
+let swReg = null;
+if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('../sw.js').then((r) => (swReg = r)).catch(() => {});
+// Phone alerts through ntfy.sh. Topic and mode are shared by every Royal Trades page on this site (key rt.phone).
+const PHONE_LABEL = 'v1.14.1';
+const phone = {
+  get() { let o = null; try { o = JSON.parse(localStorage.getItem('rt.phone') || 'null'); } catch (e) {} if (!o || !o.topic) { const a = new Uint8Array(8); (window.crypto || {}).getRandomValues ? crypto.getRandomValues(a) : a.forEach((_, i) => (a[i] = Math.random() * 256)); o = { topic: 'royaltrades-' + [...a].map((b) => b.toString(36).padStart(2, '0')).join('').slice(0, 12) }; phone.set(o); } o.mode = store.get('phoneMode', 'syn'); return o; },
+  set(o) { try { localStorage.setItem('rt.phone', JSON.stringify({ topic: o.topic })); } catch (e) {} if (o.mode) store.set('phoneMode', o.mode); }, // topic shared by all pages, on/off per page
+  send(title, body, tags) { const o = phone.get(); if (!o.topic || o.mode === 'off') return Promise.resolve(false);
+    return fetch('https://ntfy.sh/' + encodeURIComponent(o.topic), { method: 'POST', body, headers: { Title: title.replace(/[^\x20-\x7e]/g, ''), Tags: tags || 'crown', Priority: '4' } }).then((r) => r.ok).catch(() => false); },
+  signal(sig) { const o = phone.get(); if (o.mode === 'off') return; if (o.mode === 'syn' && (sig.market || 'synthetic') !== 'synthetic') return;
+    phone.send(`${sig.dir} ${sig.name} ${sig.grade} - ${PHONE_LABEL}`, `Entry ${fmt(sig.entry, sig.dec)}  SL ${fmt(sig.sl, sig.dec)}  TP1 ${fmt(sig.tp1, sig.dec)}${sig.tp2 ? '  TP2 ' + fmt(sig.tp2, sig.dec) : ''}${sig.size > 0 && sig.size < 1 ? '\nHalf size (weaker pair)' : ''}\nEducational, not financial advice.`, sig.dir === 'BUY' ? 'chart_with_upwards_trend' : 'chart_with_downwards_trend'); },
+};
+function notify(title, body) {
+  if (!S.alerts || typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+  const opts = { body, icon: 'icon-192.png', badge: 'icon-192.png', tag: title, renotify: true, vibrate: [120, 60, 120] };
+  if (swReg && swReg.showNotification) { swReg.showNotification(title, opts).catch(() => { try { new Notification(title, { body }); } catch (e) {} }); return; }
+  try { new Notification(title, { body }); } catch (e) {}
+}
+// keep the tab's engine awake-ish: warn when the page is hidden on phones
+document.addEventListener('visibilitychange', () => { if (document.hidden && /Android|iPhone|iPad/i.test(navigator.userAgent) && S.mode === 'local') store.set('hiddenAt', Date.now()); });
+const STATUS_TXT = { BE_EARLY: 'LOCKED PROFIT', TRAIL_EXIT: 'TP1 · TRAILED OUT', SOFT_EXIT: 'CUT EARLY', DYN_STOP: 'TRAILED STOP', ACTIVE: 'LIVE', PENDING: 'LIMIT SET', TP1_HIT: 'TP1 · SL→BE', TP2_HIT: 'TP2 HIT', TP5_HIT: 'ALL TPs HIT', SL_HIT: 'SL HIT', BE_HIT: 'TP1 · BE', EXPIRED: 'EXPIRED', CANCELLED: 'MISSED', TIME_EXIT: 'TIME EXIT' };
+function statusTxt(s) {
+  return STATUS_TXT[s.status] || s.status;
+}
+
+function onSignal(sig) {
+  upsert(sig); save();
+  Promise.resolve().then(() => robot.onSignal(sig)).catch((e) => console.warn('robot', e));
+  toast(`<b style="color:${sig.dir === 'BUY' ? 'var(--buy)' : 'var(--sell)'}">${sig.dir}</b> ${esc(sig.name)} · grade ${sig.grade}<br><span style="color:var(--muted);font-family:var(--mono);font-size:12px">Entry ${fmt(sig.entry, sig.dec)} · SL ${fmt(sig.sl, sig.dec)} · TP1 ${fmt(sig.tp1, sig.dec)}</span>`);
+  phone.signal(sig); beep(sig.dir === 'BUY'); notify(`${sig.dir} ${sig.name} (${sig.grade})`, `Entry ${fmt(sig.entry, sig.dec)} SL ${fmt(sig.sl, sig.dec)} TP1 ${fmt(sig.tp1, sig.dec)}`);
+  render();
+}
+function onUpdate(sig, prev) {
+  upsert(sig); save();
+  Promise.resolve().then(() => robot.onUpdate(sig, prev)).catch((e) => console.warn('robot', e));
+  if (prev !== sig.status && ['TP1_HIT', 'TP2_HIT', 'TP5_HIT', 'SL_HIT', 'BE_HIT', 'BE_EARLY', 'TRAIL_EXIT', 'SOFT_EXIT', 'DYN_STOP'].includes(sig.status)) {
+    toast(`${esc(sig.name)} ${sig.dir}: <b>${statusTxt(sig)}</b>${sig.result != null ? ` (${sig.result > 0 ? '+' : ''}${sig.result}R)` : ''}`);
+    notify(`${sig.name} ${statusTxt(sig)}`, sig.result != null ? `${sig.result}R` : '');
+  }
+  render();
+}
+function upsert(sig) { const i = S.signals.findIndex((x) => x.id === sig.id); if (i < 0) S.signals.push(sig); else S.signals[i] = sig; }
+let saveT = 0;
+function save() { if (S.mode !== 'local') return; clearTimeout(saveT); saveT = setTimeout(() => store.set('signals', S.signals.slice(-600)), 400); }
+
+// ---------- engine boot ----------
+function setStatus(s) { S.status = s; renderStrip(); }
+async function bootLocal() {
+  S.mode = 'local';
+  engine = new M.Engine(S.cfg, { onSignal, onUpdate });
+  S.signals = store.get('signals', []).filter((s) => s.strategy !== 'LADDER'); // v1.11: Royal Ladder removed, its trades leave the record
+  store.set('signals', S.signals);
+  engine.restoreSignals(S.signals); S.signals = engine.signals;
+  feed = makeFeeds(setStatus);
+  try { await feed.deriv.connect(); } catch (e) { setStatus('error'); toast('Could not reach the Deriv feed. Check your connection; the terminal keeps retrying.'); }
+  loadSymbolCatalog();
+  const mt5 = S.symbols.filter((x) => x.source === 'mt5');
+  if (mt5.length) toast(`${mt5.length} Weltrade pairs come through your MT5 bridge and run on the Royal Trades server. Deriv pairs are live here now.`, 9000);
+  let rT = 0;
+  M.startLive(engine, feed, S.symbols.filter((x) => x.source !== 'mt5'), {
+    concurrency: 3,
+    onReady: (sym) => { if (S.feedErr) delete S.feedErr[sym]; S.snaps[sym] = engine.snapshot(sym); renderScanner(); renderStrip(); },
+    onTick: (sym) => { S.lastTick = Date.now(); if (!rT) rT = setTimeout(() => { rT = 0; for (const s of S.symbols) S.snaps[s.symbol] = engine.snapshot(s.symbol); renderLive(); }, 700); },
+    onError: (sym, e) => { (S.feedErr = S.feedErr || {})[sym] = e.message || 'error'; renderScanner(); },
+  });
+}
+function makeFeeds(onStatus) { return { deriv: new M.DerivFeed({ onStatus: onStatus || (() => {}) }), mt5: S.serverBase ? serverCandles(S.serverBase) : null }; }
+// candles for MT5-bridge pairs, served by the Royal Trades server
+function serverCandles(base) {
+  const q = (o) => Object.entries(Object.assign(o, S.key ? { key: S.key } : {})).map(([k, v]) => k + '=' + encodeURIComponent(v)).join('&');
+  const get = async (sym, g, count, end) => { const r = await fetch(`${base}/api/candles?${q({ symbol: sym, g, count, end: end || 'latest' })}`); if (!r.ok) throw new Error('server ' + r.status); return r.json(); };
+  return { connect: async () => {}, candles: (s, g, c = 2000, e) => get(s, g, c, e), candlesBack: (s, g, total) => get(s, g, total) };
+}
+async function loadSymbolCatalog() {
+  const out = [];
+  (M.WELTRADE_SYMBOLS || []).forEach((x) => out.push(x));
+  try { const dv = await feed.deriv.activeSymbols(); dv.forEach((x) => out.push({ symbol: x.underlying_symbol || x.symbol, name: x.underlying_symbol_name || x.display_name, market: marketOf(x), source: 'deriv' })); } catch (e) {}
+  if (out.length) { S.allSymbols = out; store.set('allSymbols', out); renderSymList(); }
+}
+function marketOf(x) { const m = x.market || ''; if (/synthetic/.test(m)) return 'synthetic'; if (/crypto/.test(m)) return 'crypto'; return 'forex'; }
+
+async function bootServer(base) {
+  S.mode = 'server';
+  const q = S.key ? `?key=${encodeURIComponent(S.key)}` : '';
+  const r = await fetch(base + '/api/signals' + q); if (!r.ok) throw new Error('server ' + r.status);
+  S.signals = await r.json();
+  const sn = await fetch(base + '/api/scanner' + q).then((r) => r.json()).catch(() => ({}));
+  Object.assign(S.snaps, sn);
+  es = new EventSource(base + '/api/stream' + q);
+  es.onopen = () => setStatus('live');
+  es.onerror = () => setStatus('reconnecting');
+  es.addEventListener('signal', (e) => onSignal(JSON.parse(e.data)));
+  es.addEventListener('update', (e) => { const d = JSON.parse(e.data); onUpdate(d.sig, d.prev); });
+  es.addEventListener('scanner', (e) => { Object.assign(S.snaps, JSON.parse(e.data)); S.lastTick = Date.now(); renderLive(); });
+  // charts and backtests still read Deriv directly
+  S.serverBase = base; feed = makeFeeds(); feed.deriv.connect().catch(() => {}); loadSymbolCatalog();
+  render();
+}
+async function boot() {
+  let base = S.server.replace(/\/$/, '');
+  if (!base && /^https?:/.test(location.protocol)) {
+    try { const h = await fetch('/api/health', { cache: 'no-store' }); if (h.ok && ['royal-trades','trades-with-moxie'].includes((await h.json()).app)) base = location.origin; } catch (e) {}
+  }
+  if (base) { try { await bootServer(base); return; } catch (e) { toast('Signal server unreachable, so the engine is running in this browser instead.'); } }
+  await bootLocal();
+}
+
+// ---------- strip / kpis ----------
+const SESS = [['Sydney', 21, 6], ['Tokyo', 23, 8], ['London', 7, 16], ['New York', 12, 21]];
+function sessOpen(a, b, d) { const h = d.getUTCHours() + d.getUTCMinutes() / 60, wd = d.getUTCDay(); if (wd === 6 || (wd === 0 && h < 21) || (wd === 5 && h >= 21)) return false; return a < b ? h >= a && h < b : h >= a || h < b; }
+function renderStrip() {
+  const d = new Date();
+  const sast = d.toLocaleTimeString('en-ZA', { timeZone: 'Africa/Johannesburg', hour: '2-digit', minute: '2-digit' });
+  const ready = Object.values(S.snaps).filter((x) => x && x.ready !== false).length;
+  const total = S.mode === 'local' ? S.symbols.filter((x) => x.source !== 'mt5').length : Object.keys(S.snaps).length;
+  const age = S.lastTick ? Math.round((Date.now() - S.lastTick) / 1000) : null;
+  const dotc = S.status === 'live' ? 'live' : S.status === 'error' ? 'err' : 'warn';
+  const label = S.status === 'live' ? `LIVE · ${ready}/${total} MARKETS${age != null ? ' · TICK ' + age + 'S AGO' : ''}` : S.status.toUpperCase();
+  $('#strip').innerHTML = `<span class="pill"><span class="dot ${dotc}"></span>${label}</span>
+    <span class="pill">${S.mode === 'local' ? 'ENGINE: THIS BROWSER' : 'ENGINE: SERVER'}</span>
+    <span class="pill">1H RULE: ${S.cfg.trendMode.toUpperCase()}</span>
+    ${SESS.map(([n, a, b]) => `<span class="pill"><span class="dot ${sessOpen(a, b, d) ? 'live' : ''}"></span>${n.toUpperCase()}</span>`).join('')}
+    <span class="pill">SAST ${sast}</span>`;
+}
+function kpiHTML(st, extra) {
+  const pf = st.profitFactor === Infinity ? '∞' : st.profitFactor.toFixed(2);
+  return `<div class="kpi"><div class="l">${extra ? 'Active now' : 'Signals'}</div><div class="v">${extra ? st.open : st.total}</div><div class="s">${extra ? st.total + ' total captured' : st.open + ' open'}</div></div>
+  ${(() => { const o = (st.byStrategy || {})['ORB+']; const pc = (g) => Math.round((100 * g.w) / Math.max(1, g.n)) + '%';
+    const t1 = (g) => Math.round((100 * g.t1) / Math.max(1, g.n)) + '%';
+    return `<div class="kpi"><div class="l">Win rate (closed in profit) · ORB+</div><div class="v">${o && o.n ? pc(o) : '—'}</div><div class="s">${o ? o.w + ' of ' + o.n + ' in profit · ' + t1(o) + ' reached TP1' : 'no closed ORB+ trades'} · all ${st.closed ? Math.round(st.tp1Rate * 100) + '%' : '—'} TP1</div></div>`; })()}
+  <div class="kpi"><div class="l">Net result</div><div class="v ${st.totalR >= 0 ? 'pos' : 'neg'}">${st.totalR > 0 ? '+' : ''}${st.totalR}R</div><div class="s">avg ${st.avgR.toFixed(2)}R / trade</div></div>
+  <div class="kpi"><div class="l">Profit factor</div><div class="v">${st.closed ? pf : '—'}</div><div class="s">${st.tp2} TP2 · ${st.be} BE · ${st.sl} SL</div></div>
+  <div class="kpi"><div class="l">Max drawdown</div><div class="v">${st.maxDD}R</div><div class="s">${st.sizeNow < 1 ? `<b class="neg">Now ${st.ddNow}R below peak: trade ${st.sizeNow === 0.5 ? 'half' : 'quarter'} size until a new high</b>` : 'peak-to-trough · now ' + (st.ddNow || 0) + 'R below peak'}</div></div>`;
+}
+
+// ---------- signal cards ----------
+function liveR(s) { if (!['ACTIVE', 'TP1_HIT'].includes(s.status) || s.price == null) return null; return ((s.dir === 'BUY' ? 1 : -1) * (s.price - s.entry)) / s.risk; }
+function cardHTML(s) {
+  const d = s.dec, buy = s.dir === 'BUY', open = ['PENDING', 'ACTIVE', 'TP1_HIT'].includes(s.status);
+  const r = liveR(s);
+  const far = s.tps ? s.tps[s.tps.length - 1] : s.tp2, lo = buy ? s.sl : far, hi = buy ? far : s.sl, span = hi - lo || 1;
+  const pct = (v) => Math.max(0, Math.min(100, ((v - lo) / span) * 100));
+  const p = s.price != null ? pct(s.price) : pct(s.entry);
+  const z = pct(s.entry);
+  const when = new Date(s.createdAt * 1000).toLocaleString('en-ZA', { timeZone: 'Africa/Johannesburg', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+  const watched = S.watch.has(s.symbol);
+  return `<article class="card ${buy ? 'buy' : 'sell'}" data-id="${s.id}">
+    <div class="hd"><button class="btn sm" data-act="star" title="Watchlist" style="padding:2px 7px">${watched ? '★' : '☆'}</button>
+      <div><div class="sym">${esc(s.name)}</div><div class="meta">${esc(s.symbol)} · ${s.tf} · ${esc(s.setup)}</div></div>
+      <span class="chip ${s.kind === 'SCALP' ? 'scalp' : 'trend'}">${s.kind}</span>${s.unproven ? '<span class="chip royalty" title="Royalty strategy: no proven edge in backtests yet. Watch it, or trade the minimum size.">👑 ROYALTY</span>' : ''}
+      <span class="grade ${s.grade.replace('+', '')}">${s.grade}</span></div>
+    <div class="dir"><b>${buy ? '↗ BUY' : '↘ SELL'}</b><span class="status st-${s.status}">${statusTxt(s)}</span>
+      <div class="live">${open && s.price != null ? `<div class="p">${fmt(s.price, d)}</div><div class="r ${r >= 0 ? 'pos' : 'neg'}">${r == null ? 'awaiting fill' : (r >= 0 ? '+' : '') + r.toFixed(2) + 'R'}</div>` :
+        s.result != null ? `<div class="p ${s.result >= 0 ? 'pos' : 'neg'}">${s.result > 0 ? '+' : ''}${s.result}R</div><div class="r" style="color:var(--muted)">final</div>` : ''}</div></div>
+    <div class="lv">
+      <div>Entry <span class="tag">${s.entryType === 'CONFIRM' ? (s.status === 'PENDING' ? 'zone · enter on 5m close' : '5m confirmed') : s.entryType}</span></div><div>${fmt(s.entry, d)}</div>
+      ${`<div>Stop loss ${s.status === 'TP1_HIT' && s.sl3 != null ? `<span class="tag">${s.open12 ? '2 at TP1 · 1 at ' + fmt(s.sl3, d) : '1 left · SL ' + fmt(s.sl3, d)}</span>` : s.status === 'TP1_HIT' ? `<span class="tag">${S.cfg.trail && S.cfg.trail.mode !== 'off' ? 'trailing' : 'locked'} · now ${fmt(s.slLive, d)}</span>` : s.beArmed || s.dynMoved ? `<span class="tag">${s.beArmed ? 'locked' : 'trailing'} · now ${fmt(s.slLive, d)}</span>` : S.cfg.beAtR ? `<span class="tag">locks +${S.cfg.beLockR || 0}R at +${S.cfg.beAtR}R${S.cfg.softStop ? ' · cut on a 5m close −' + S.cfg.softStop.r + 'R' : ''}${S.cfg.dyn ? ' · trails ' + S.cfg.dyn.dist + 'R behind, max halfway to TP1' : ''}</span>` : ''}</div><div class="neg">${fmt(s.sl, d)}</div>
+      <div>Take profit 1 <span class="tag">${s.r1.toFixed(2)}R · ${S.cfg.three ? 'SL of 2 of 3 moves here' : 'close ' + Math.round((S.cfg.partialAtTp1 || .5) * 100) + '%'}</span></div><div class="pos">${fmt(s.tp1, d)}</div>
+      <div>Take profit 2 <span class="tag">${S.cfg.trail && S.cfg.trail.mode !== 'off' && S.cfg.trail.keepTp2 === false ? 'guide · runner trails ' + (s.market === 'forex' && S.cfg.trail.mode === 'pips' ? S.cfg.trail.pips + ' pips' : S.cfg.trail.atr + '× ATR') : s.r2.toFixed(2) + 'R'}</span></div><div class="pos">${fmt(s.tp2, d)}</div>`}
+    </div>
+    <div class="track" style="--z:${z}%;--p:${p}%;--t1:${pct(s.tp1)}%"><span class="t"></span><span class="m"></span></div>
+    <div class="biasrow">${['H4', 'H2', 'H1', 'M15', 'M5'].filter((k) => s.bias[k]).map((k) => `<span class="b ${s.bias[k]}">${{ H4: '4H', H2: '2H', H1: '1H', M15: '15m', M5: '5m' }[k]} ${s.bias[k] === 'UP' ? '▲' : s.bias[k] === 'DOWN' ? '▼' : '•'}</span>`).join('')}<span class="b">score ${s.score}</span></div>
+    <div class="ft"><span>${when} SAST</span><div class="sp">
+      <button class="btn sm" data-act="why">Why</button><button class="btn sm" data-act="chart">Chart</button><button class="btn sm" data-act="size">Size</button><button class="btn sm" data-act="copy">Copy</button></div></div>
+    <div class="why"><div>${esc(s.text || '')}</div><ul>${(s.reasons || []).map((x) => `<li><span class="${x.ok ? 'k' : 'x'}">${x.ok ? '✓' : '✗'}</span>${esc(x.label)}${x.detail ? ` <span style="color:var(--dim)">— ${esc(x.detail)}</span>` : ''}<span class="pt">${x.pts ? '+' + x.pts : ''}</span></li>`).join('')}</ul>
+      ${s.mfeR ? `<div class="note">Best excursion ${s.mfeR.toFixed(2)}R, worst ${s.maeR.toFixed(2)}R.</div>` : ''}</div>
+  </article>`;
+}
+function filtered() {
+  const f = S.f, q = f.q.trim().toUpperCase();
+  return S.signals.filter((s) => {
+    const open = ['PENDING', 'ACTIVE', 'TP1_HIT'].includes(s.status);
+    if (f.view === 'active' ? !open : open) return false;
+    if (f.view === 'history' && ['EXPIRED', 'CANCELLED'].includes(s.status) && !q) return false;
+    if (f.market !== 'ALL' && (s.market || 'synthetic') !== f.market) return false;
+    if (f.grade === 'A' && !/^A/.test(s.grade)) return false;
+    if (f.grade === 'A+' && s.grade !== 'A+') return false;
+    if (q && !(s.name + ' ' + s.symbol).toUpperCase().includes(q)) return false;
+    if (f.watch && !S.watch.has(s.symbol)) return false;
+    return true;
+  }).sort((a, b) => (b.closedAt || b.createdAt) - (a.closedAt || a.createdAt));
+}
+function renderCards() {
+  const list = filtered();
+  const counts = {}; for (const k in MARKETS) counts[k] = S.signals.filter((s) => (k === 'ALL' || (s.market || 'synthetic') === k) && (S.f.view === 'active') === ['PENDING', 'ACTIVE', 'TP1_HIT'].includes(s.status)).length;
+  $('#mkSeg').innerHTML = Object.entries(MARKETS).map(([k, v]) => `<button data-k="${k}" class="${S.f.market === k ? 'on' : ''}">${v}<span class="c">${counts[k]}</span></button>`).join('');
+  const openIds = new Set($$('.why.on').map((w) => w.closest('.card').dataset.id));
+  $('#cards').innerHTML = list.length ? list.slice(0, 120).map(cardHTML).join('') :
+    `<div class="empty" style="grid-column:1/-1">${S.f.view === 'active' ? (S.status === 'live' ? 'No open setups right now. The engine is scanning ' + (S.mode === 'local' ? S.symbols.filter((x) => x.source !== 'mt5').length : Object.keys(S.snaps).length) + ' markets and only publishes setups that pass every filter, so quiet stretches are normal.' : 'Connecting to the live feed…') : 'No closed signals yet.'}</div>`;
+  openIds.forEach((id) => { const c = $(`.card[data-id="${id}"] .why`); if (c) c.classList.add('on'); });
+  $('#kpis').innerHTML = kpiHTML(M.stats(S.signals), true);
+}
+$('#cards').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  const card = b.closest('.card'), s = S.signals.find((x) => x.id === card.dataset.id); if (!s) return;
+  const a = b.dataset.act;
+  if (a === 'why') card.querySelector('.why').classList.toggle('on');
+  if (a === 'star') { S.watch.has(s.symbol) ? S.watch.delete(s.symbol) : S.watch.add(s.symbol); store.set('watch', [...S.watch]); renderCards(); }
+  if (a === 'copy') copyText(signalText(s));
+  if (a === 'chart') { show('chart'); openChart(s.symbol); }
+  if (a === 'size') {
+    $('#lcEntry').value = +s.entry.toFixed(s.dec); $('#lcSl').value = +s.sl.toFixed(s.dec);
+    if (s.source === 'mt5' || /^(FlipX|FiboX|QuadX|PlusX|FX-Vol|SFX-Vol|GainX|PainX|BreakX|SwitchX|TrendX)/.test(s.symbol)) { $('#lcVal').value = 1; $('#lcMin').value = /^(GainX|PainX|BreakX|SwitchX|TrendX)/.test(s.symbol) ? 0.1 : 0.01; }
+    show('risk'); calcLot();
+  }
+});
+function signalText(s) {
+  const d = s.dec;
+  return `${s.dir === 'BUY' ? '🟢 BUY' : '🔴 SELL'} — ${s.name} · ${s.tf} · ${s.setup}${s.kind === 'SCALP' ? ' (scalp)' : ''}
+Grade ${s.grade} (${s.score}/100)
+Entry: ${fmt(s.entry, d)}${s.entryType === 'LIMIT' ? ' (limit)' : ''}
+SL: ${fmt(s.sl, d)}
+TP1: ${fmt(s.tp1, d)} (${s.r1.toFixed(2)}R) — close half, SL to entry
+TP2: ${fmt(s.tp2, d)} (${s.r2.toFixed(2)}R)
+Bias: 4H ${s.bias.H4} · 1H ${s.bias.H1} · 15m ${s.bias.M15}
+— Royal Trades · educational, not financial advice`;
+}
+async function copyText(t) {
+  try { await navigator.clipboard.writeText(t); toast('Copied, ready to paste into WhatsApp or Telegram.', 2500); }
+  catch (e) { const ta = document.createElement('textarea'); ta.value = t; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); toast('Copied.', 2000); } catch (x) { toast('Copy blocked by the browser.'); } ta.remove(); }
+}
+$('#mkSeg').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) { S.f.market = b.dataset.k; renderCards(); } });
+$('#viewSeg').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; S.f.view = b.dataset.k; $$('#viewSeg button').forEach((x) => x.classList.toggle('on', x === b)); renderCards(); });
+$('#gradeSeg').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; S.f.grade = b.dataset.k; $$('#gradeSeg button').forEach((x) => x.classList.toggle('on', x === b)); renderCards(); });
+$('#q').addEventListener('input', (e) => { S.f.q = e.target.value; renderCards(); });
+$('#watchBtn').addEventListener('click', (e) => { S.f.watch = !S.f.watch; e.target.classList.toggle('primary', S.f.watch); renderCards(); });
+{ const o = phone.get(); const t = document.getElementById('phTopic'), m = document.getElementById('phOn'), b = document.getElementById('phTest');
+  if (t) { t.value = o.topic; m.value = o.mode;
+    t.onchange = () => { const v = t.value.trim().replace(/[^A-Za-z0-9_-]/g, ''); if (v.length < 8) { toast('Use at least 8 letters or digits for the topic.'); t.value = phone.get().topic; return; } phone.set(Object.assign(phone.get(), { topic: v })); t.value = v; toast('Phone topic saved.', 2500); };
+    m.onchange = () => phone.set(Object.assign(phone.get(), { mode: m.value }));
+    b.onclick = async () => { const ok = await phone.send('Royal Trades test - ' + PHONE_LABEL, 'Phone alerts are working. New ' + (phone.get().mode === 'all' ? '' : 'synthetics ') + 'signals will show here.', 'white_check_mark'); toast(ok ? 'Test sent to topic ' + esc(phone.get().topic) + '.' : 'Could not reach ntfy.sh. Check the internet connection.', 4000); }; } }
+function renderAlertBtn() { $('#alertBtn').textContent = (S.sound ? '🔔' : '🔕') + (S.alerts ? ' Alerts on' : ' Alerts'); }
+$('#alertBtn').addEventListener('click', async () => {
+  beep(); // unlock audio on first click
+  if (!S.alerts && typeof Notification !== 'undefined') {
+    try { const p = await Notification.requestPermission(); S.alerts = p === 'granted';
+      if (S.alerts) { toast('Alerts on. Test notification sent.', 3000); notify('Royal Trades', 'Alerts are working. New signals will appear here.'); }
+      else toast('Notifications are blocked for this site. Allow them in the browser\'s site settings. In-app alerts and sound still work.'); } catch (e) { S.alerts = false; }
+  } else if (S.alerts) { S.alerts = false; S.sound = !S.sound; }
+  else S.sound = !S.sound;
+  store.set('alerts', S.alerts); store.set('sound', S.sound); renderAlertBtn();
+});
+
+// ---------- scanner ----------
+function biasCell(v) { return `<span class="b ${v}">${v === 'UP' ? '▲ UP' : v === 'DOWN' ? '▼ DOWN' : '• FLAT'}</span>`; }
+function renderScanner() {
+  const hideMt5 = S.mode === 'local';
+  const rows = S.symbols.filter((m) => !(hideMt5 && m.source === 'mt5')).map((m) => Object.assign({}, S.snaps[m.symbol] || { symbol: m.symbol, name: m.name, loading: true }, { err: S.feedErr && S.feedErr[m.symbol] }));
+  const mt5n = hideMt5 ? S.symbols.filter((m) => m.source === 'mt5').length : 0;
+  $('#scanBody').innerHTML = rows.map((x) => x.loading || !x.trend || x.ready === false ? `<tr><td>${esc(x.name)}</td><td colspan="9" style="color:var(--dim)">${x.err ? (/clos/i.test(x.err) ? 'market closed: retrying every minute' : 'feed hiccup: retrying every minute') : 'loading history…'}</td></tr>` :
+    `<tr class="click" data-sym="${esc(x.symbol)}"><td><b>${esc(x.name)}</b><div class="meta" style="font-family:var(--mono);font-size:10px;color:var(--dim)">${esc(x.symbol)}</div></td>
+     <td class="n">${fmt(x.price, x.dec)}</td><td>${biasCell(x.trend.H4)}</td><td>${biasCell(x.trend.H2)}</td><td>${biasCell(x.trend.H1)}</td><td>${biasCell(x.trend.M15)}</td><td>${biasCell(x.trend.M5 || 'FLAT')}</td>
+     <td class="n" style="color:${x.er < S.cfg.chopMin ? 'var(--warn)' : 'var(--text)'}">${(x.er * 100).toFixed(0)}%</td>
+     <td style="font-family:var(--mono);font-size:12px">${x.or && x.or.hi != null ? `${fmt(x.or.lo, x.dec)} – ${fmt(x.or.hi, x.dec)} <span class="b ${x.or.state === 'above' ? 'UP' : x.or.state === 'below' ? 'DOWN' : ''}">${x.or.state}</span>` : '—'}</td>
+     <td style="font-size:12.5px;color:${x.open ? 'var(--gold)' : 'var(--muted)'}">${esc(x.look)}${(M.DEFAULTS.unproven || []).includes(x.symbol) ? ' <span class="chip royalty" title="Royalty strategy: no proven edge in backtests yet">👑 Royalty</span>' : ''}</td></tr>`).join('') +
+    (mt5n ? `<tr><td colspan="10" style="color:var(--dim);font-size:12.5px">+ ${mt5n} Weltrade SyntX pairs (FlipX, FiboX, QuadX, FX Vol…) are scanned by the Royal Trades server through your MT5 bridge. Connect a server in Settings to see them here.</td></tr>` : '');
+}
+$('#scanBody').addEventListener('click', (e) => { const tr = e.target.closest('tr[data-sym]'); if (tr) { show('chart'); openChart(tr.dataset.sym); } });
+
+// ---------- chart ----------
+let chartPoll = 0, chart = null, cs = null, emaS = [], orLines = [], plines = [], chartSub = null, chartFeed = null, chartBars = [];
+const CH_TF = [[60, '1m'], [120, '2m'], [900, '15m'], [3600, '1H'], [14400, '4H']];
+let chSym = null, chTf = 120;
+function ensureChart() {
+  if (chart || !window.LightweightCharts) return;
+  chart = LightweightCharts.createChart($('#chart'), { layout: { background: { color: '#0f1118' }, textColor: '#8b91a6', fontFamily: 'JetBrains Mono' },
+    grid: { vertLines: { color: '#171a25' }, horzLines: { color: '#171a25' } }, rightPriceScale: { borderColor: '#222636' }, timeScale: { borderColor: '#222636', timeVisible: true, secondsVisible: false }, crosshair: { mode: 0 } });
+  cs = chart.addCandlestickSeries({ upColor: '#22c55e', downColor: '#f43f5e', borderVisible: false, wickUpColor: '#22c55e', wickDownColor: '#f43f5e' });
+  emaS = [[9, '#f8fafc'], [21, '#60a5fa'], [50, '#22c55e'], [200, '#f43f5e']].map(([n, c]) => ({ n, s: chart.addLineSeries({ color: c, lineWidth: n === 200 ? 2 : 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false }) }));
+  new ResizeObserver(() => chart.applyOptions({ width: $('#chart').clientWidth })).observe($('#chart'));
+}
+function resetView() {
+  if (!chart) return;
+  chart.priceScale('right').applyOptions({ autoScale: true });
+  chart.timeScale().scrollToRealTime();
+}
+$('#chReset').addEventListener('click', resetView);
+$('#chart').addEventListener('dblclick', resetView);
+function ema(vals, n) { const k = 2 / (n + 1); let p = null; return vals.map((v) => (p = p == null ? v : p + k * (v - p))); }
+function drawOverlays() {
+  if (!cs) return;
+  const closes = chartBars.map((b) => b.close);
+  emaS.forEach(({ n, s }) => { const e = ema(closes, n); s.setData(chartBars.map((b, i) => ({ time: b.time, value: e[i] }))); });
+  [...orLines, ...plines].forEach((l) => cs.removePriceLine(l)); orLines = []; plines = [];
+  const sn = S.snaps[chSym];
+  if (sn && sn.or && sn.or.hi != null) {
+    orLines.push(cs.createPriceLine({ price: sn.or.hi, color: '#a78bfa', lineWidth: 1, lineStyle: 2, title: 'OR high' }));
+    orLines.push(cs.createPriceLine({ price: sn.or.lo, color: '#a78bfa', lineWidth: 1, lineStyle: 2, title: 'OR low' }));
+  }
+  const sigs = S.signals.filter((s) => s.symbol === chSym);
+  const open = sigs.find((s) => ['PENDING', 'ACTIVE', 'TP1_HIT'].includes(s.status));
+  if (open) {
+    const L = (p, c, t) => plines.push(cs.createPriceLine({ price: p, color: c, lineWidth: 1, lineStyle: 0, title: t }));
+    L(open.entry, '#e2e8f0', 'Entry'); L(open.beArmed || open.dynMoved || open.status === 'TP1_HIT' ? open.slLive : open.sl, '#f43f5e', 'SL'); (open.tps || [open.tp1, open.tp2]).forEach((x, k) => L(x, '#22c55e', 'TP' + (k + 1)));
+  }
+  const t0 = chartBars.length ? chartBars[0].time : 0;
+  const marks = sigs.filter((s) => s.createdAt >= t0).map((s) => ({ time: Math.floor(s.createdAt / chTf) * chTf, position: s.dir === 'BUY' ? 'belowBar' : 'aboveBar', color: s.dir === 'BUY' ? '#22c55e' : '#f43f5e', shape: s.dir === 'BUY' ? 'arrowUp' : 'arrowDown', text: s.dir === 'BUY' ? 'B' : 'S' }));
+  marks.sort((a, b) => a.time - b.time); cs.setMarkers(marks);
+}
+async function openChart(sym) {
+  if (sym) chSym = sym; if (!chSym) chSym = S.symbols[0] && S.symbols[0].symbol;
+  $('#chSym').value = chSym;
+  ensureChart(); if (!chart) { $('#chInfo').textContent = 'chart library unavailable offline'; return; }
+  if (!chartFeed) { chartFeed = new M.DerivFeed({ onStatus: () => {} }); await chartFeed.connect().catch(() => {}); }
+  if (chartSub) { try { chartFeed.call({ forget: chartSub }); } catch (e) {} chartFeed.subs = {}; chartSub = null; }
+  clearInterval(chartPoll);
+  $('#chInfo').textContent = 'loading…';
+  const mySym = chSym, myTf = chTf;
+  const meta = S.symbols.find((x) => x.symbol === mySym) || {};
+  // each market gets its own price precision, and the price axis is re-fitted so a range left over from another market can't hide the candles
+  const sn0 = S.snaps[mySym], dec = sn0 && sn0.dec != null ? sn0.dec : meta.dec != null ? meta.dec : 2;
+  const pf = { type: 'price', precision: dec, minMove: +(1 / Math.pow(10, dec)).toFixed(dec) };
+  cs.applyOptions({ priceFormat: pf }); emaS.forEach(({ s }) => s.applyOptions({ priceFormat: pf }));
+  resetView();
+  chartBars = []; cs.setData([]); emaS.forEach(({ s }) => s.setData([]));
+  if (meta.source === 'mt5') {
+    if (!S.serverBase) { chartBars = []; cs.setData([]); $('#chInfo').textContent = 'MT5-bridge pair: charts load from the Royal Trades server'; return; }
+    const sf = serverCandles(S.serverBase);
+    const load = async (n) => (await sf.candles(mySym, myTf, n)).candles.map((c) => ({ time: c.epoch, open: +c.open, high: +c.high, low: +c.low, close: +c.close }));
+    try {
+      chartBars = await load(600); cs.setData(chartBars); drawOverlays(); resetView();
+      $('#chInfo').textContent = `${mySym} · ${CH_TF.find((x) => x[0] === myTf)[1]} · via MT5 bridge`;
+      chartPoll = setInterval(async () => { if (mySym !== chSym || myTf !== chTf) return clearInterval(chartPoll); try { for (const b of await load(3)) { const lb = chartBars[chartBars.length - 1]; if (lb && lb.time === b.time) chartBars[chartBars.length - 1] = b; else if (!lb || b.time > lb.time) chartBars.push(b); else continue; cs.update(b); } } catch (e) {} }, 5000);
+    } catch (e) { $('#chInfo').textContent = 'could not load: ' + e.message; }
+    return;
+  }
+  try {
+    const first = await chartFeed.subscribeCandles(mySym, myTf, (o) => {
+      if (mySym !== chSym || myTf !== chTf) return;
+      const b = { time: +o.open_time, open: +o.open, high: +o.high, low: +o.low, close: +o.close };
+      const lb = chartBars[chartBars.length - 1];
+      if (lb && lb.time === b.time) chartBars[chartBars.length - 1] = b; else if (!lb || b.time > lb.time) chartBars.push(b);
+      cs.update(b); $('#chInfo').textContent = `${mySym} · ${CH_TF.find((x) => x[0] === myTf)[1]} · ${fmt(b.close, dec)}`;
+    }, 600);
+    chartSub = first.subscription && first.subscription.id;
+    chartBars = (first.candles || []).map((c) => ({ time: c.epoch, open: +c.open, high: +c.high, low: +c.low, close: +c.close }));
+    cs.setData(chartBars); drawOverlays(); resetView();
+    $('#chInfo').textContent = `${mySym} · ${CH_TF.find((x) => x[0] === myTf)[1]}`;
+  } catch (e) { $('#chInfo').textContent = 'could not load: ' + e.message; }
+}
+$('#chTf').innerHTML = CH_TF.map(([g, n]) => `<button data-g="${g}" class="${g === chTf ? 'on' : ''}">${n}</button>`).join('');
+$('#chTf').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; chTf = +b.dataset.g; $$('#chTf button').forEach((x) => x.classList.toggle('on', x === b)); openChart(); });
+$('#chSym').addEventListener('change', (e) => openChart(e.target.value));
+
+// ---------- performance ----------
+let eqChart = null, eqS = null;
+function groupTable(o, label) {
+  const rows = Object.entries(o).sort((a, b) => b[1].R - a[1].R);
+  return `<thead><tr><th>${label}</th><th class="n">Trades</th><th class="n">Win %</th><th class="n">Net R</th></tr></thead><tbody>${rows.length ? rows.map(([k, v]) => `<tr><td>${esc(k)}</td><td class="n">${v.n}</td><td class="n">${Math.round((v.w / v.n) * 100)}%</td><td class="n ${v.R >= 0 ? 'pos' : 'neg'}">${v.R > 0 ? '+' : ''}${v.R}</td></tr>`).join('') : '<tr><td colspan="4" style="color:var(--dim)">No closed trades yet</td></tr>'}</tbody>`;
+}
+function renderPerf() {
+  const st = M.stats(S.signals);
+  $('#perfKpis').innerHTML = kpiHTML(st);
+  $('#tGrade').innerHTML = groupTable(st.byGrade, 'Grade'); $('#tKind').innerHTML = groupTable(st.byKind, 'Type');
+  $('#tSym').innerHTML = groupTable(st.bySymbol, 'Market'); $('#tStrat').innerHTML = groupTable(st.byStrategy || {}, 'Strategy');
+  if (window.LightweightCharts && $('#v-perf').classList.contains('on')) {
+    if (!eqChart) { eqChart = LightweightCharts.createChart($('#eqchart'), { layout: { background: { color: '#0f1118' }, textColor: '#8b91a6' }, grid: { vertLines: { visible: false }, horzLines: { color: '#171a25' } }, timeScale: { timeVisible: true } });
+      eqS = eqChart.addAreaSeries({ lineColor: '#d946ef', topColor: 'rgba(217,70,239,.35)', bottomColor: 'rgba(217,70,239,0)', lineWidth: 2 });
+      new ResizeObserver(() => eqChart.applyOptions({ width: $('#eqchart').clientWidth })).observe($('#eqchart')); }
+    const seen = new Set(); eqS.setData(st.curve.filter((p) => (seen.has(p.t) ? false : seen.add(p.t))).map((p) => ({ time: p.t, value: p.v })));
+  }
+  if (st.closed >= 5) $('#gpR').value = st.avgR.toFixed(2);
+}
+
+// ---------- backtest ----------
+let btChart = null;
+$('#btRun').addEventListener('click', async () => {
+  const days = +$('#btDays').value, mode = $('#btMode').value;
+  const modes = mode === 'compare' ? ['strict', 'adaptive'] : [mode];
+  const f = makeFeeds();
+  try { await f.deriv.connect(); } catch (e) { $('#btLog').textContent = 'Could not reach Deriv.'; }
+  const res = {}; modes.forEach((m) => (res[m] = []));
+  const syms = S.symbols.filter((x) => x.source !== 'mt5' || f.mt5); let done = 0; $('#btRun').disabled = true;
+  for (const meta of syms) {
+    for (const m of modes) {
+      try {
+        const cfg = Object.assign({}, S.cfg, { trendMode: m });
+        const r = await M.backtest(f[meta.source || 'deriv'], meta, days, cfg, (s, msg) => ($('#btLog').textContent = `${meta.name}: ${msg} (${m})`));
+        r.signals.forEach((x) => (x.market = meta.market));
+        res[m].push(...r.signals);
+      } catch (e) { $('#btLog').textContent = meta.name + ': ' + e.message; }
+    }
+    done++; $('#btProg').style.width = (done / syms.length) * 100 + '%';
+  }
+  $('#btRun').disabled = false; $('#btLog').textContent = 'Finished: ' + syms.length + ' markets, ' + days + ' days.';
+  const st = {}; modes.forEach((m) => (st[m] = M.stats(res[m])));
+  const best = modes.length === 2 ? (st.adaptive.totalR >= st.strict.totalR ? 'adaptive' : 'strict') : modes[0];
+  $('#btOut').innerHTML = `<div class="${modes.length === 2 ? 'two' : ''}">${modes.map((m) => `<div class="panel"><h3>${m === 'strict' ? 'Strict 1H rule' : 'Adaptive 1H rule'} ${m === best && modes.length === 2 ? '<span class="chip trend">better</span>' : ''}</h3>
+    <div class="kpis" style="grid-template-columns:repeat(2,1fr)">${kpiHTML(st[m])}</div>
+    <table>${groupTable(st[m].bySymbol, 'Market')}</table>${m === 'adaptive' ? `<table style="margin-top:10px">${groupTable(st[m].byKind, 'Type')}</table>` : ''}</div>`).join('')}</div>
+    ${modes.length === 2 ? `<div class="panel" style="margin-top:14px"><b>Verdict:</b> on this sample the <b>${best}</b> rule earned ${st[best].totalR}R at a ${Math.round(st[best].winRate * 100)}% win rate. <button class="btn sm" id="btApply">Use ${best}</button></div>` : ''}`;
+  const ap = $('#btApply'); if (ap) ap.onclick = () => { S.cfg.trendMode = best; saveCfg(); toast('1H rule set to ' + best + '.'); };
+  if (window.LightweightCharts) {
+    $('#btchart').style.display = 'block';
+    if (!btChart) { btChart = LightweightCharts.createChart($('#btchart'), { layout: { background: { color: '#0f1118' }, textColor: '#8b91a6' }, grid: { vertLines: { visible: false }, horzLines: { color: '#171a25' } }, timeScale: { timeVisible: true } }); new ResizeObserver(() => btChart.applyOptions({ width: $('#btchart').clientWidth })).observe($('#btchart')); }
+    else { (btChart._s || []).forEach((s) => btChart.removeSeries(s)); }
+    btChart._s = modes.map((m) => { const s = btChart.addLineSeries({ color: m === 'strict' ? '#60a5fa' : '#d946ef', lineWidth: 2, title: m }); const seen = new Set(); s.setData(st[m].curve.filter((p) => (seen.has(p.t) ? false : seen.add(p.t))).map((p) => ({ time: p.t, value: p.v }))); return s; });
+    btChart.timeScale().fitContent();
+  }
+  if (st[best].closed >= 5) $('#gpR').value = st[best].avgR.toFixed(2);
+  try { f.deriv.ws.onclose = null; f.deriv.ws.close(); } catch (e) {}
+});
+
+// ---------- risk tools ----------
+function calcLot() {
+  const bal = +$('#lcBal').value, rp = +$('#lcRisk').value, e = +$('#lcEntry').value, sl = +$('#lcSl').value, v = +$('#lcVal').value || 1, mn = +$('#lcMin').value || 0.01;
+  if (!bal || !rp || !e || !sl || e === sl) { $('#lcOut').textContent = '—'; $('#lcNote').textContent = 'Enter the entry and SL, or press "Size" on any signal.'; return; }
+  const riskUsd = (bal * rp) / 100, dist = Math.abs(e - sl);
+  let lots = riskUsd / (dist * v); lots = Math.floor(lots / mn) * mn;
+  const real = lots * dist * v;
+  $('#lcOut').textContent = lots > 0 ? lots.toFixed(String(mn).split('.')[1] ? String(mn).split('.')[1].length : 0) + ' lots' : 'Below minimum lot';
+  $('#lcNote').innerHTML = lots > 0 ? `Risks $${real.toFixed(2)} (${((real / bal) * 100).toFixed(2)}%) over a ${dist.toPrecision(5)} stop.` : `Even the minimum lot risks $${(mn * dist * v).toFixed(2)} (${((mn * dist * v / bal) * 100).toFixed(1)}% of the account). Skip this trade or wait for a tighter one.`;
+}
+['lcBal', 'lcRisk', 'lcEntry', 'lcSl', 'lcVal', 'lcMin'].forEach((id) => $('#' + id).addEventListener('input', calcLot));
+function growth() {
+  const r = +$('#gpRisk').value / 100, R = +$('#gpR').value;
+  const stages = [[10, 50], [50, 100], [100, 250], [250, 1000]];
+  const per = r * R;
+  $('#gpTable').innerHTML = `<thead><tr><th>Stage</th><th class="n">Growth / trade</th><th class="n">Trades needed</th></tr></thead><tbody>${stages.map(([a, b]) => `<tr><td>$${a} → $${b}</td><td class="n">${(per * 100).toFixed(2)}%</td><td class="n">${per > 0 ? Math.ceil(Math.log(b / a) / Math.log(1 + per)) : '∞'}</td></tr>`).join('')}</tbody>`;
+}
+['gpRisk', 'gpR'].forEach((id) => $('#' + id).addEventListener('input', growth));
+function chall() { const b = +$('#chBal').value, d = +$('#chDd').value, l = +$('#chLoss').value; const room = (b * d) / 100 - l; $('#chOut').innerHTML = room > 0 ? `<span class="pos">$${room.toFixed(2)}</span> <span style="font-size:13px;color:var(--muted)">room left today, or ${Math.floor(room / (b * 0.005))} trades at 0.5% risk</span>` : `<span class="neg">Daily limit reached — stop trading today.</span>`; }
+['chBal', 'chDd', 'chLoss'].forEach((id) => $('#' + id).addEventListener('input', chall));
+
+// ---------- settings ----------
+function saveCfg() { const c = Object.assign({}, S.cfg); delete c.signalsEnabledFrom; store.set('cfg', c); if (engine) engine.setConfig(S.cfg); renderStrip(); }
+function loadSettingsUI() {
+  $('#sMgmt').value = store.get('mgmt', 'volume'); $('#sMode').value = S.cfg.trendMode; $('#sGrade').value = String(S.cfg.minScore >= 85 ? 85 : S.cfg.minScore >= 74 ? 74 : 62);
+  $('#sBlock').value = String(S.cfg.orBlock); $('#sOrm').value = String(S.cfg.orMinutes); $('#sChop').value = String(S.cfg.chopMin); $('#sGuard').value = S.cfg.lossGuard ? '1' : '0'; $('#sM5').value = S.cfg.m5Filter || 'momentum';
+  $('#sServer').value = S.server; $('#sKey').value = S.key;
+  $('#connInfo').textContent = S.mode === 'local' ? 'The engine is running in this browser and reading Deriv\'s public live feed. Keep this tab open for live capture, or point it at a Royal Trades server so signals run 24/7.' : 'Connected to a Royal Trades server. Signals are generated 24/7 even when this page is closed.';
+}
+$('#sMode').onchange = (e) => { S.cfg.trendMode = e.target.value; saveCfg(); };
+$('#sMgmt').onchange = (e) => { store.set('mgmt', e.target.value); applyMgmt(e.target.value); saveCfg(); toast('Trade management: ' + M.MANAGEMENT[e.target.value].label + '. Applies from now on.'); };
+$('#sGrade').onchange = (e) => { S.cfg.minScore = +e.target.value; S.cfg.minScalpScore = Math.max(+e.target.value, 72); saveCfg(); };
+$('#sBlock').onchange = (e) => { S.cfg.orBlock = +e.target.value; saveCfg(); toast('The new range setting applies from the next block.'); };
+$('#sOrm').onchange = (e) => { S.cfg.orMinutes = +e.target.value; saveCfg(); };
+$('#sChop').onchange = (e) => { S.cfg.chopMin = +e.target.value; saveCfg(); };
+$('#sGuard').onchange = (e) => { S.cfg.lossGuard = e.target.value === '1'; saveCfg(); };
+$('#sM5').onchange = (e) => { S.cfg.m5Filter = e.target.value; saveCfg(); };
+$('#sSave').onclick = () => { store.set('server', $('#sServer').value.trim()); store.set('key', $('#sKey').value.trim()); location.reload(); };
+$('#sClear').onclick = () => { if (S.mode !== 'local') return toast('History lives on the server.'); S.signals.splice(0, S.signals.length, ...S.signals.filter((s) => ['PENDING', 'ACTIVE', 'TP1_HIT'].includes(s.status))); save(); render(); toast('Closed signals cleared.'); };
+$('#sExport').onclick = () => copyText(JSON.stringify(S.signals, null, 1));
+function renderSymList() {
+  const all = (S.allSymbols && S.allSymbols.length ? S.allSymbols : M.DEFAULT_SYMBOLS);
+  const q = ($('#symQ').value || '').toUpperCase(), sel = new Set(S.symbols.map((s) => s.symbol));
+  $('#symList').innerHTML = all.filter((x) => !q || (x.name + x.symbol + (x.source || '')).toUpperCase().includes(q)).map((x) => `<label><input type="checkbox" data-s="${esc(x.symbol)}" ${sel.has(x.symbol) ? 'checked' : ''}>${esc(x.name)}<span class="chip" style="margin-left:auto">${x.source === 'mt5' ? 'MT5' : 'DERIV'}</span></label>`).join('');
+}
+$('#symList').addEventListener('change', (e) => {
+  const cb = e.target; const all = S.allSymbols && S.allSymbols.length ? S.allSymbols : M.DEFAULT_SYMBOLS; const meta = all.find((x) => x.symbol === cb.dataset.s);
+  if (cb.checked && meta && !S.symbols.find((x) => x.symbol === meta.symbol)) S.symbols.push({ symbol: meta.symbol, name: meta.name, market: meta.market, source: meta.source || 'deriv' });
+  if (!cb.checked) S.symbols = S.symbols.filter((x) => x.symbol !== cb.dataset.s);
+  store.set('symbols', S.symbols); toast('Market list saved. Reload to start or stop live scanning.', 3000); fillChartSyms();
+});
+$('#symQ').addEventListener('input', renderSymList);
+$('#symDefault').onclick = () => { S.symbols = M.DEFAULT_SYMBOLS.slice(); store.set('symbols', S.symbols); renderSymList(); toast('Default markets restored. Reload to apply.'); };
+$('#symNone').onclick = () => { S.symbols = []; store.set('symbols', S.symbols); renderSymList(); };
+function fillChartSyms() { $('#chSym').innerHTML = S.symbols.map((s) => `<option value="${esc(s.symbol)}">${esc(s.name)}</option>`).join(''); }
+
+// ---------- routing ----------
+function show(v) {
+  $$('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.v === v));
+  $$('.view').forEach((x) => x.classList.toggle('on', x.id === 'v-' + v));
+  if (v === 'chart') openChart(); if (v === 'perf') renderPerf(); if (v === 'scanner') renderScanner(); if (v === 'settings') { loadSettingsUI(); renderSymList(); } if (v === 'robot') { loadRobotUI(); renderRobot(); }
+  if (location.hash !== '#' + v) history.replaceState(null, '', '#' + v);
+}
+$('#tabs').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) show(b.dataset.v); });
+function renderLive() {
+  if ($('#v-signals').classList.contains('on')) renderCards();
+  if ($('#v-scanner').classList.contains('on')) renderScanner();
+  if ($('#v-chart').classList.contains('on')) drawOverlaysThrottled();
+  renderStrip();
+}
+let ovT = 0; function drawOverlaysThrottled() { if (ovT) return; ovT = setTimeout(() => { ovT = 0; drawOverlays(); }, 3000); }
+function render() { renderCards(); if ($('#v-perf').classList.contains('on')) renderPerf(); if ($('#v-scanner').classList.contains('on')) renderScanner(); if ($('#v-chart').classList.contains('on')) drawOverlays(); renderStrip(); }
+
+
+// ---------- Robot (auto-execution) ----------
+const RB = window.RoyalRobot;
+const tokStore = {
+  get() { try { return sessionStorage.getItem('twm114.robot.tok') || localStorage.getItem('twm114.robot.tok') || ''; } catch (e) { return ''; } },
+  set(v, remember) { try { sessionStorage.removeItem('twm114.robot.tok'); localStorage.removeItem('twm114.robot.tok'); if (v) (remember ? localStorage : sessionStorage).setItem('twm114.robot.tok', v); } catch (e) {} },
+};
+const robotSet = Object.assign({}, RB.ROBOT_DEFAULTS, store.get('robot.set', {}));
+if (robotSet.mode === 'real') robotSet.mode = 'off'; // real trading is never resumed silently after a reload
+const robot = new RB.Robot(robotSet, { store: { get: (k) => store.get(k, null), set: (k, v) => store.set(k, v) }, onChange: () => renderRobotSoon(), log: (m) => console.log(m) });
+let rbT = 0; function renderRobotSoon() { if (rbT) return; rbT = setTimeout(() => { rbT = 0; renderRobot(); }, 250); }
+function rbSave() { const c = Object.assign({}, robot.set); store.set('robot.set', c); }
+function rbMoney(x) { return x == null || isNaN(x) ? '—' : (x < 0 ? '−$' : '$') + Math.abs(x).toFixed(2); }
+function loadRobotUI() {
+  const r = robot.set;
+  $('#rbMode').value = r.mode; $('#rbPaperBal').value = r.paperBalance; $('#rbApp').value = store.get('robot.app', '') || DERIV_APP_ID; $('#rbAccId').value = store.get('robot.acc', '');
+  $('#rbTok').value = tokStore.get(); $('#rbRemember').checked = !!store.get('robot.remember', false);
+  $('#rbSizing').value = r.sizing; $('#rbRiskPct').value = r.riskPct; $('#rbRiskUsd').value = r.riskUsd; $('#rbStake').value = r.stake; $('#rbMult').value = String(r.multiplier); $('#rbTp1').value = r.atTp1;
+  $('#rbMaxRisk').value = r.maxRiskPct; $('#rbMaxStake').value = r.maxStake; $('#rbMaxOpen').value = r.maxOpen; $('#rbMaxDay').value = r.maxPerDay; $('#rbDayLoss').value = r.maxDailyLossPct;
+  $('#rbConsec').value = r.maxConsecLosses; $('#rbMinBal').value = r.minBalance; $('#rbSlip').value = r.maxSlipR; $('#rbDirs').value = r.dirs; $('#rbRoyal').value = r.skipRoyalty ? '1' : '0';
+  $$('#rbGrades input').forEach((x) => (x.checked = r.grades.includes(x.value))); $$('#rbMarkets input').forEach((x) => (x.checked = r.markets.includes(x.value)));
+  rbFormState(); renderRobotPairs(); if (typeof renderLoginInfo === 'function') renderLoginInfo();
+}
+function rbFormState() {
+  const m = $('#rbMode').value, z = $('#rbSizing').value;
+  $('#rbDerivBox').style.display = m === 'demo' || m === 'real' ? '' : 'none';
+  $('#rbRealBox').style.display = m === 'real' ? '' : 'none';
+  $('#rbRiskPctL').style.display = z === 'risk%' ? '' : 'none'; $('#rbRiskUsdL').style.display = z === 'risk$' ? '' : 'none'; $('#rbStakeL').style.display = z === 'stake' ? '' : 'none';
+  const bal = robot.balance != null ? robot.balance : m === 'paper' ? +$('#rbPaperBal').value : null;
+  $('#rbSizeNote').innerHTML = z === 'risk%' && bal ? `At ${$('#rbRiskPct').value}% on ${rbMoney(bal)}, a stopped-out trade loses about <b>${rbMoney(bal * $('#rbRiskPct').value / 100)}</b>. Deriv's minimum stake is $1, so on small accounts the robot picks a lower multiplier, or skips the trade if even the minimum would risk more than your cap.` : z === 'stake' ? 'A fixed stake is the Deriv version of a lot size. The money lost at the stop depends on the multiplier and how far the stop is, so the robot shows the real risk for every trade in its history.' : '';
+}
+function readRobotUI() {
+  const num = (id, d) => { const v = parseFloat($(id).value); return isNaN(v) ? d : v; };
+  const r = robot.set;
+  const pairs = {};
+  $$('#rbPairs tr').forEach((tr) => {
+    const sym = tr.dataset.s, o = {};
+    if (!tr.querySelector('.pOn').checked) o.off = true;
+    const d = tr.querySelector('.pDir').value; if (d) o.dirs = d;
+    const st = parseFloat(tr.querySelector('.pStake').value); if (st > 0) { o.stake = st; o.sizing = 'stake'; }
+    const mx = parseInt(tr.querySelector('.pMax').value, 10); if (mx > 0) o.maxTrades = mx;
+    if (Object.keys(o).length) pairs[sym] = o;
+  });
+  robot.setSettings({
+    mode: $('#rbMode').value, paperBalance: num('#rbPaperBal', 10), sizing: $('#rbSizing').value,
+    riskPct: Math.min(5, num('#rbRiskPct', 1)), riskUsd: num('#rbRiskUsd', 0.2), stake: Math.max(1, num('#rbStake', 1)), multiplier: $('#rbMult').value === 'auto' ? 'auto' : +$('#rbMult').value, atTp1: $('#rbTp1').value,
+    maxRiskPct: num('#rbMaxRisk', 3), maxStake: num('#rbMaxStake', 5), maxOpen: Math.max(1, num('#rbMaxOpen', 2)), maxPerDay: Math.max(1, num('#rbMaxDay', 8)), maxDailyLossPct: num('#rbDayLoss', 6),
+    maxConsecLosses: Math.max(1, num('#rbConsec', 3)), minBalance: num('#rbMinBal', 3), maxSlipR: num('#rbSlip', 0.3), dirs: $('#rbDirs').value, skipRoyalty: $('#rbRoyal').value === '1',
+    grades: $$('#rbGrades input').filter((x) => x.checked).map((x) => x.value), markets: $$('#rbMarkets input').filter((x) => x.checked).map((x) => x.value), pairs,
+  });
+  store.set('robot.app', $('#rbApp').value.trim()); store.set('robot.acc', $('#rbAccId').value.trim()); store.set('robot.remember', $('#rbRemember').checked);
+  tokStore.set($('#rbTok').value.trim(), $('#rbRemember').checked);
+  rbSave(); rbFormState();
+}
+function renderRobotPairs() {
+  const P = robot.set.pairs || {};
+  $('#rbPairs').innerHTML = S.symbols.filter((x) => (x.source || 'deriv') === 'deriv').map((x) => { const o = P[x.symbol] || {};
+    return `<tr data-s="${esc(x.symbol)}"><td>${esc(x.name)}</td><td><input type="checkbox" class="pOn" ${o.off ? '' : 'checked'}></td><td><select class="pDir"><option value="">Main setting</option><option value="both" ${o.dirs === 'both' ? 'selected' : ''}>Both</option><option value="buy" ${o.dirs === 'buy' ? 'selected' : ''}>Buy</option><option value="sell" ${o.dirs === 'sell' ? 'selected' : ''}>Sell</option></select></td><td><input class="pStake" type="number" min="1" step="0.5" style="width:80px" value="${o.stake || ''}"></td><td><input class="pMax" type="number" min="1" style="width:70px" value="${o.maxTrades || ''}"></td></tr>`; }).join('');
+}
+function renderRobot() {
+  const st = robot.state(), on = robot.running;
+  $('#rbGo').classList.toggle('on', on); $('#rbGo').firstChild.nodeValue = on ? 'STOP' : 'START';
+  $('#rbGoSub').textContent = { off: 'choose a mode', paper: 'Paper', demo: 'Deriv demo', real: 'REAL money' }[robot.set.mode] || '';
+  const dot = st.status === 'running' ? (st.halt ? 'warn' : 'live') : st.status === 'error' ? 'err' : st.status === 'reconnecting' || st.status === 'connecting' ? 'warn' : '';
+  $('#rbPill').innerHTML = `<span class="dot ${dot}"></span>${st.halt ? 'paused' : st.status}`;
+  $('#rbAcct').textContent = st.account ? (st.account.accountType === 'paper' ? 'Paper account' : `Deriv ${st.account.accountType} · ${st.account.accountId}`) : 'no account';
+  const lastE = st.journal[st.journal.length - 1];
+  $('#rbLine').textContent = !on ? 'Takes Royal Trades signals and places the trades for you. Start in Paper or on a Deriv demo account.'
+    : st.halt ? 'Paused for today: ' + st.halt.why
+    : st.open.length ? `In ${st.open.length} trade${st.open.length > 1 ? 's' : ''} · ${st.open.map((o) => o.dir + ' ' + o.name).join(', ')}`
+    : (st.sizeFactor < 1 ? `${st.sizeFactor === 0.5 ? 'Half' : 'Quarter'} size: ${st.ddR}R below the robot's peak · ` : '') + `Watching ${S.symbols.length} markets for ${robot.set.grades.join('/')} signals${lastE ? ' · last: ' + lastE.msg : ''}`;
+  $('#rbBal').textContent = st.balance == null ? '—' : rbMoney(+st.balance);
+  $('#rbDay').textContent = `${st.today.trades}/${st.today.max}`;
+  $('#rbPnl').innerHTML = `<span class="${st.today.realized > 0 ? 'pos' : st.today.realized < 0 ? 'neg' : ''}">${rbMoney(st.today.realized)}</span>`;
+  $('#rbOpenN').textContent = st.open.length;
+  $('#rbResume').style.display = st.halt ? '' : 'none';
+  $('#rbOpen').innerHTML = st.open.length ? st.open.map((o) => `<tr><td>${esc(o.name)}</td><td class="${o.dir === 'BUY' ? 'pos' : 'neg'}">${o.dir}</td><td class="n">${rbMoney(o.stake)} ×${o.mult}${o.legs > 1 ? ' (2)' : ''}</td><td class="n">${rbMoney(o.risk)}</td><td class="n ${o.profit >= 0 ? 'pos' : 'neg'}">${rbMoney(o.profit)}</td></tr>`).join('') : '<tr><td colspan="5" style="color:var(--muted)">No open positions</td></tr>';
+  const ic = { open: '🟢', close: '🏁', skip: '⏭', error: '⚠️', halt: '⛔', info: 'ℹ️' };
+  $('#rbJournal').innerHTML = st.journal.length ? st.journal.slice().reverse().map((j) => `<tr><td class="t">${new Date(j.t).toLocaleString('en-ZA', { timeZone: 'Africa/Johannesburg', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</td><td>${ic[j.type] || ''}</td><td>${esc(j.msg)}${j.pnl != null ? ` <b class="${j.pnl >= 0 ? 'pos' : 'neg'}">${rbMoney(j.pnl)}</b>` : ''}</td></tr>`).join('') : '<tr><td style="color:var(--muted)">Nothing yet.</td></tr>';
+}
+async function robotStart() {
+  readRobotUI();
+  const m = robot.set.mode;
+  if (m === 'off') { toast('Choose a robot mode first: Paper, Deriv demo or Deriv real.'); return; }
+  if (!robot.set.grades.length || !robot.set.markets.length) { toast('Pick at least one grade and one market for the robot.'); return; }
+  if (m === 'real' && $('#rbRealOk').value.trim() !== 'REAL') { toast('Type REAL in the box to confirm trading with real money.'); $('#rbRealOk').focus(); return; }
+  let broker;
+  if (m === 'paper') broker = new RB.PaperBroker({ balance: robot.set.paperBalance });
+  else {
+    const tok = $('#rbTok').value.trim(), app = $('#rbApp').value.trim();
+    if (!tok || !app) { toast('Enter your Deriv App ID and API token first.'); return; }
+    broker = new RB.DerivBroker({ token: tok, appId: app, accountType: m, accountId: $('#rbAccId').value.trim() });
+  }
+  try { await robot.start(broker); toast(`🤖 Robot started: ${m === 'paper' ? 'Paper, no real money' : 'Deriv ' + m + ' account ' + robot.account.accountId}`); }
+  catch (e) { toast('Robot could not start: ' + esc(e.message) + (/fetch|network|Failed/i.test(e.message) ? '. Deriv may block this page from calling its API. Run the robot on the Royal Trades server instead (see README).' : ''), 12000); }
+  $('#rbRealOk').value = '';
+  renderRobot();
+}
+$('#rbGo').addEventListener('click', async () => {
+  if (robot.running) { await robot.stop(false); toast('Robot stopped. Open positions keep their stop loss and take profit at the broker.'); renderRobot(); return; }
+  robotStart();
+});
+$('#rbCloseAll').addEventListener('click', async () => { if (!robot.running) { toast('Start the robot to manage positions.'); return; } await robot.closeAll('closed by you'); toast('Closing all robot positions.'); });
+$('#rbResume').addEventListener('click', () => robot.resume());
+$('#rbCopy').addEventListener('click', () => copyText(robot.journal.map((j) => `${new Date(j.t).toISOString()} ${j.type.toUpperCase()} ${j.msg}${j.pnl != null ? ' ' + j.pnl : ''}`).join('\n')));
+$('#v-robot').addEventListener('change', (e) => { if (e.target.id === 'rbRealOk') return; if (robot.running && e.target.id === 'rbMode') { toast('Stop the robot before changing its mode.'); $('#rbMode').value = robot.set.mode; return; } readRobotUI(); renderRobot(); });
+
+// "Log in with Deriv": OAuth 2.0 with PKCE (no token to copy). The App ID must be registered once at developers.deriv.com
+// as an OAuth app with the trade scope and this page's exact address as a redirect URL.
+const DERIV_APP_ID = '3533hZTM3TxsGSi8gV95I'; // Royal Trades Robot (OAuth app, trade scope, registered 24 Nov 2026). Not a secret.
+const DERIV_AUTH = 'https://auth.deriv.com/oauth2/auth', DERIV_TOKEN = 'https://auth.deriv.com/oauth2/token';
+const b64url = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const redirectUri = () => location.origin + location.pathname;
+async function derivLogin() {
+  readRobotUI();
+  const app = $('#rbApp').value.trim();
+  if (!app) { toast('Enter the Deriv App ID first. Register it once at developers.deriv.com as an OAuth app with the trade scope and this redirect URL: ' + esc(redirectUri()), 12000); return; }
+  if (!crypto || !crypto.subtle) { toast('This browser cannot do a secure Deriv login here. Open the site over https.'); return; }
+  const verifier = b64url(crypto.getRandomValues(new Uint8Array(48))), state = b64url(crypto.getRandomValues(new Uint8Array(16)));
+  const challenge = b64url(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)));
+  try { sessionStorage.setItem('twm114.oauth', JSON.stringify({ verifier, state, app, t: Date.now() })); } catch (e) {}
+  const q = new URLSearchParams({ response_type: 'code', client_id: app, redirect_uri: redirectUri(), scope: 'trade', state, code_challenge: challenge, code_challenge_method: 'S256' });
+  location.href = DERIV_AUTH + '?' + q.toString();
+}
+async function derivLoginReturn() {
+  const u = new URL(location.href), code = u.searchParams.get('code'), state = u.searchParams.get('state'), err = u.searchParams.get('error');
+  if (!code && !err) return;
+  let saved = null; try { saved = JSON.parse(sessionStorage.getItem('twm114.oauth') || 'null'); sessionStorage.removeItem('twm114.oauth'); } catch (e) {}
+  history.replaceState(null, '', u.pathname + '#robot'); // the code never stays in the address bar
+  if (err) { toast('Deriv login cancelled: ' + esc(u.searchParams.get('error_description') || err)); return; }
+  if (!saved || saved.state !== state) { toast('Deriv login did not match this browser session. Please try again.'); return; }
+  try {
+    const r = await fetch(DERIV_TOKEN, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ grant_type: 'authorization_code', client_id: saved.app, code, code_verifier: saved.verifier, redirect_uri: redirectUri() }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.access_token) throw new Error(j.error_description || j.error || 'HTTP ' + r.status);
+    tokStore.set(j.access_token, false); // session only: a fresh login per browser session
+    store.set('robot.app', saved.app); store.set('robot.oauthExp', Date.now() + (j.expires_in || 3600) * 1000);
+    toast('Logged in with Deriv. Choose Deriv demo and press START.'); loadRobotUI(); show('robot');
+  } catch (e) { toast('Deriv login failed: ' + esc(e.message) + '. Deriv may only allow this step from a server; paste an API token instead for now.', 12000); }
+}
+function renderLoginInfo() {
+  const exp = store.get('robot.oauthExp', 0), has = !!tokStore.get();
+  $('#rbLoginInfo').textContent = has && exp > Date.now() ? 'Logged in (until ' + new Date(exp).toLocaleDateString('en-ZA') + ')' : '';
+}
+$('#rbLogin').addEventListener('click', derivLogin);
+derivLoginReturn();
+function robotTicks() { if (!robot.running) return; for (const o of robot.state().open) { const sn = S.snaps[o.symbol]; if (sn && sn.price) robot.tick(o.symbol, sn.price); } }
+setInterval(robotTicks, 1500);
+
+fillChartSyms(); renderAlertBtn(); calcLot(); growth(); chall(); render(); loadRobotUI(); renderRobot();
+const start = (location.hash || '').slice(1); if (['signals', 'scanner', 'chart', 'perf', 'backtest', 'risk', 'robot', 'settings'].includes(start)) show(start);
+setInterval(renderStrip, 15000);
+boot();
+window.TWM = S; window.RoyalBot = robot; // for debugging in the console
+S.__hooks = { onSignal, onUpdate };
+window.addEventListener('unhandledrejection', (e) => { e.preventDefault(); console.warn('feed:', e.reason && (e.reason.message || e.reason.code || e.reason)); });
+})();
+</script>
+</body>
+</html>
