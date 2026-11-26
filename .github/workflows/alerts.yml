@@ -1,0 +1,35 @@
+# Royal Trades always-on phone alerts: runs every live version's engine on Deriv's public feed
+# and pushes new synthetics signals to ntfy. Needs the repository secret NTFY_TOPIC.
+# Each run lasts ~5h50m; the hourly schedule keeps one run queued so a new one starts as the last ends.
+name: Phone alerts
+on:
+  schedule:
+    - cron: '7 * * * *'
+  workflow_dispatch:
+concurrency:
+  group: phone-alerts
+  cancel-in-progress: false
+jobs:
+  alerts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 358
+    steps:
+      - name: Check the ntfy topic is set
+        id: topic
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+        run: |
+          if [ -z "$NTFY_TOPIC" ]; then echo "Add the NTFY_TOPIC secret (Settings > Secrets and variables > Actions) to start alerts."; echo "ok=false" >> "$GITHUB_OUTPUT"; else echo "ok=true" >> "$GITHUB_OUTPUT"; fi
+      - uses: actions/checkout@v4
+        if: steps.topic.outputs.ok == 'true'
+      - uses: actions/setup-node@v4
+        if: steps.topic.outputs.ok == 'true'
+        with:
+          node-version: '22'
+      - name: Run all versions and send alerts
+        if: steps.topic.outputs.ok == 'true'
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          RUN_MINUTES: '350'
+          MARKETS: syn
+        run: node server/alerts.js
