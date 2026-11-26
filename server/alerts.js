@@ -23,6 +23,7 @@ const VERSIONS = [
   { label: 'v1.14.1', file: 'server/engines/v1.14.1.js', mgmt: 'volume' },
   { label: 'v1.15.1', file: 'v115/moxie-engine.js', mgmt: 'volume', extra: { softStop: null } },
   { label: 'v1.16', file: 'v116/moxie-engine.js', mgmt: 'volume', extra: { softStop: null } },
+  { label: 'Sci', file: 'sci/moxie-engine.js', mgmt: null, name: 'TradesbySci' }, // Past Floor Retest test version
 ];
 
 function cfgFor(M, v) {
@@ -57,7 +58,7 @@ async function main() {
         if (!ALL && (sig.market || 'synthetic') !== 'synthetic') return;
         const d = sig.dec, f = (x) => M.fmt(x, d);
         const title = `[${v.label}] ${sig.dir} ${sig.name} ${sig.grade}`;
-        const body = `Version: Royal Trades ${v.label}\nEntry ${f(sig.entry)}  SL ${f(sig.sl)}  TP1 ${f(sig.tp1)}${sig.tp2 ? '  TP2 ' + f(sig.tp2) : ''}` +
+        const body = `Version: ${v.name || 'Royal Trades ' + v.label}\nEntry ${f(sig.entry)}  SL ${f(sig.sl)}  TP1 ${f(sig.tp1)}${sig.tp2 ? '  TP2 ' + f(sig.tp2) : ''}` +
           (sig.size > 0 && sig.size < 1 ? '\nHalf size (weaker pair)' : '') + (sig.unproven ? '\nRoyalty (no proven edge yet)' : '') + '\nEducational, not financial advice.';
         console.log(new Date().toISOString(), title, '|', body.split('\n')[1]);
         push(title, body, sig.dir === 'BUY' ? 'chart_with_upwards_trend' : 'chart_with_downwards_trend');
