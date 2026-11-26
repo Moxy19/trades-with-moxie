@@ -13,6 +13,23 @@ A live signal platform in the style of Aurum Signals, built from scratch around 
 | Robot | `engine/royal-robot.js` | Places signals automatically: Paper, or a Deriv demo/real account through Deriv's API (Multipliers). Runs in the terminal's Robot tab or on the server. |
 | MT5 robot | `mt5/RoyalTradesRobot.mq5` | Places signals on an MT5 account (Deriv MT5, Weltrade) with lot sizes, reading the server's `/api/robot/feed` |
 
+## TradesbySci (test version, `sci/`)
+
+A second strategy, kept in its own page so it can be tested head to head against Royal Trades v1.4.3: **https://moxy19.github.io/trades-with-moxie/sci/**. It has its own saved settings, signals and robot token (`twmsci.*`), so nothing in the main page changes.
+
+**Strategy: Past Floor Retest**, decoded from the *Synthetic Indices Trader* YouTube channel:
+
+1. **Bias** from swing structure on the 1D (4H until 30 daily bars are loaded): a low then a higher low (and no fresh lower high) is a buy wave; a high then a lower high is a sell wave. The next timeframe down must not be against it.
+2. **Opposing move**: the last leg against the bias (the fall into the higher low, or the rally into the lower high). If price has already run through it, the latest pullback leg on the 4H or 1H is used.
+3. **Past floors / ceilings** inside the opposing move, on the 1H and 15m: a swing low that held once and was later broken (ceilings: the mirror). Levels within 0.35× 1H ATR merge into one.
+4. **Signal** on a closed 5m bar: price has broken back through a floor, comes back to retest it, and the 5m candle closes away from it, beyond the 5m EMA9.
+5. **Levels**: SL beyond the previous floor (or the retest swing if that is too wide; max 2.5× 15m ATR). TP1 is the next floor ahead and must be at least 1R away, or the setup is skipped as a trade "into the next floor". TP2 is the floor after that.
+6. **Management** is the same 3-position plan and trail as Royal Trades, so the comparison measures the entries, not the exits. Trades get up to 24h before a time exit.
+
+**How to compare:** open the Sci page, go to **Backtest**, pick *Head to head*, and run it. Both engines replay the same Deriv history with the same conservative fills; the main engine uses the main page's saved settings from this browser. Sci takes far fewer trades, so compare R per trade and drawdown as well as total R, and re-run on several windows before trusting either. Live, both versions also send phone alerts (`[Sci] …` vs `[v1.4.3] …`) through `server/alerts.js`.
+
+Settings → *Strategies* can also run ORB+ beside Past Floor Retest in this page. Tests: `node test/sci.test.js`. Build: `node sci/build.js`.
+
 ## How a signal is made
 
 1. **Data:** 1m ticks stream from Deriv's public feed and from Weltrade's SyntX feed (bid prices). They are aggregated into 2m, 15m, 1H, 2H and 4H. Indicators use **closed bars only**, so nothing repaints.
