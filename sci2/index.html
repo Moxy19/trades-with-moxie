@@ -148,7 +148,7 @@ label.f input,label.f select{width:100%}
 </head>
 <body>
 <header class="top"><div class="wrap row">
-  <div class="logo"><div class="orb"></div><div>🔬 TradesbySci v2<small>KPOI + exhaustion terminal · sci-2.0 test · <a href="../sci/" style="color:inherit">open sci-1.0</a> · <a href="../" style="color:inherit">open Royal Trades v1.4.3</a> · <a href="../v116/" style="color:inherit">v1.16 test</a> · <a href="../v115/" style="color:inherit">v1.15.1</a></small></div></div>
+  <div class="logo"><div class="orb"></div><div>🔬 TradesbySci v2<small>KPOI + exhaustion terminal · sci-2.0.1 test · <a href="../sci/" style="color:inherit">open sci-1.0</a> · <a href="../" style="color:inherit">open Royal Trades v1.4.3</a> · <a href="../v116/" style="color:inherit">v1.16 test</a> · <a href="../v115/" style="color:inherit">v1.15.1</a></small></div></div>
   <nav class="tabs" id="tabs">
     <button data-v="signals" class="on">Live signals</button>
     <button data-v="scanner">Scanner</button>
@@ -423,7 +423,7 @@ label.f input,label.f select{width:100%}
       dailyFilter: true,      // skip when today's daily candle is strongly against the trade or has a long wick against it
       minScore: 55,
       maxHoldMin: 1440,
-      pendingExpiryMin: 120,  // limit at the 15m order block expires after 2h
+      pendingExpiryMin: 240,  // limit at the 15m order block expires after 4h
     },
     orBlock: 3600,          // session block in seconds (3600 = new opening range every hour)
     orMinutes: 15,          // opening range length
@@ -1141,8 +1141,9 @@ label.f input,label.f select{width:100%}
       const strTf = hasD ? '1D' : '4H';
       let dir = null;
       if (mom.dir !== 'FLAT' && str !== 'FLAT' && mom.dir !== str) return { why: 'Momentum (' + mom.dir.toLowerCase() + ') and ' + strTf + ' structure (' + str.toLowerCase() + ') disagree — no trade' };
-      const d = mom.dir !== 'FLAT' ? mom.dir : str;
-      if (d === 'FLAT') return { why: 'No clear direction (momentum and ' + strTf + ' structure flat)' };
+      let d = mom.dir !== 'FLAT' ? mom.dir : str;
+      if (d === 'FLAT' && hasD) { const s4 = this._structure(S[G.H4]); if (s4 !== 'FLAT') d = s4; } // daily undecided: 4H structure decides
+      if (d === 'FLAT') return { why: 'No clear direction (momentum, ' + strTf + ' and 4H structure flat)' };
       if (C.needBoth && (mom.dir === 'FLAT' || str === 'FLAT')) return { why: 'Need both momentum and structure (strict mode)' };
       dir = d === 'UP' ? 'BUY' : 'SELL';
       const sgn = dirSign(dir), price = st.price;
@@ -1157,7 +1158,7 @@ label.f input,label.f select{width:100%}
       if (eq != null) zones = zones.filter((z) => (sgn > 0 ? (z.top + z.bot) / 2 <= eq : (z.top + z.bot) / 2 >= eq)); // discount / premium
       const zs = (st.sci && st.sci.zs) || {};
       zones = zones.filter((z) => z.fresh || (zs[z.g + ':' + z.t] && zs[z.g + ':' + z.t].state === 'active'));
-      zones.sort((a, b) => b.t - a.t);
+      zones.sort((a, b) => Math.abs(price - (sgn > 0 ? a.top : a.bot)) - Math.abs(price - (sgn > 0 ? b.top : b.bot))); // nearest qualifying zones first
       zones = zones.slice(0, C.maxZones);
       if (!zones.length) return { dir, mom, str, strTf, why: 'No fresh ' + (sgn > 0 ? 'demand' : 'supply') + ' order block in ' + (sgn > 0 ? 'discount' : 'premium') + ' yet' };
       // line of sensitivity: H4 wicks reacting near the zone edge
@@ -1172,7 +1173,7 @@ label.f input,label.f select{width:100%}
     // obstacles ahead of an entry: opposing close-based swings and opposing order blocks on 1H/4H
     _obstacles(st, dir, entry) {
       const sgn = dirSign(dir), out = [];
-      for (const g of [G.H1, G.H4]) {
+      for (const g of [G.H4]) { // 1H swings are too dense to count as obstacles (real-data check, 27 Nov 2026)
         const p = this._cpiv(st.series[g], 250, 2);
         for (const x of sgn > 0 ? p.hi : p.lo) if (sgn * (x.p - entry) > 0) out.push(x.p);
       }
@@ -1229,7 +1230,7 @@ label.f input,label.f select{width:100%}
           let j = N - 1; while (j > 0 && sgn * (b[j].c - b[j].o) >= 0) j--;
           const ob = b[j];
           trig = { kind: 'Order flow', level: lvl, entryType: 'LIMIT', entry: sgn > 0 ? Math.max(ob.o, ob.c) : Math.min(ob.o, ob.c), slRef: sgn > 0 ? ob.l : ob.h };
-          if (sgn * (bar.c - trig.entry) < 0.15 * atr) { trig.entryType = 'MARKET'; trig.entry = bar.c; }
+          if (sgn * (bar.c - trig.entry) < 0.35 * atr) { trig.entryType = 'MARKET'; trig.entry = bar.c; }
         }
       }
       // channel: close through the counter-trend line drawn through the last two counter-swings (descending highs for a buy)
@@ -1324,7 +1325,7 @@ label.f input,label.f select{width:100%}
       L.push(`Location: price came into a fresh ${z.tf} ${buy ? 'demand' : 'supply'} order block (${fmt(z.bot, d)}–${fmt(z.top, d)}), the last ${buy ? 'bearish' : 'bullish'} candle before an impulsive move that broke structure, in ${buy ? 'discount' : 'premium'}.`);
       L.push(`Wait: no entry on arrival${z.fast ? ' (it arrived fast, so it waited longer for the push to run out)' : ''}${z.sweeps ? `; ${z.sweeps} spike${z.sweeps > 1 ? 's' : ''} through the zone closed back inside (liquidity taken)` : ''}.`);
       L.push(z.trigger === 'Order flow'
-        ? `Trigger: a 15m candle closed ${buy ? 'above' : 'below'} the counter-move's last swing (${fmt(z.level, d)}). ${sig.entryType === 'LIMIT' ? `Entry is a limit at the 15m order block that caused the break, ${fmt(sig.entry, d)} (cancelled if not filled within ${sig.pendingExpiryMin} min).` : `Entry at market ${fmt(sig.entry, d)}.`}`
+        ? `Trigger: a 15m candle closed ${buy ? 'above' : 'below'} the counter-move's last swing (${fmt(z.level, d)}). ${sig.entryType === 'LIMIT' ? `Entry is a limit at the 15m order block that caused the break, ${fmt(sig.entry, d)} (cancelled if not filled within ${Math.round(sig.pendingExpiryMin / 60)}h).` : `Entry at market ${fmt(sig.entry, d)}.`}`
         : `Trigger: a 15m candle closed through the counter-trend line (${fmt(z.level, d)}). Entry at market ${fmt(sig.entry, d)}; the stop uses the opposite channel line at this candle.`);
       L.push(`SL ${fmt(sig.sl, d)}. TP1 ${fmt(sig.tp1, d)} (${sig.r1.toFixed(2)}R) is the next obstacle in the way; TP2 ${fmt(sig.tp2, d)} (${sig.r2.toFixed(2)}R) the one after.`);
       if (sig.unproven) L.push('Royalty: this market has no proven edge in backtests yet. Watch it, or trade the smallest size only.');
@@ -1626,7 +1627,7 @@ label.f input,label.f select{width:100%}
     W('GainX-400'), W('GainX-600'), W('PainX-400'), W('PainX-600'),
   ];
 
-  return { Engine, Series, DerivFeed, BridgeFeed, aggCandles, startLive, backtest, stats, trendOf, efficiency, pivots, fmt, toBar, decimalsOf, G, TF_NAME, DEFAULTS, DEFAULT_SYMBOLS, WELTRADE_SYMBOLS, version: 'sci-2.0', product: 'TradesbySci v2' };
+  return { Engine, Series, DerivFeed, BridgeFeed, aggCandles, startLive, backtest, stats, trendOf, efficiency, pivots, fmt, toBar, decimalsOf, G, TF_NAME, DEFAULTS, DEFAULT_SYMBOLS, WELTRADE_SYMBOLS, version: 'sci-2.0.1', product: 'TradesbySci v2' };
 });
 
 </script>
