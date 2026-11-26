@@ -64,6 +64,7 @@ async function main() {
       },
     });
     const feed = new M.DerivFeed({ onStatus: (s) => console.log(v.label, 'feed:', s) });
+    try { await feed.connect(); } catch (e) { console.log(v.label, 'connect failed, will retry:', e.message); }
     let ready = 0;
     M.startLive(engine, { deriv: feed }, symbols, {
       concurrency: 2, log: (m) => { if (!/^ready /.test(m)) console.log(v.label, m); },
