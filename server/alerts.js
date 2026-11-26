@@ -24,6 +24,7 @@ const VERSIONS = [
   { label: 'v1.15.1', file: 'v115/moxie-engine.js', mgmt: 'volume', extra: { softStop: null } },
   { label: 'v1.16', file: 'v116/moxie-engine.js', mgmt: 'volume', extra: { softStop: null } },
   { label: 'Sci', file: 'sci/moxie-engine.js', mgmt: null, name: 'TradesbySci' }, // Past Floor Retest test version
+  { label: 'Sci2', file: 'sci2/moxie-engine.js', mgmt: null, name: 'TradesbySci v2' }, // KPOI + exhaustion (Master Rulebook)
 ];
 
 function cfgFor(M, v) {
