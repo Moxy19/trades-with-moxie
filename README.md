@@ -13,6 +13,20 @@ A live signal platform in the style of Aurum Signals, built from scratch around 
 | Robot | `engine/royal-robot.js` | Places signals automatically: Paper, or a Deriv demo/real account through Deriv's API (Multipliers). Runs in the terminal's Robot tab or on the server. |
 | MT5 robot | `mt5/RoyalTradesRobot.mq5` | Places signals on an MT5 account (Deriv MT5, Weltrade) with lot sizes, reading the server's `/api/robot/feed` |
 
+## TradesbySci v2 (test version, `sci2/`)
+
+**https://moxy19.github.io/trades-with-moxie/sci2/** — the full *Master Rulebook* decoded from all 52 strategy lessons of the Synthetic Indices Trader channel, in its own page and storage (`twmsci2.*`).
+
+1. **Direction**: candle momentum (current monthly candle + the last 3 weekly closes, built from daily bars) and the 1D structure judged on closes (line chart). If they disagree: no trade.
+2. **Location (KPOI)**: the most recent *fresh* 4H/1H order block in the trend direction: the last opposite candle before an impulsive move (≥2 candles, ≥1.5× ATR travel, one body ≥0.8× ATR) that broke a close-based swing. Buys only from discount, sells only from premium (H4 swing range).
+3. **Wait**: never on arrival. At least 2 x 15m candles inside the zone (6 after a fast arrival); a 15m close 0.3× ATR through the far side kills the zone; spikes that close back inside count as liquidity sweeps.
+4. **Trigger** on a closed 15m candle: *order flow* (close through the counter-move's last swing → limit at the 15m order block that caused it, 2h expiry) or *channel break* (close through the counter-trend line → market, vertical-line stop on the opposite channel line).
+5. **Levels**: SL beyond the order block / channel (+0.2× ATR, max 3× 15m ATR, else just beyond the zone). TP1 = next obstacle (opposing 1H/4H close-swing or fresh opposing order block, ≥1R), TP2 = the one after.
+6. **Filters**: H4 consolidation, today's daily candle against the trade, loss guard. Score from the rulebook confluence (fresh zone, impulse, sweep, line of sensitivity, discount/premium, slow arrival, room).
+7. **Management**: same 3-position plan as Royal Trades.
+
+**Backtest → All three** replays the *same* downloaded history (7, 14 or 30 days) through v2, sci-1.0 and Royal Trades v1.4.3. v2 trades rarely by design, so use 14–30 days. Phone alerts arrive as `[Sci2] …`. Tests: `node test/sci2.test.js`. Build: `node sci2/build.js`.
+
 ## TradesbySci (test version, `sci/`)
 
 A second strategy, kept in its own page so it can be tested head to head against Royal Trades v1.4.3: **https://moxy19.github.io/trades-with-moxie/sci/**. It has its own saved settings, signals and robot token (`twmsci.*`), so nothing in the main page changes.
