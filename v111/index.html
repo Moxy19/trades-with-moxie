@@ -1759,7 +1759,7 @@ const phone = {
   send(title, body, tags) { const o = phone.get(); if (!o.topic || o.mode === 'off') return Promise.resolve(false);
     return fetch('https://ntfy.sh/' + encodeURIComponent(o.topic), { method: 'POST', body, headers: { Title: title.replace(/[^\x20-\x7e]/g, ''), Tags: tags || 'crown', Priority: '4' } }).then((r) => r.ok).catch(() => false); },
   signal(sig) { const o = phone.get(); if (o.mode === 'off') return; if (o.mode === 'syn' && (sig.market || 'synthetic') !== 'synthetic') return;
-    phone.send(`${sig.dir} ${sig.name} ${sig.grade} - ${PHONE_LABEL}`, `Entry ${fmt(sig.entry, sig.dec)}  SL ${fmt(sig.sl, sig.dec)}  TP1 ${fmt(sig.tp1, sig.dec)}${sig.tp2 ? '  TP2 ' + fmt(sig.tp2, sig.dec) : ''}${sig.size > 0 && sig.size < 1 ? '\nHalf size (weaker pair)' : ''}\nEducational, not financial advice.`, sig.dir === 'BUY' ? 'chart_with_upwards_trend' : 'chart_with_downwards_trend'); },
+    phone.send(`[${PHONE_LABEL}] ${sig.dir} ${sig.name} ${sig.grade}`, `Version: Royal Trades ${PHONE_LABEL}\nEntry ${fmt(sig.entry, sig.dec)}  SL ${fmt(sig.sl, sig.dec)}  TP1 ${fmt(sig.tp1, sig.dec)}${sig.tp2 ? '  TP2 ' + fmt(sig.tp2, sig.dec) : ''}${sig.size > 0 && sig.size < 1 ? '\nHalf size (weaker pair)' : ''}\nEducational, not financial advice.`, sig.dir === 'BUY' ? 'chart_with_upwards_trend' : 'chart_with_downwards_trend'); },
 };
 function notify(title, body) {
   if (!S.alerts || typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
@@ -1979,7 +1979,7 @@ $('#watchBtn').addEventListener('click', (e) => { S.f.watch = !S.f.watch; e.targ
   if (t) { t.value = o.topic; m.value = o.mode;
     t.onchange = () => { const v = t.value.trim().replace(/[^A-Za-z0-9_-]/g, ''); if (v.length < 8) { toast('Use at least 8 letters or digits for the topic.'); t.value = phone.get().topic; return; } phone.set(Object.assign(phone.get(), { topic: v })); t.value = v; toast('Phone topic saved.', 2500); };
     m.onchange = () => phone.set(Object.assign(phone.get(), { mode: m.value }));
-    b.onclick = async () => { const ok = await phone.send('Royal Trades test - ' + PHONE_LABEL, 'Phone alerts are working. New ' + (phone.get().mode === 'all' ? '' : 'synthetics ') + 'signals will show here.', 'white_check_mark'); toast(ok ? 'Test sent to topic ' + esc(phone.get().topic) + '.' : 'Could not reach ntfy.sh. Check the internet connection.', 4000); }; } }
+    b.onclick = async () => { const ok = await phone.send('[' + PHONE_LABEL + '] Royal Trades test', 'Phone alerts are working. New ' + (phone.get().mode === 'all' ? '' : 'synthetics ') + 'signals will show here.', 'white_check_mark'); toast(ok ? 'Test sent to topic ' + esc(phone.get().topic) + '.' : 'Could not reach ntfy.sh. Check the internet connection.', 4000); }; } }
 function renderAlertBtn() { $('#alertBtn').textContent = (S.sound ? '🔔' : '🔕') + (S.alerts ? ' Alerts on' : ' Alerts'); }
 $('#alertBtn').addEventListener('click', async () => {
   beep(); // unlock audio on first click
