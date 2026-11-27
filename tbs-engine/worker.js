@@ -14,9 +14,9 @@ const APP_ID    = process.env.DERIV_APP_ID || "1089";
 const MIN_SCORE = Number(process.env.TBS_MIN_SCORE || "55");
 const CROSS_MODE = (process.env.TBS_CROSS_MODE || "1") !== "0"; // signal on every confirmed EMA cross
 const POLL_MS   = Number(process.env.POLL_MS || "20000");
-const SUPA_URL  = process.env.SUPABASE_URL;
+const SUPA_URL  = process.env.SUPABASE_URL || "https://tefnlckonillljlttizy.supabase.co";
 const SVC_KEY   = process.env.SUPABASE_SERVICE_ROLE_KEY;
-if (!SUPA_URL || !SVC_KEY) { console.error("Missing SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY"); process.exit(1); }
+if (!SVC_KEY) { console.error("Missing SUPABASE_SERVICE_ROLE_KEY (set it in the repo Actions settings)"); process.exit(1); }
 
 const sb = createClient(SUPA_URL, SVC_KEY, { auth: { persistSession: false } });
 
