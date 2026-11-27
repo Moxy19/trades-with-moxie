@@ -1,0 +1,37 @@
+name: TradesbySci engine
+
+# Runs the SMC signal engine on GitHub's servers and writes live signals into
+# Supabase. Scheduled every 5 min; each run scans ~every 20s for ~4.8 min so
+# coverage is effectively continuous. Free & unlimited on this public repo.
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: tbs-engine
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    defaults:
+      run:
+        working-directory: tbs-engine
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm install --omit=dev
+      - run: node worker.js
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          DERIV_APP_ID: ${{ vars.DERIV_APP_ID }}
+          DERIV_SYMBOLS: ${{ vars.DERIV_SYMBOLS }}
+          TBS_MIN_SCORE: ${{ vars.TBS_MIN_SCORE }}
+          TBS_CROSS_MODE: ${{ vars.TBS_CROSS_MODE }}
+          POLL_MS: "20000"
+          RUN_SECONDS: "285"

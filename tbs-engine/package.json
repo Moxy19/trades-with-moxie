@@ -1,0 +1,16 @@
+{
+  "name": "tradesbysci-engine",
+  "version": "1.0.0",
+  "description": "TradesbySci SMC — Deriv signal engine (writes live_signals to Supabase)",
+  "type": "module",
+  "main": "worker.js",
+  "scripts": {
+    "start": "node worker.js"
+  },
+  "engines": { "node": ">=18" },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "dotenv": "^16.4.5",
+    "ws": "^8.18.0"
+  }
+}
