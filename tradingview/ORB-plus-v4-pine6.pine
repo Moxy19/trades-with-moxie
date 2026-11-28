@@ -392,8 +392,8 @@ fmtT(int t) => na(t) ? "" : str.format_time(t, "HH:mm", tzone)
 
 drawSig(int dir, string txt, color col, float stop) =>
     isAl = aligned(dir)
-    t = txt + (isAl ? "\n★ ALIGNED 4H·2H·1H" : "")
-    label.new(bar_index, dir > 0 ? low : high, t, style=dir > 0 ? label.style_label_up : label.style_label_down, color=isAl ? cAl : col, textcolor=color.white, size=isAl and szL != size.normal ? size.normal : szL)
+    t = txt + (isAl ? " ★" : "")
+    label.new(bar_index, dir > 0 ? low : high, t, style=dir > 0 ? label.style_label_up : label.style_label_down, color=col, textcolor=isAl ? cAl == col ? color.white : color.yellow : color.white, size=szL, tooltip=isAl ? "★ ALIGNED: 4H, 2H and 1H all agree" : "4H/2H/1H not all aligned")
     if showSL and not na(stop)
         line.new(bar_index, stop, bar_index + 6, stop, color=col, style=line.style_dashed, width=1)
 
@@ -405,7 +405,7 @@ blocked(int dir) =>
 okStart = evStart != 0 and htfOK(evStart)
 if evStart != 0
     if okStart
-        drawSig(evStart, (evStart > 0 ? "BUY TREND START" : "SELL TREND START") + "\nEntry 1", evStart > 0 ? cBuy : cSell, evStop)
+        drawSig(evStart, (evStart > 0 ? "BUY TREND START" : "SELL TREND START") + " · 1", evStart > 0 ? cBuy : cSell, evStop)
     else
         blocked(evStart)
 
@@ -413,7 +413,7 @@ if evStart != 0
 okRe = evRe != 0 and htfOK(evRe) and legN - 1 <= maxAdds
 if evRe != 0
     if okRe
-        drawSig(evRe, (evRe > 0 ? "RE-ENTRY BUY" : "RE-ENTRY SELL") + "\nAdd " + str.tostring(legN), evRe > 0 ? cReB : cReS, evStop)
+        drawSig(evRe, (evRe > 0 ? "RE-ENTRY BUY" : "RE-ENTRY SELL") + " · Add " + str.tostring(legN), evRe > 0 ? cReB : cReS, evStop)
     else if legN - 1 <= maxAdds
         blocked(evRe)
 
@@ -467,7 +467,7 @@ if orbLbl and conf and chartSec <= 7200
 
 // alignment change marker
 alDir = aligned(1) ? 1 : aligned(-1) ? -1 : 0
-alNew = conf and alDir != 0 and alDir != alDir[1]
+alNew = conf and alDir != 0 and alDir != alDir[1] and chartSec < 3600
 
 // plots
 plot(showTL ? tl : na, "Trend line", lineDir > 0 ? cBuy : lineDir < 0 ? cSell : cNeu, 2)
@@ -587,3 +587,13 @@ alertcondition(conf and u120, "2H bias BUY",   "ORB+ 2H bias BUY on {{ticker}}")
 alertcondition(conf and d120, "2H bias SELL",  "ORB+ 2H bias SELL on {{ticker}}")
 alertcondition(conf and u240, "4H bias BUY",   "ORB+ 4H bias BUY on {{ticker}}")
 alertcondition(conf and d240, "4H bias SELL",  "ORB+ 4H bias SELL on {{ticker}}")
+
+// data-window values (for checking signals; not drawn)
+plot(evStart, "sig: trend start", display=display.data_window)
+plot(evRe != 0 ? evRe * legN : 0, "sig: re-entry", display=display.data_window)
+plot(spkDir, "sig: spike", display=display.data_window)
+plot(okStart or okRe or okSpk ? 1 : 0, "sig: shown", display=display.data_window)
+plot(evInv, "sig: invalid", display=display.data_window)
+plot(trend, "state: trend", display=display.data_window)
+plot(evStop, "sig: stop", display=display.data_window)
+plot(bias60, "state: 1H bias", display=display.data_window)
