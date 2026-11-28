@@ -36,10 +36,10 @@ orTfLo   = input.timeframe("1", "Opening candle for 2m–5m periods", group=grpO
 wickBrk  = input.bool(true, "A wick through the range counts as a break (off = needs a close)", group=grpOR)
 candleB  = input.bool(true, "O'clock candle colour gives an early bias before any break", group=grpOR)
 draw60   = input.bool(true, "Draw 1H range", inline="d", group=grpOR)
-draw120  = input.bool(true, "Draw 2H range", inline="d", group=grpOR)
-draw240  = input.bool(true, "Draw 4H range", inline="d", group=grpOR)
-markOcl  = input.bool(true, "Highlight the o'clock 5m candle (charts 5m and lower)", group=grpOR)
-orbLbl   = input.bool(true, "Label 1H / 2H / 4H opening-range breaks", group=grpOR)
+draw120  = input.bool(false, "Draw 2H range", inline="d", group=grpOR)
+draw240  = input.bool(false, "Draw 4H range", inline="d", group=grpOR)
+markOcl  = input.bool(false, "Highlight the o'clock 5m candle (charts 5m and lower)", group=grpOR)
+orbLbl   = input.bool(false, "Label 1H / 2H / 4H opening-range breaks", group=grpOR)
 
 grpWt = "Bias weights (higher timeframe = more say)"
 w1   = input.int(1, "1m",  minval=0, inline="w1", group=grpWt)
@@ -78,19 +78,21 @@ useEmaT = input.bool(true, "A touch of the fast / slow EMA counts as a pullback"
 useRet  = input.bool(true, "A retest of the broken level counts as a pullback", group=grpPB)
 maxAdds = input.int(5, "Maximum add-ons per leg", minval=0, maxval=50, group=grpPB)
 stopBuf = input.float(0.1, "Stop buffer past the swing (× ATR)", minval=0, step=0.05, group=grpPB)
-showSL  = input.bool(true, "Draw suggested stops", group=grpPB)
+showSL  = input.bool(false, "Draw suggested stops (always in the B/S tooltip)", group=grpPB)
 
 grpF     = "Filters"
 useHTF   = input.bool(true, "Golden rule: block signals against the 1H bias (charts below 1H)", group=grpF)
 biasSrc  = input.string("ORB (o'clock candle)", "1H / 2H / 4H bias comes from", options=["ORB (o'clock candle)", "Trend line", "ORB break, else trend line"], group=grpF)
 fltSpk   = input.bool(true, "Golden rule also applies to spikes", group=grpF)
-showBlk  = input.bool(true, "Show blocked signals as small grey dots", group=grpF)
+showBlk  = input.bool(false, "Show blocked signals as small grey dots", group=grpF)
 
 grpD   = "Display"
 showTb = input.bool(true, "Dashboard", group=grpD)
 tbPos  = input.string("Top right", "Dashboard position", options=["Top right", "Bottom right", "Top left", "Bottom left"], group=grpD)
 tzone  = input.string("Africa/Johannesburg", "Time zone for label times", group=grpD)
-showTL = input.bool(true, "Plot trend line", group=grpD)
+showTL = input.bool(false, "Plot trend line", group=grpD)
+showInv = input.bool(false, "Mark TREND INVALID with a small ×", group=grpD)
+showAlB = input.bool(true, "Aligned (4H·2H·1H) re-entries and spikes get the full-size B / S", group=grpD)
 showE  = input.bool(false, "Plot fast / slow EMAs", group=grpD)
 show6  = input.bool(true, "Plot the 6 EMAs (replaces the separate 6 EMA indicator)", group=grpD)
 e6a = input.int(9,   "6 EMA lengths", inline="e6", group=grpD)
@@ -102,11 +104,11 @@ e6f = input.int(200, "", inline="e6", group=grpD)
 lblSz  = input.string("small", "Label size", options=["tiny", "small", "normal"], group=grpD)
 
 grpC    = "Colours"
-cBuy    = input.color(#00c853, "Buy", inline="c1", group=grpC)
-cSell   = input.color(#ff1744, "Sell", inline="c1", group=grpC)
+cBuy    = input.color(#4caf50, "Buy", inline="c1", group=grpC)
+cSell   = input.color(#f44336, "Sell", inline="c1", group=grpC)
 cNeu    = input.color(#9e9e9e, "Neutral", inline="c1", group=grpC)
-cReB    = input.color(#2e7d32, "Re-entry buy", inline="c2", group=grpC)
-cReS    = input.color(#c62828, "Re-entry sell", inline="c2", group=grpC)
+cReB    = input.color(color.new(#4caf50, 35), "Re-entry / spike buy", inline="c2", group=grpC)
+cReS    = input.color(color.new(#f44336, 35), "Re-entry / spike sell", inline="c2", group=grpC)
 cSpB    = input.color(#00b8d4, "Spike buy", inline="c3", group=grpC)
 cSpS    = input.color(#ff6d00, "Spike sell", inline="c3", group=grpC)
 cInv    = input.color(#ffd600, "Trend invalid", inline="c4", group=grpC)
@@ -387,50 +389,42 @@ if conf
                     impHi   := pbExt
                     pbArmed := false
 
-// ═════════════════════════ Drawing
+// ═════════════════════════ Drawing — clean look: one small B or S per candle, details in the tooltip
 fmtT(int t) => na(t) ? "" : str.format_time(t, "HH:mm", tzone)
 
-drawSig(int dir, string txt, color col, float stop) =>
-    isAl = aligned(dir)
-    t = txt + (isAl ? " ★" : "")
-    label.new(bar_index, dir > 0 ? low : high, t, style=dir > 0 ? label.style_label_up : label.style_label_down, color=col, textcolor=isAl ? cAl == col ? color.white : color.yellow : color.white, size=szL, tooltip=isAl ? "★ ALIGNED: 4H, 2H and 1H all agree" : "4H/2H/1H not all aligned")
-    if showSL and not na(stop)
-        line.new(bar_index, stop, bar_index + 6, stop, color=col, style=line.style_dashed, width=1)
-
-blocked(int dir) =>
-    if showBlk
-        label.new(bar_index, dir > 0 ? low : high, "", style=label.style_circle, color=color.new(cNeu, 30), size=size.tiny, tooltip="Blocked by the 1H bias (golden rule)")
-
-// trend start
 okStart = evStart != 0 and htfOK(evStart)
-if evStart != 0
+okRe    = evRe != 0 and htfOK(evRe) and legN - 1 <= maxAdds
+spkDir  = conf ? (spkUp ? 1 : spkDn ? -1 : 0) : 0
+okSpk   = spkDir != 0 and (not fltSpk or htfOK(spkDir))
+spkT    = startTime(spkDir)
+
+int bDir = okStart ? evStart : okRe ? evRe : okSpk ? spkDir : 0
+if bDir != 0
+    string tip = ""
     if okStart
-        drawSig(evStart, (evStart > 0 ? "BUY TREND START" : "SELL TREND START") + " · 1", evStart > 0 ? cBuy : cSell, evStop)
-    else
-        blocked(evStart)
-
-// re-entries
-okRe = evRe != 0 and htfOK(evRe) and legN - 1 <= maxAdds
-if evRe != 0
+        tip += (evStart > 0 ? "BUY TREND START" : "SELL TREND START") + " · Entry 1\n"
     if okRe
-        drawSig(evRe, (evRe > 0 ? "RE-ENTRY BUY" : "RE-ENTRY SELL") + " · Add " + str.tostring(legN), evRe > 0 ? cReB : cReS, evStop)
-    else if legN - 1 <= maxAdds
-        blocked(evRe)
-
-// invalidation
-if evInv != 0
-    label.new(bar_index, evInv > 0 ? high : low, "TREND INVALID", style=evInv > 0 ? label.style_label_down : label.style_label_up, color=cInv, textcolor=color.black, size=size.tiny)
-
-// spikes
-spkDir = conf ? (spkUp ? 1 : spkDn ? -1 : 0) : 0
-okSpk = spkDir != 0 and (not fltSpk or htfOK(spkDir))
-if spkDir != 0
+        tip += (evRe > 0 ? "RE-ENTRY BUY" : "RE-ENTRY SELL") + " · Add " + str.tostring(legN) + "\n"
     if okSpk
-        st = startTime(spkDir)
-        txt = (spkDir > 0 ? "SPIKE BUY" : "SPIKE SELL") + (na(st) ? "" : "\nfrom " + fmtT(st))
-        label.new(bar_index, spkDir > 0 ? low : high, txt, style=spkDir > 0 ? label.style_label_up : label.style_label_down, color=spkDir > 0 ? cSpB : cSpS, textcolor=color.white, size=size.tiny)
-    else
-        blocked(spkDir)
+        tip += (spkDir > 0 ? "SPIKE BUY" : "SPIKE SELL") + (na(spkT) ? "" : " (move started " + fmtT(spkT) + ")") + "\n"
+    isAl = aligned(bDir)
+    tip += isAl ? "★ ALIGNED: 4H, 2H and 1H agree" : "4H / 2H / 1H not all aligned"
+    float stp = okStart or okRe ? evStop : na
+    if not na(stp)
+        tip += "\nSuggested stop " + str.tostring(stp, format.mintick)
+    main = okStart or (isAl and showAlB)
+    label.new(bar_index, bDir > 0 ? low : high, bDir > 0 ? "B" : "S", style=bDir > 0 ? label.style_label_up : label.style_label_down, color=bDir > 0 ? (main ? cBuy : cReB) : (main ? cSell : cReS), textcolor=color.white, size=main ? szL : size.tiny, tooltip=tip)
+    if showSL and not na(stp)
+        line.new(bar_index, stp, bar_index + 6, stp, color=bDir > 0 ? cBuy : cSell, style=line.style_dashed, width=1)
+
+// blocked by the golden rule (optional)
+if showBlk and ((evStart != 0 and not okStart) or (evRe != 0 and not okRe and legN - 1 <= maxAdds) or (spkDir != 0 and not okSpk))
+    bd = evStart != 0 ? evStart : evRe != 0 ? evRe : spkDir
+    label.new(bar_index, bd > 0 ? low : high, "", style=label.style_circle, color=color.new(cNeu, 40), size=size.tiny, tooltip="Signal blocked: against the 1H bias (golden rule)")
+
+// trend invalid (optional)
+if showInv and evInv != 0
+    label.new(bar_index, evInv > 0 ? high : low, "×", style=label.style_none, textcolor=cInv, size=size.small, tooltip="TREND INVALID: last swing broken")
 
 // opening-range breaks of 1H / 2H / 4H (when a range is first broken)
 brkUp(int b) => b == 2 and b[1] != 2
@@ -480,16 +474,14 @@ plot(show6 ? ta.ema(close, e6f) : na, "EMA 6", #2962ff, 1)
 plot(showE ? eF : na, "Fast EMA", color.new(cBuy, 50), 1)
 plot(showE ? eS : na, "Slow EMA", color.new(cSell, 50), 1)
 newP(int p) => p != p[1]
-plot(draw60  and on60  and not newP(p60)  ? h60  : na, "1H range high", c60,  1, plot.style_linebr)
-plot(draw60  and on60  and not newP(p60)  ? l60  : na, "1H range low",  c60,  1, plot.style_linebr)
-plot(draw120 and on120 and not newP(p120) ? h120 : na, "2H range high", c120, 2, plot.style_linebr)
-plot(draw120 and on120 and not newP(p120) ? l120 : na, "2H range low",  c120, 2, plot.style_linebr)
-plot(draw240 and on240 and not newP(p240) ? h240 : na, "4H range high", c240, 2, plot.style_linebr)
-plot(draw240 and on240 and not newP(p240) ? l240 : na, "4H range low",  c240, 2, plot.style_linebr)
+plot(draw60 and on60 and not newP(p60) ? h60 : na, "1H range high", color.new(#4caf50, 55), 1, plot.style_circles)
+plot(draw60 and on60 and not newP(p60) ? l60 : na, "1H range low", color.new(#f44336, 55), 1, plot.style_circles)
+plot(draw120 and on120 and not newP(p120) ? h120 : na, "2H range high", color.new(#4caf50, 55), 1, plot.style_circles)
+plot(draw120 and on120 and not newP(p120) ? l120 : na, "2H range low", color.new(#f44336, 55), 1, plot.style_circles)
+plot(draw240 and on240 and not newP(p240) ? h240 : na, "4H range high", color.new(#4caf50, 55), 1, plot.style_circles)
+plot(draw240 and on240 and not newP(p240) ? l240 : na, "4H range low", color.new(#f44336, 55), 1, plot.style_circles)
 isOcl = chartSec <= 300 and (time % 3600000) < 300000
 bgcolor(markOcl and isOcl ? cOcl : na, title="O'clock candle")
-plotshape(alNew and alDir > 0, "Aligned buy", shape.triangleup, location.belowbar, cAl, size=size.tiny, text="ALIGNED")
-plotshape(alNew and alDir < 0, "Aligned sell", shape.triangledown, location.abovebar, cAl, size=size.tiny, text="ALIGNED")
 
 // ═════════════════════════ Dashboard
 fmtLeft(int ms) =>
@@ -509,19 +501,19 @@ var table tb = table.new(tbP, 4, 14, bgcolor=cTbBg, border_width=1, border_color
 
 row(int r, string name, bool on, int b, int t, int ps, int sec) =>
     if on
-        table.cell(tb, 0, r, name, text_color=color.white, text_size=size.small)
-        table.cell(tb, 1, r, biasTxt(b), bgcolor=biasCol(b), text_color=color.white, text_size=size.small)
-        table.cell(tb, 2, r, trTxt(t), text_color=trCol(t), text_size=size.small)
-        table.cell(tb, 3, r, ps > 0 ? fmtLeft(ps + sec * 1000 - timenow) : "–", text_color=color.silver, text_size=size.small)
+        table.cell(tb, 0, r, name, text_color=color.white, text_size=size.tiny)
+        table.cell(tb, 1, r, biasTxt(b), bgcolor=biasCol(b), text_color=color.white, text_size=size.tiny)
+        table.cell(tb, 2, r, trTxt(t), text_color=trCol(t), text_size=size.tiny)
+        table.cell(tb, 3, r, ps > 0 ? fmtLeft(ps + sec * 1000 - timenow) : "–", text_color=color.silver, text_size=size.tiny)
     else
         for c = 0 to 3
             table.cell(tb, c, r, "")
 
 if showTb and barstate.islast
-    table.cell(tb, 0, 0, "TF", text_color=color.gray, text_size=size.small)
-    table.cell(tb, 1, 0, "O'clock ORB bias", text_color=color.gray, text_size=size.small)
-    table.cell(tb, 2, 0, "Trend", text_color=color.gray, text_size=size.small)
-    table.cell(tb, 3, 0, "Time left", text_color=color.gray, text_size=size.small)
+    table.cell(tb, 0, 0, "TF", text_color=color.gray, text_size=size.tiny)
+    table.cell(tb, 1, 0, "Bias", text_color=color.gray, text_size=size.tiny)
+    table.cell(tb, 2, 0, "Trend", text_color=color.gray, text_size=size.tiny)
+    table.cell(tb, 3, 0, "Time left", text_color=color.gray, text_size=size.tiny)
     row(1,  "1m",  on1,   b1,   t1,   p1,   60)
     row(2,  "2m",  on2,   b2,   t2,   p2,   120)
     row(3,  "3m",  on3,   b3,   t3,   p3,   180)
@@ -534,10 +526,10 @@ if showTb and barstate.islast
     row(10, "2H",  on120, b120, t120, p120, 7200)
     row(11, "4H",  on240, b240, t240, p240, 14400)
     ovTxt = scorePct >= 20 ? "BUY" : scorePct <= -20 ? "SELL" : "MIXED"
-    table.cell(tb, 0, 12, "Overall", text_color=color.white, text_size=size.small)
-    table.cell(tb, 1, 12, ovTxt + " " + str.tostring(math.round(scorePct)) + "%", bgcolor=scorePct >= 20 ? cBuy : scorePct <= -20 ? cSell : cNeu, text_color=color.white, text_size=size.small)
-    table.cell(tb, 2, 12, alDir > 0 ? "ALIGNED ▲" : alDir < 0 ? "ALIGNED ▼" : "not aligned", text_color=alDir != 0 ? cAl : color.gray, text_size=size.small)
-    table.cell(tb, 3, 12, "Chart trend " + (trend > 0 ? "▲" : trend < 0 ? "▼" : "–") + (trend != 0 ? " #" + str.tostring(legN) : ""), text_color=trCol(trend), text_size=size.small)
+    table.cell(tb, 0, 12, "Overall", text_color=color.white, text_size=size.tiny)
+    table.cell(tb, 1, 12, ovTxt + " " + str.tostring(math.round(scorePct)) + "%", bgcolor=scorePct >= 20 ? cBuy : scorePct <= -20 ? cSell : cNeu, text_color=color.white, text_size=size.tiny)
+    table.cell(tb, 2, 12, alDir > 0 ? "ALIGNED ▲" : alDir < 0 ? "ALIGNED ▼" : "not aligned", text_color=alDir != 0 ? cAl : color.gray, text_size=size.tiny)
+    table.cell(tb, 3, 12, "Chart trend " + (trend > 0 ? "▲" : trend < 0 ? "▼" : "–") + (trend != 0 ? " #" + str.tostring(legN) : ""), text_color=trCol(trend), text_size=size.tiny)
     table.cell(tb, 0, 13, "Golden rule: " + (applyFilter ? "1H bias " + (bias60 > 0 ? "BUY" : bias60 < 0 ? "SELL" : "none") : "off on this chart") + " · educational, not advice", text_color=color.gray, text_size=size.tiny)
     table.merge_cells(tb, 0, 13, 3, 13)
 
