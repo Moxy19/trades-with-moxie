@@ -61,6 +61,9 @@ slopeK  = input.float(0.0, "Minimum slope to count as a turn (× ATR, 0 = any)",
 pivLen  = input.int(2, "Swing pivot strength (bars each side)", minval=1, group=grpTr)
 reqStr  = input.bool(false, "Trend start needs HH/HL (LH/LL) structure too", group=grpTr)
 bosStart = input.bool(true, "Restart a trend on a break of structure in the line's direction", group=grpTr)
+useEarly = input.bool(true, "Early reversal: strong engulfing candle from a fresh high / low flips the trend", group=grpTr)
+earlyB   = input.float(0.6, "Early reversal candle body ≥ × ATR", minval=0.1, step=0.1, group=grpTr)
+earlyLk  = input.int(3, "…from the high / low of the last N candles", minval=1, group=grpTr)
 
 grpSp    = "Spikes"
 bodyMult = input.float(2.0, "Spike body ≥ × average body", minval=0.5, step=0.1, group=grpSp)
@@ -286,6 +289,10 @@ startTime(int dir) =>
     t
 
 // ═════════════════════════ Trend / pullback state machine
+hiLk = ta.highest(high, earlyLk)[1]
+loLk = ta.lowest(low, earlyLk)[1]
+engDn = close < open and body >= earlyB * nz(atr[1]) and close < math.min(open[1], close[1]) and math.max(high, high[1]) >= hiLk
+engUp = close > open and body >= earlyB * nz(atr[1]) and close > math.max(open[1], close[1]) and math.min(low, low[1]) <= loLk
 loN = ta.lowest(low, pivLen * 2 + 1)
 hiN = ta.highest(high, pivLen * 2 + 1)
 var int   trend    = 0
@@ -305,8 +312,8 @@ string evWhy = ""
 
 if conf
     // 1) trend start from the line turning (main signal)
-    bool sBuy = turnUp and (not reqStr or structUp or close > sh1)
-    bool sSell = turnDn and (not reqStr or structDn or close < sl1)
+    bool sBuy = (turnUp and (not reqStr or structUp or close > sh1)) or (useEarly and trend == -1 and engUp)
+    bool sSell = (turnDn and (not reqStr or structDn or close < sl1)) or (useEarly and trend == 1 and engDn)
     // 2) restart after an invalidation / flat: break of structure in the line's direction
     if not sBuy and not sSell and bosStart and trend != 1 and lineDir == 1 and not na(sh1) and close > sh1 and close[1] <= sh1
         sBuy := true
@@ -474,12 +481,15 @@ plot(show6 ? ta.ema(close, e6f) : na, "EMA 6", #2962ff, 1)
 plot(showE ? eF : na, "Fast EMA", color.new(cBuy, 50), 1)
 plot(showE ? eS : na, "Slow EMA", color.new(cSell, 50), 1)
 newP(int p) => p != p[1]
-plot(draw60 and on60 and not newP(p60) ? h60 : na, "1H range high", color.new(#4caf50, 55), 1, plot.style_circles)
-plot(draw60 and on60 and not newP(p60) ? l60 : na, "1H range low", color.new(#f44336, 55), 1, plot.style_circles)
-plot(draw120 and on120 and not newP(p120) ? h120 : na, "2H range high", color.new(#4caf50, 55), 1, plot.style_circles)
-plot(draw120 and on120 and not newP(p120) ? l120 : na, "2H range low", color.new(#f44336, 55), 1, plot.style_circles)
-plot(draw240 and on240 and not newP(p240) ? h240 : na, "4H range high", color.new(#4caf50, 55), 1, plot.style_circles)
-plot(draw240 and on240 and not newP(p240) ? l240 : na, "4H range low", color.new(#f44336, 55), 1, plot.style_circles)
+np60 = newP(p60)
+np120 = newP(p120)
+np240 = newP(p240)
+plot(draw60 and on60 and not np60 ? h60 : na, "1H range high", color.new(#4caf50, 55), 1, plot.style_circles)
+plot(draw60 and on60 and not np60 ? l60 : na, "1H range low", color.new(#f44336, 55), 1, plot.style_circles)
+plot(draw120 and on120 and not np120 ? h120 : na, "2H range high", color.new(#4caf50, 55), 1, plot.style_circles)
+plot(draw120 and on120 and not np120 ? l120 : na, "2H range low", color.new(#f44336, 55), 1, plot.style_circles)
+plot(draw240 and on240 and not np240 ? h240 : na, "4H range high", color.new(#4caf50, 55), 1, plot.style_circles)
+plot(draw240 and on240 and not np240 ? l240 : na, "4H range low", color.new(#f44336, 55), 1, plot.style_circles)
 isOcl = chartSec <= 300 and (time % 3600000) < 300000
 bgcolor(markOcl and isOcl ? cOcl : na, title="O'clock candle")
 
