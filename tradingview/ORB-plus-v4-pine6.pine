@@ -86,7 +86,8 @@ showSL  = input.bool(false, "Draw suggested stops (always in the B/S tooltip)", 
 grpF     = "Filters"
 useHTF   = input.bool(true, "Golden rule: block signals against the 1H bias (charts below 1H)", group=grpF)
 biasSrc  = input.string("ORB (o'clock candle)", "1H / 2H / 4H bias comes from", options=["ORB (o'clock candle)", "Trend line", "ORB break, else trend line"], group=grpF)
-fltSpk   = input.bool(true, "Golden rule also applies to spikes", group=grpF)
+fltSpk   = input.bool(false, "Golden rule also applies to spikes", group=grpF)
+spkOvr   = input.bool(true, "A spike candle overrides the golden rule for that candle (the 'absolutely sure' case)", group=grpF)
 showBlk  = input.bool(false, "Show blocked signals as small grey dots", group=grpF)
 
 grpD   = "Display"
@@ -399,10 +400,11 @@ if conf
 // ═════════════════════════ Drawing — clean look: one small B or S per candle, details in the tooltip
 fmtT(int t) => na(t) ? "" : str.format_time(t, "HH:mm", tzone)
 
-okStart = evStart != 0 and htfOK(evStart)
-okRe    = evRe != 0 and htfOK(evRe) and legN - 1 <= maxAdds
 spkDir  = conf ? (spkUp ? 1 : spkDn ? -1 : 0) : 0
 okSpk   = spkDir != 0 and (not fltSpk or htfOK(spkDir))
+sure(int dir) => htfOK(dir) or (spkOvr and spkDir == dir)
+okStart = evStart != 0 and sure(evStart)
+okRe    = evRe != 0 and sure(evRe) and legN - 1 <= maxAdds
 spkT    = startTime(spkDir)
 
 int bDir = okStart ? evStart : okRe ? evRe : okSpk ? spkDir : 0
