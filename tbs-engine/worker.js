@@ -9,6 +9,8 @@
 import "dotenv/config";
 import WebSocket from "ws";
 import { createClient } from "@supabase/supabase-js";
+// Supabase-js expects a global WebSocket; Node <22 has none, so provide ws.
+if (!globalThis.WebSocket) globalThis.WebSocket = WebSocket;
 
 const APP_ID    = process.env.DERIV_APP_ID || "1089";
 const MIN_SCORE = Number(process.env.TBS_MIN_SCORE || "55");
