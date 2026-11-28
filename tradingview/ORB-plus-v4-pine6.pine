@@ -1,0 +1,552 @@
+//@version=6
+// ORB+ v4 (Pine v6) — multi-timeframe o'clock opening ranges, trend turns, early spikes, pullback re-entries.
+// Built for Deriv synthetics (Step Index, Volatility indices). Works on any chart from 1m to 4H.
+//
+// HOW IT READS THE MARKET
+//  • O'clock opening range: for every timeframe (1m … 4H) the FIRST 5-minute candle of each new period
+//    (first 1-minute candle for the 2m–5m periods) is the opening range. Its colour gives an early bias;
+//    a break of its high/low confirms the bias for the rest of the period. Higher timeframes weigh more.
+//  • Trend line (default EMA 21): when it curves up → BUY TREND START, curves down → SELL TREND START.
+//  • Spikes: the first candle of a strong move (body ≥ 2× average body, or range ≥ 1.5× ATR).
+//  • Pullbacks: 30–60% retrace, a touch of the 9/21 EMA or a retest of the broken level, then the first
+//    candle that closes back with the trend → RE-ENTRY (Entry 1, Add 2, Add 3 …) with a suggested stop.
+//  • Golden rule filter: lower-timeframe signals against the 1H bias are blocked (shown as small grey dots).
+//
+// No repainting on historical bars: higher-timeframe values use completed bars, labels only on closed candles.
+// Educational tool only — not financial advice.
+indicator("ORB+", "ORB+", overlay=true, max_labels_count=500, max_lines_count=500, max_bars_back=1000)
+
+// ═════════════════════════ Inputs
+grpTF = "Timeframes (on / off)"
+on1   = input.bool(true, "1m",  inline="a", group=grpTF)
+on2   = input.bool(true, "2m",  inline="a", group=grpTF)
+on3   = input.bool(true, "3m",  inline="a", group=grpTF)
+on5   = input.bool(true, "5m",  inline="a", group=grpTF)
+on10  = input.bool(true, "10m", inline="b", group=grpTF)
+on15  = input.bool(true, "15m", inline="b", group=grpTF)
+on30  = input.bool(true, "30m", inline="b", group=grpTF)
+on45  = input.bool(true, "45m", inline="b", group=grpTF)
+on60  = input.bool(true, "1H",  inline="c", group=grpTF)
+on120 = input.bool(true, "2H",  inline="c", group=grpTF)
+on240 = input.bool(true, "4H",  inline="c", group=grpTF)
+
+grpOR    = "O'clock opening range"
+orTfHi   = input.timeframe("5", "Opening candle for 10m and higher periods", group=grpOR)
+orTfLo   = input.timeframe("1", "Opening candle for 2m–5m periods", group=grpOR)
+wickBrk  = input.bool(true, "A wick through the range counts as a break (off = needs a close)", group=grpOR)
+candleB  = input.bool(true, "O'clock candle colour gives an early bias before any break", group=grpOR)
+draw60   = input.bool(true, "Draw 1H range", inline="d", group=grpOR)
+draw120  = input.bool(true, "Draw 2H range", inline="d", group=grpOR)
+draw240  = input.bool(true, "Draw 4H range", inline="d", group=grpOR)
+markOcl  = input.bool(true, "Highlight the o'clock 5m candle (charts 5m and lower)", group=grpOR)
+orbLbl   = input.bool(true, "Label 1H / 2H / 4H opening-range breaks", group=grpOR)
+
+grpWt = "Bias weights (higher timeframe = more say)"
+w1   = input.int(1, "1m",  minval=0, inline="w1", group=grpWt)
+w2   = input.int(1, "2m",  minval=0, inline="w1", group=grpWt)
+w3   = input.int(1, "3m",  minval=0, inline="w1", group=grpWt)
+w5   = input.int(2, "5m",  minval=0, inline="w1", group=grpWt)
+w10  = input.int(2, "10m", minval=0, inline="w2", group=grpWt)
+w15  = input.int(3, "15m", minval=0, inline="w2", group=grpWt)
+w30  = input.int(3, "30m", minval=0, inline="w2", group=grpWt)
+w45  = input.int(4, "45m", minval=0, inline="w2", group=grpWt)
+w60  = input.int(5, "1H",  minval=0, inline="w3", group=grpWt)
+w120 = input.int(6, "2H",  minval=0, inline="w3", group=grpWt)
+w240 = input.int(7, "4H",  minval=0, inline="w3", group=grpWt)
+
+grpTr   = "Trend line"
+tlType  = input.string("EMA", "Trend line type", options=["EMA", "HMA", "WMA", "SMA"], group=grpTr)
+tlLen   = input.int(21, "Trend line length", minval=2, group=grpTr)
+slopeK  = input.float(0.0, "Minimum slope to count as a turn (× ATR, 0 = any)", minval=0, step=0.01, group=grpTr)
+pivLen  = input.int(2, "Swing pivot strength (bars each side)", minval=1, group=grpTr)
+reqStr  = input.bool(false, "Trend start needs HH/HL (LH/LL) structure too", group=grpTr)
+bosStart = input.bool(true, "Restart a trend on a break of structure in the line's direction", group=grpTr)
+
+grpSp    = "Spikes"
+bodyMult = input.float(2.0, "Spike body ≥ × average body", minval=0.5, step=0.1, group=grpSp)
+bodyLen  = input.int(20, "Average body length", minval=2, group=grpSp)
+atrLen   = input.int(14, "ATR length", minval=2, group=grpSp)
+atrMult  = input.float(1.5, "…or spike range ≥ × ATR", minval=0.5, step=0.1, group=grpSp)
+useLTF   = input.bool(true, "Use 1m data to show the minute the move started", group=grpSp)
+
+grpPB   = "Pullbacks and add-ons"
+emaF    = input.int(9, "Fast EMA", minval=1, group=grpPB)
+emaS    = input.int(21, "Slow EMA", minval=1, group=grpPB)
+pbMin   = input.float(30, "Pullback retrace from (%)", minval=0, maxval=100, group=grpPB)
+pbMax   = input.float(60, "Pullback retrace to (%)", minval=0, maxval=100, group=grpPB)
+useEmaT = input.bool(true, "A touch of the fast / slow EMA counts as a pullback", group=grpPB)
+useRet  = input.bool(true, "A retest of the broken level counts as a pullback", group=grpPB)
+maxAdds = input.int(5, "Maximum add-ons per leg", minval=0, maxval=50, group=grpPB)
+stopBuf = input.float(0.1, "Stop buffer past the swing (× ATR)", minval=0, step=0.05, group=grpPB)
+showSL  = input.bool(true, "Draw suggested stops", group=grpPB)
+
+grpF     = "Filters"
+useHTF   = input.bool(true, "Golden rule: block signals against the 1H bias (charts below 1H)", group=grpF)
+biasSrc  = input.string("ORB (o'clock candle)", "1H / 2H / 4H bias comes from", options=["ORB (o'clock candle)", "Trend line", "ORB break, else trend line"], group=grpF)
+fltSpk   = input.bool(true, "Golden rule also applies to spikes", group=grpF)
+showBlk  = input.bool(true, "Show blocked signals as small grey dots", group=grpF)
+
+grpD   = "Display"
+showTb = input.bool(true, "Dashboard", group=grpD)
+tbPos  = input.string("Top right", "Dashboard position", options=["Top right", "Bottom right", "Top left", "Bottom left"], group=grpD)
+tzone  = input.string("Africa/Johannesburg", "Time zone for label times", group=grpD)
+showTL = input.bool(true, "Plot trend line", group=grpD)
+showE  = input.bool(false, "Plot fast / slow EMAs", group=grpD)
+lblSz  = input.string("small", "Label size", options=["tiny", "small", "normal"], group=grpD)
+
+grpC    = "Colours"
+cBuy    = input.color(#00c853, "Buy", inline="c1", group=grpC)
+cSell   = input.color(#ff1744, "Sell", inline="c1", group=grpC)
+cNeu    = input.color(#9e9e9e, "Neutral", inline="c1", group=grpC)
+cReB    = input.color(#2e7d32, "Re-entry buy", inline="c2", group=grpC)
+cReS    = input.color(#c62828, "Re-entry sell", inline="c2", group=grpC)
+cSpB    = input.color(#00b8d4, "Spike buy", inline="c3", group=grpC)
+cSpS    = input.color(#ff6d00, "Spike sell", inline="c3", group=grpC)
+cInv    = input.color(#ffd600, "Trend invalid", inline="c4", group=grpC)
+cAl     = input.color(#7c4dff, "Aligned", inline="c4", group=grpC)
+c60     = input.color(#2962ff, "1H range", inline="c5", group=grpC)
+c120    = input.color(#ab47bc, "2H range", inline="c5", group=grpC)
+c240    = input.color(#ff9800, "4H range", inline="c5", group=grpC)
+cOcl    = input.color(color.new(#ffeb3b, 85), "O'clock candle", inline="c6", group=grpC)
+cTbBg   = input.color(color.new(#131722, 10), "Dashboard background", inline="c6", group=grpC)
+
+// ═════════════════════════ Helpers
+tk = syminfo.tickerid
+chartSec = timeframe.in_seconds(timeframe.period)
+szL = lblSz == "tiny" ? size.tiny : lblSz == "normal" ? size.normal : size.small
+
+maOf(float src, simple int len, simple string typ) =>
+    e = ta.ema(src, len)
+    h = ta.hma(src, len)
+    w = ta.wma(src, len)
+    s = ta.sma(src, len)
+    typ == "EMA" ? e : typ == "HMA" ? h : typ == "WMA" ? w : s
+
+sgn(float x) => x > 0 ? 1 : x < 0 ? -1 : 0
+
+// Opening-range state of one period timeframe, evaluated on a lower "base" timeframe.
+// Returns [range high, range low, bias, period start]
+// bias: ±2 = range broken (confirmed), ±1 = o'clock candle colour only, 0 = not known yet
+orState(simple string tf, simple string orTf, simple bool wick, simple bool useCandle) =>
+    var float h = na
+    var float l = na
+    var float o = na
+    var float c = na
+    var int b = 0
+    var int ps = 0
+    var bool done = false
+    tfMs = timeframe.in_seconds(tf) * 1000
+    orMs = timeframe.in_seconds(orTf) * 1000
+    if timeframe.change(tf)
+        // a period that is no longer than its opening candle: bias = colour of the period just closed
+        if orMs >= tfMs and not na(o)
+            b := useCandle ? sgn(c - o) : 0
+        else
+            b := 0
+        ps := time
+        h := high
+        l := low
+        o := open
+        c := close
+        done := false
+    else if not done and time < ps + orMs
+        h := math.max(h, high)
+        l := math.min(l, low)
+        c := close
+    else if not na(h)
+        if not done
+            done := true
+            if orMs < tfMs and b == 0 and useCandle
+                b := sgn(c - o)
+        if orMs < tfMs
+            upP = wick ? high : close
+            dnP = wick ? low : close
+            if b != 2 and upP > h
+                b := 2
+            else if b != -2 and dnP < l
+                b := -2
+    [h, l, b, ps]
+
+// Trend-line direction of one timeframe (held through flat bars)
+trendDir(simple int len, simple string typ) =>
+    ln = maOf(close, len, typ)
+    s = ln - ln[1]
+    var int d = 0
+    d := s > 0 ? 1 : s < 0 ? -1 : d
+    d
+
+baseLo = chartSec <= 60  ? timeframe.period : "1"
+baseHi = chartSec <= 300 ? timeframe.period : "5"
+
+// ═════════════════════════ Multi-timeframe opening ranges (request.security, lookahead off)
+[h1,   l1,   b1,   p1  ] = request.security(tk, baseLo, orState("1",   orTfLo, wickBrk, candleB))
+[h2,   l2,   b2,   p2  ] = request.security(tk, baseLo, orState("2",   orTfLo, wickBrk, candleB))
+[h3,   l3,   b3,   p3  ] = request.security(tk, baseLo, orState("3",   orTfLo, wickBrk, candleB))
+[h5,   l5,   b5,   p5  ] = request.security(tk, baseLo, orState("5",   orTfLo, wickBrk, candleB))
+[h10,  l10,  b10,  p10 ] = request.security(tk, baseHi, orState("10",  orTfHi, wickBrk, candleB))
+[h15,  l15,  b15,  p15 ] = request.security(tk, baseHi, orState("15",  orTfHi, wickBrk, candleB))
+[h30,  l30,  b30,  p30 ] = request.security(tk, baseHi, orState("30",  orTfHi, wickBrk, candleB))
+[h45,  l45,  b45,  p45 ] = request.security(tk, baseHi, orState("45",  orTfHi, wickBrk, candleB))
+[h60,  l60,  b60,  p60 ] = request.security(tk, baseHi, orState("60",  orTfHi, wickBrk, candleB))
+[h120, l120, b120, p120] = request.security(tk, baseHi, orState("120", orTfHi, wickBrk, candleB))
+[h240, l240, b240, p240] = request.security(tk, baseHi, orState("240", orTfHi, wickBrk, candleB))
+
+// ═════════════════════════ Trend line direction per timeframe (completed bars only: [1] + lookahead on)
+t1   = request.security(tk, "1",   trendDir(tlLen, tlType)[1], lookahead=barmerge.lookahead_on)
+t2   = request.security(tk, "2",   trendDir(tlLen, tlType)[1], lookahead=barmerge.lookahead_on)
+t3   = request.security(tk, "3",   trendDir(tlLen, tlType)[1], lookahead=barmerge.lookahead_on)
+t5   = request.security(tk, "5",   trendDir(tlLen, tlType)[1], lookahead=barmerge.lookahead_on)
+t10  = request.security(tk, "10",  trendDir(tlLen, tlType)[1], lookahead=barmerge.lookahead_on)
+t15  = request.security(tk, "15",  trendDir(tlLen, tlType)[1], lookahead=barmerge.lookahead_on)
+t30  = request.security(tk, "30",  trendDir(tlLen, tlType)[1], lookahead=barmerge.lookahead_on)
+t45  = request.security(tk, "45",  trendDir(tlLen, tlType)[1], lookahead=barmerge.lookahead_on)
+t60  = request.security(tk, "60",  trendDir(tlLen, tlType)[1], lookahead=barmerge.lookahead_on)
+t120 = request.security(tk, "120", trendDir(tlLen, tlType)[1], lookahead=barmerge.lookahead_on)
+t240 = request.security(tk, "240", trendDir(tlLen, tlType)[1], lookahead=barmerge.lookahead_on)
+
+// 1m intrabars of the chart candle (for spike start time)
+[ltfT, ltfH, ltfL] = request.security_lower_tf(tk, "1", [time, high, low])
+
+htfBias(int orb, int tr) =>
+    biasSrc == "Trend line" ? tr : biasSrc == "ORB (o'clock candle)" ? sgn(orb) : (math.abs(orb) == 2 ? sgn(orb) : tr != 0 ? tr : sgn(orb))
+
+bias60  = htfBias(b60,  t60)
+bias120 = htfBias(b120, t120)
+bias240 = htfBias(b240, t240)
+
+// Weighted overall bias (o'clock ORB bias and trend line, higher timeframes weigh more)
+tfScore(bool on, int w, int orb, int tr) => on ? w * (sgn(orb) * (math.abs(orb) == 2 ? 1.0 : 0.5) + tr * 0.5) : 0.0
+tfW(bool on, int w) => on ? w : 0
+totW = tfW(on1, w1) + tfW(on2, w2) + tfW(on3, w3) + tfW(on5, w5) + tfW(on10, w10) + tfW(on15, w15) + tfW(on30, w30) + tfW(on45, w45) + tfW(on60, w60) + tfW(on120, w120) + tfW(on240, w240)
+score = tfScore(on1, w1, b1, t1) + tfScore(on2, w2, b2, t2) + tfScore(on3, w3, b3, t3) + tfScore(on5, w5, b5, t5) + tfScore(on10, w10, b10, t10) + tfScore(on15, w15, b15, t15) + tfScore(on30, w30, b30, t30) + tfScore(on45, w45, b45, t45) + tfScore(on60, w60, b60, t60) + tfScore(on120, w120, b120, t120) + tfScore(on240, w240, b240, t240)
+scorePct = totW > 0 ? 100 * score / totW : 0.0
+
+applyFilter = useHTF and chartSec < 3600
+htfOK(int dir) => not applyFilter or bias60 != -dir
+aligned(int dir) => bias240 == dir and bias120 == dir and bias60 == dir
+
+// ═════════════════════════ Chart-timeframe engine
+conf  = barstate.isconfirmed
+atr   = ta.atr(atrLen)
+tl    = maOf(close, tlLen, tlType)
+eF    = ta.ema(close, emaF)
+eS    = ta.ema(close, emaS)
+slope = tl - tl[1]
+var int lineDir = 0
+lineDir := slope > slopeK * nz(atr, 0) ? 1 : slope < -slopeK * nz(atr, 0) ? -1 : lineDir
+turnUp = lineDir == 1 and lineDir[1] == -1
+turnDn = lineDir == -1 and lineDir[1] == 1
+
+// swings
+ph = ta.pivothigh(high, pivLen, pivLen)
+pl = ta.pivotlow(low, pivLen, pivLen)
+var float sh1 = na
+var float sh2 = na
+var float sl1 = na
+var float sl2 = na
+if not na(ph)
+    sh2 := sh1
+    sh1 := ph
+if not na(pl)
+    sl2 := sl1
+    sl1 := pl
+structUp = sh1 > sh2 and sl1 > sl2
+structDn = sh1 < sh2 and sl1 < sl2
+
+// spikes (first candle of the move)
+body   = math.abs(close - open)
+avgB   = ta.sma(body, bodyLen)[1]
+rng    = high - low
+bigBar = body >= bodyMult * avgB or (rng >= atrMult * atr[1] and body >= 0.5 * rng)
+spkUpRaw = bigBar and close > open
+spkDnRaw = bigBar and close < open
+spkUp = spkUpRaw and not spkUpRaw[1]
+spkDn = spkDnRaw and not spkDnRaw[1]
+
+// minute the move started (1m data): highest 1m high for a sell spike, lowest 1m low for a buy spike
+startTime(int dir) =>
+    int t = na
+    n = array.size(ltfT)
+    if useLTF and n > 1 and chartSec > 60
+        float ext = dir > 0 ? 1e100 : -1e100
+        for i = 0 to n - 1
+            v = dir > 0 ? array.get(ltfL, i) : array.get(ltfH, i)
+            if (dir > 0 and v < ext) or (dir < 0 and v > ext)
+                ext := v
+                t := array.get(ltfT, i)
+    t
+
+// ═════════════════════════ Trend / pullback state machine
+var int   trend    = 0
+var int   legN     = 0
+var float impHi    = na
+var float impLo    = na
+var float needLvl  = na
+var bool  pbArmed  = false
+var float pbExt    = na
+var float brkLvl   = na
+
+int  evStart = 0
+int  evRe    = 0
+int  evInv   = 0
+float evStop = na
+string evWhy = ""
+
+if conf
+    // 1) trend start from the line turning (main signal)
+    bool sBuy = turnUp and (not reqStr or structUp or close > sh1)
+    bool sSell = turnDn and (not reqStr or structDn or close < sl1)
+    // 2) restart after an invalidation / flat: break of structure in the line's direction
+    if not sBuy and not sSell and bosStart and trend != 1 and lineDir == 1 and not na(sh1) and close > sh1 and close[1] <= sh1
+        sBuy := true
+    if not sBuy and not sSell and bosStart and trend != -1 and lineDir == -1 and not na(sl1) and close < sl1 and close[1] >= sl1
+        sSell := true
+    if sBuy and trend != 1
+        trend   := 1
+        legN    := 1
+        impHi   := high
+        impLo   := ta.lowest(low, pivLen * 2 + 1)
+        needLvl := na
+        pbArmed := false
+        brkLvl  := sh1
+        evStart := 1
+        evStop  := impLo - stopBuf * atr
+    else if sSell and trend != -1
+        trend   := -1
+        legN    := 1
+        impLo   := low
+        impHi   := ta.highest(high, pivLen * 2 + 1)
+        needLvl := na
+        pbArmed := false
+        brkLvl  := sl1
+        evStart := -1
+        evStop  := impHi + stopBuf * atr
+    else if trend == 1
+        // invalidation: close below the last swing low
+        if not na(sl1) and close < sl1 and sl1 < impHi
+            evInv := 1
+            trend := 0
+            pbArmed := false
+        else
+            if high > impHi
+                impHi := high
+            newLegOK = na(needLvl) or impHi > needLvl
+            range_ = impHi - impLo
+            retr = range_ > 0 ? 100 * (impHi - low) / range_ : 0.0
+            touchE = useEmaT and (low <= eF or low <= eS) and close > eS - atr
+            retest = useRet and not na(brkLvl) and low <= brkLvl + 0.2 * atr and close >= brkLvl - 0.2 * atr
+            if not pbArmed and newLegOK and ((retr >= pbMin and retr <= pbMax) or touchE or retest) and high < impHi
+                pbArmed := true
+                pbExt   := low
+                evWhy   := touchE ? "EMA touch" : retest ? "retest" : str.tostring(math.round(retr)) + "% pullback"
+            else if not pbArmed and newLegOK and ((retr >= pbMin and retr <= pbMax) or touchE or retest)
+                // pullback started on the same bar as a new high: arm, wait for the next bullish close
+                pbArmed := true
+                pbExt   := low
+            if pbArmed
+                pbExt := math.min(pbExt, low)
+                if close > open and close > close[1] and low > pbExt - 1e-10 or (close > open and close > high[1])
+                    legN    += 1
+                    evRe    := 1
+                    evStop  := pbExt - stopBuf * atr
+                    needLvl := impHi
+                    impLo   := pbExt
+                    pbArmed := false
+    else if trend == -1
+        if not na(sh1) and close > sh1 and sh1 > impLo
+            evInv := -1
+            trend := 0
+            pbArmed := false
+        else
+            if low < impLo
+                impLo := low
+            newLegOK = na(needLvl) or impLo < needLvl
+            range_ = impHi - impLo
+            retr = range_ > 0 ? 100 * (high - impLo) / range_ : 0.0
+            touchE = useEmaT and (high >= eF or high >= eS) and close < eS + atr
+            retest = useRet and not na(brkLvl) and high >= brkLvl - 0.2 * atr and close <= brkLvl + 0.2 * atr
+            if not pbArmed and newLegOK and ((retr >= pbMin and retr <= pbMax) or touchE or retest)
+                pbArmed := true
+                pbExt   := high
+            if pbArmed
+                pbExt := math.max(pbExt, high)
+                if (close < open and close < close[1]) or (close < open and close < low[1])
+                    legN    += 1
+                    evRe    := -1
+                    evStop  := pbExt + stopBuf * atr
+                    needLvl := impLo
+                    impHi   := pbExt
+                    pbArmed := false
+
+// ═════════════════════════ Drawing
+fmtT(int t) => na(t) ? "" : str.format_time(t, "HH:mm", tzone)
+
+drawSig(int dir, string txt, color col, float stop) =>
+    isAl = aligned(dir)
+    t = txt + (isAl ? "\n★ ALIGNED 4H·2H·1H" : "")
+    label.new(bar_index, dir > 0 ? low : high, t, style=dir > 0 ? label.style_label_up : label.style_label_down, color=isAl ? cAl : col, textcolor=color.white, size=isAl and szL != size.normal ? size.normal : szL)
+    if showSL and not na(stop)
+        line.new(bar_index, stop, bar_index + 6, stop, color=col, style=line.style_dashed, width=1)
+
+blocked(int dir) =>
+    if showBlk
+        label.new(bar_index, dir > 0 ? low : high, "", style=label.style_circle, color=color.new(cNeu, 30), size=size.tiny, tooltip="Blocked by the 1H bias (golden rule)")
+
+// trend start
+okStart = evStart != 0 and htfOK(evStart)
+if evStart != 0
+    if okStart
+        drawSig(evStart, (evStart > 0 ? "BUY TREND START" : "SELL TREND START") + "\nEntry 1", evStart > 0 ? cBuy : cSell, evStop)
+    else
+        blocked(evStart)
+
+// re-entries
+okRe = evRe != 0 and htfOK(evRe) and legN - 1 <= maxAdds
+if evRe != 0
+    if okRe
+        drawSig(evRe, (evRe > 0 ? "RE-ENTRY BUY" : "RE-ENTRY SELL") + "\nAdd " + str.tostring(legN), evRe > 0 ? cReB : cReS, evStop)
+    else if legN - 1 <= maxAdds
+        blocked(evRe)
+
+// invalidation
+if evInv != 0
+    label.new(bar_index, evInv > 0 ? high : low, "TREND INVALID", style=evInv > 0 ? label.style_label_down : label.style_label_up, color=cInv, textcolor=color.black, size=size.tiny)
+
+// spikes
+spkDir = conf ? (spkUp ? 1 : spkDn ? -1 : 0) : 0
+okSpk = spkDir != 0 and (not fltSpk or htfOK(spkDir))
+if spkDir != 0
+    if okSpk
+        st = startTime(spkDir)
+        txt = (spkDir > 0 ? "SPIKE BUY" : "SPIKE SELL") + (na(st) ? "" : "\nfrom " + fmtT(st))
+        label.new(bar_index, spkDir > 0 ? low : high, txt, style=spkDir > 0 ? label.style_label_up : label.style_label_down, color=spkDir > 0 ? cSpB : cSpS, textcolor=color.white, size=size.tiny)
+    else
+        blocked(spkDir)
+
+// opening-range breaks of 1H / 2H / 4H (when a range is first broken)
+brkUp(int b) => b == 2 and b[1] != 2
+brkDn(int b) => b == -2 and b[1] != -2
+if orbLbl and conf and chartSec <= 7200
+    if on60 and chartSec < 3600 and (brkUp(b60) or brkDn(b60))
+        label.new(bar_index, b60 > 0 ? low : high, "1H ORB " + (b60 > 0 ? "▲" : "▼"), style=b60 > 0 ? label.style_label_up : label.style_label_down, color=color.new(c60, 20), textcolor=color.white, size=size.tiny)
+    if on120 and chartSec < 7200 and (brkUp(b120) or brkDn(b120))
+        label.new(bar_index, b120 > 0 ? low : high, "2H ORB " + (b120 > 0 ? "▲" : "▼"), style=b120 > 0 ? label.style_label_up : label.style_label_down, color=color.new(c120, 20), textcolor=color.white, size=size.tiny)
+    if on240 and (brkUp(b240) or brkDn(b240))
+        label.new(bar_index, b240 > 0 ? low : high, "4H ORB " + (b240 > 0 ? "▲" : "▼"), style=b240 > 0 ? label.style_label_up : label.style_label_down, color=color.new(c240, 20), textcolor=color.white, size=size.tiny)
+
+// alignment change marker
+alDir = aligned(1) ? 1 : aligned(-1) ? -1 : 0
+alNew = conf and alDir != 0 and alDir != alDir[1]
+
+// plots
+plot(showTL ? tl : na, "Trend line", lineDir > 0 ? cBuy : lineDir < 0 ? cSell : cNeu, 2)
+plot(showE ? eF : na, "Fast EMA", color.new(cBuy, 50), 1)
+plot(showE ? eS : na, "Slow EMA", color.new(cSell, 50), 1)
+newP(int p) => p != p[1]
+plot(draw60  and on60  and not newP(p60)  ? h60  : na, "1H range high", c60,  1, plot.style_linebr)
+plot(draw60  and on60  and not newP(p60)  ? l60  : na, "1H range low",  c60,  1, plot.style_linebr)
+plot(draw120 and on120 and not newP(p120) ? h120 : na, "2H range high", c120, 2, plot.style_linebr)
+plot(draw120 and on120 and not newP(p120) ? l120 : na, "2H range low",  c120, 2, plot.style_linebr)
+plot(draw240 and on240 and not newP(p240) ? h240 : na, "4H range high", c240, 2, plot.style_linebr)
+plot(draw240 and on240 and not newP(p240) ? l240 : na, "4H range low",  c240, 2, plot.style_linebr)
+isOcl = chartSec <= 300 and (time % 3600000) < 300000
+bgcolor(markOcl and isOcl ? cOcl : na, title="O'clock candle")
+plotshape(alNew and alDir > 0, "Aligned buy", shape.triangleup, location.belowbar, cAl, size=size.tiny, text="ALIGNED")
+plotshape(alNew and alDir < 0, "Aligned sell", shape.triangledown, location.abovebar, cAl, size=size.tiny, text="ALIGNED")
+
+// ═════════════════════════ Dashboard
+fmtLeft(int ms) =>
+    s = math.max(0, math.floor(ms / 1000))
+    hh = math.floor(s / 3600)
+    mm = math.floor((s % 3600) / 60)
+    ss = s % 60
+    hh > 0 ? str.format("{0}h {1,number,00}m", hh, mm) : str.format("{0}m {1,number,00}s", mm, ss)
+
+biasTxt(int b) => b == 2 ? "BUY" : b == -2 ? "SELL" : b == 1 ? "buy (candle)" : b == -1 ? "sell (candle)" : "NEUTRAL"
+biasCol(int b) => b > 0 ? (b == 2 ? cBuy : color.new(cBuy, 45)) : b < 0 ? (b == 2 or b == -2 ? cSell : color.new(cSell, 45)) : cNeu
+trTxt(int d) => d > 0 ? "▲ up" : d < 0 ? "▼ down" : "–"
+trCol(int d) => d > 0 ? cBuy : d < 0 ? cSell : cNeu
+
+tbP = tbPos == "Top right" ? position.top_right : tbPos == "Bottom right" ? position.bottom_right : tbPos == "Top left" ? position.top_left : position.bottom_left
+var table tb = table.new(tbP, 4, 14, bgcolor=cTbBg, border_width=1, border_color=color.new(color.gray, 70))
+
+row(int r, string name, bool on, int b, int t, int ps, int sec) =>
+    if on
+        table.cell(tb, 0, r, name, text_color=color.white, text_size=size.small)
+        table.cell(tb, 1, r, biasTxt(b), bgcolor=biasCol(b), text_color=color.white, text_size=size.small)
+        table.cell(tb, 2, r, trTxt(t), text_color=trCol(t), text_size=size.small)
+        table.cell(tb, 3, r, ps > 0 ? fmtLeft(ps + sec * 1000 - timenow) : "–", text_color=color.silver, text_size=size.small)
+    else
+        for c = 0 to 3
+            table.cell(tb, c, r, "")
+
+if showTb and barstate.islast
+    table.cell(tb, 0, 0, "TF", text_color=color.gray, text_size=size.small)
+    table.cell(tb, 1, 0, "O'clock ORB bias", text_color=color.gray, text_size=size.small)
+    table.cell(tb, 2, 0, "Trend", text_color=color.gray, text_size=size.small)
+    table.cell(tb, 3, 0, "Time left", text_color=color.gray, text_size=size.small)
+    row(1,  "1m",  on1,   b1,   t1,   p1,   60)
+    row(2,  "2m",  on2,   b2,   t2,   p2,   120)
+    row(3,  "3m",  on3,   b3,   t3,   p3,   180)
+    row(4,  "5m",  on5,   b5,   t5,   p5,   300)
+    row(5,  "10m", on10,  b10,  t10,  p10,  600)
+    row(6,  "15m", on15,  b15,  t15,  p15,  900)
+    row(7,  "30m", on30,  b30,  t30,  p30,  1800)
+    row(8,  "45m", on45,  b45,  t45,  p45,  2700)
+    row(9,  "1H",  on60,  b60,  t60,  p60,  3600)
+    row(10, "2H",  on120, b120, t120, p120, 7200)
+    row(11, "4H",  on240, b240, t240, p240, 14400)
+    ovTxt = scorePct >= 20 ? "BUY" : scorePct <= -20 ? "SELL" : "MIXED"
+    table.cell(tb, 0, 12, "Overall", text_color=color.white, text_size=size.small)
+    table.cell(tb, 1, 12, ovTxt + " " + str.tostring(math.round(scorePct)) + "%", bgcolor=scorePct >= 20 ? cBuy : scorePct <= -20 ? cSell : cNeu, text_color=color.white, text_size=size.small)
+    table.cell(tb, 2, 12, alDir > 0 ? "ALIGNED ▲" : alDir < 0 ? "ALIGNED ▼" : "not aligned", text_color=alDir != 0 ? cAl : color.gray, text_size=size.small)
+    table.cell(tb, 3, 12, "Chart trend " + (trend > 0 ? "▲" : trend < 0 ? "▼" : "–") + (trend != 0 ? " #" + str.tostring(legN) : ""), text_color=trCol(trend), text_size=size.small)
+    table.cell(tb, 0, 13, "Golden rule: " + (applyFilter ? "1H bias " + (bias60 > 0 ? "BUY" : bias60 < 0 ? "SELL" : "none") : "off on this chart") + " · educational, not advice", text_color=color.gray, text_size=size.tiny)
+    table.merge_cells(tb, 0, 13, 3, 13)
+
+// ═════════════════════════ Alerts
+// one catch-all alert with the details (choose "Any alert() function call")
+if okStart
+    alert("ORB+ " + (evStart > 0 ? "BUY" : "SELL") + " TREND START " + syminfo.ticker + " " + timeframe.period + " @ " + str.tostring(close, format.mintick) + " SL " + str.tostring(evStop, format.mintick) + (aligned(evStart) ? " · ALIGNED" : ""), alert.freq_once_per_bar_close)
+if okRe
+    alert("ORB+ RE-ENTRY " + (evRe > 0 ? "BUY" : "SELL") + " (Add " + str.tostring(legN) + ") " + syminfo.ticker + " " + timeframe.period + " @ " + str.tostring(close, format.mintick) + " SL " + str.tostring(evStop, format.mintick), alert.freq_once_per_bar_close)
+if okSpk
+    alert("ORB+ SPIKE " + (spkDir > 0 ? "BUY" : "SELL") + " " + syminfo.ticker + " " + timeframe.period + " @ " + str.tostring(close, format.mintick), alert.freq_once_per_bar_close)
+if evInv != 0
+    alert("ORB+ TREND INVALID (" + (evInv > 0 ? "buy" : "sell") + " trend) " + syminfo.ticker + " " + timeframe.period, alert.freq_once_per_bar_close)
+// early warning while the candle is still forming (fires before the close; may not hold)
+if barstate.isrealtime and not conf and (spkUpRaw or spkDnRaw)
+    alert("ORB+ EARLY SPIKE " + (spkUpRaw ? "BUY" : "SELL") + " forming on " + syminfo.ticker + " " + timeframe.period, alert.freq_once_per_bar)
+
+alertcondition(okStart and evStart > 0, "Trend start BUY",  "ORB+ BUY TREND START on {{ticker}} {{interval}} at {{close}}")
+alertcondition(okStart and evStart < 0, "Trend start SELL", "ORB+ SELL TREND START on {{ticker}} {{interval}} at {{close}}")
+alertcondition(okRe and evRe > 0, "Re-entry BUY",  "ORB+ RE-ENTRY BUY on {{ticker}} {{interval}} at {{close}}")
+alertcondition(okRe and evRe < 0, "Re-entry SELL", "ORB+ RE-ENTRY SELL on {{ticker}} {{interval}} at {{close}}")
+alertcondition(okSpk and spkDir > 0, "Spike BUY",  "ORB+ SPIKE BUY on {{ticker}} {{interval}} at {{close}}")
+alertcondition(okSpk and spkDir < 0, "Spike SELL", "ORB+ SPIKE SELL on {{ticker}} {{interval}} at {{close}}")
+alertcondition(evInv != 0, "Trend invalid", "ORB+ TREND INVALID on {{ticker}} {{interval}}")
+alertcondition(alNew and alDir > 0, "Aligned BUY (4H 2H 1H)",  "ORB+ 4H, 2H and 1H aligned BUY on {{ticker}}")
+alertcondition(alNew and alDir < 0, "Aligned SELL (4H 2H 1H)", "ORB+ 4H, 2H and 1H aligned SELL on {{ticker}}")
+// bias changes per timeframe (opening-range break confirmed)
+alertcondition(conf and brkUp(b1),   "1m bias BUY",   "ORB+ 1m bias BUY on {{ticker}}")
+alertcondition(conf and brkDn(b1),   "1m bias SELL",  "ORB+ 1m bias SELL on {{ticker}}")
+alertcondition(conf and brkUp(b2),   "2m bias BUY",   "ORB+ 2m bias BUY on {{ticker}}")
+alertcondition(conf and brkDn(b2),   "2m bias SELL",  "ORB+ 2m bias SELL on {{ticker}}")
+alertcondition(conf and brkUp(b3),   "3m bias BUY",   "ORB+ 3m bias BUY on {{ticker}}")
+alertcondition(conf and brkDn(b3),   "3m bias SELL",  "ORB+ 3m bias SELL on {{ticker}}")
+alertcondition(conf and brkUp(b5),   "5m bias BUY",   "ORB+ 5m bias BUY on {{ticker}}")
+alertcondition(conf and brkDn(b5),   "5m bias SELL",  "ORB+ 5m bias SELL on {{ticker}}")
+alertcondition(conf and brkUp(b10),  "10m bias BUY",  "ORB+ 10m bias BUY on {{ticker}}")
+alertcondition(conf and brkDn(b10),  "10m bias SELL", "ORB+ 10m bias SELL on {{ticker}}")
+alertcondition(conf and brkUp(b15),  "15m bias BUY",  "ORB+ 15m bias BUY on {{ticker}}")
+alertcondition(conf and brkDn(b15),  "15m bias SELL", "ORB+ 15m bias SELL on {{ticker}}")
+alertcondition(conf and brkUp(b30),  "30m bias BUY",  "ORB+ 30m bias BUY on {{ticker}}")
+alertcondition(conf and brkDn(b30),  "30m bias SELL", "ORB+ 30m bias SELL on {{ticker}}")
+alertcondition(conf and brkUp(b45),  "45m bias BUY",  "ORB+ 45m bias BUY on {{ticker}}")
+alertcondition(conf and brkDn(b45),  "45m bias SELL", "ORB+ 45m bias SELL on {{ticker}}")
+alertcondition(conf and brkUp(b60),  "1H bias BUY",   "ORB+ 1H bias BUY on {{ticker}}")
+alertcondition(conf and brkDn(b60),  "1H bias SELL",  "ORB+ 1H bias SELL on {{ticker}}")
+alertcondition(conf and brkUp(b120), "2H bias BUY",   "ORB+ 2H bias BUY on {{ticker}}")
+alertcondition(conf and brkDn(b120), "2H bias SELL",  "ORB+ 2H bias SELL on {{ticker}}")
+alertcondition(conf and brkUp(b240), "4H bias BUY",   "ORB+ 4H bias BUY on {{ticker}}")
+alertcondition(conf and brkDn(b240), "4H bias SELL",  "ORB+ 4H bias SELL on {{ticker}}")

@@ -1,0 +1,299 @@
+//@version=5
+// ORB+ v3 — swing-to-swing B/S for Deriv Step Index (works on 1m–15m charts, built on the 15m)
+// B / S = stop-and-reverse swing state. It flips on:
+//   • a 15m swing flip (SuperTrend 10 × ATR 2 on 15m candles), and
+//   • the ORB (09:00–09:15 New York): first 15m close beyond the range, or a failed breakout back through the middle.
+// Background only (not drawn): W1 / D1 / 4H / 2H / 1H direction from the 9-21-50 lines, order blocks, previous highs/lows.
+// Grade, entry, stop and targets go in the alert message only.
+// Not financial advice — backtests on Step Index show no proven edge.
+indicator("ORB+", "ORB+", overlay=true, max_labels_count=500, max_lines_count=100, max_boxes_count=100)
+
+// ───────────────────────── Inputs
+grpO = "Opening range"
+sess = input.session("0900-0915", "ORB session", group=grpO)
+tz   = input.string("America/New_York", "Session timezone", group=grpO)
+useBO = input.bool(true, "ORB breakout flips the swing", group=grpO)
+useFL = input.bool(true, "ORB failed breakout flips the swing", group=grpO)
+
+grpW   = "Swing engine"
+swTF   = input.timeframe("15", "Swing timeframe", group=grpW)
+stLen  = input.int(10, "ATR length", minval=2, group=grpW)
+stMult = input.float(2.0, "ATR multiplier", minval=0.5, step=0.1, group=grpW)
+
+grpZ   = "Background (grading and targets only)"
+dispK  = input.float(1.0, "Order block: displacement candle ≥ × ATR", step=0.1, group=grpZ)
+maxOB  = input.int(3, "Order blocks kept per side", minval=1, maxval=10, group=grpZ)
+touchN = input.int(6, "‘From demand/supply’ = zone touched within N bars", minval=1, group=grpZ)
+minRR  = input.float(1.0, "TP1 at least this many R from entry", minval=0.5, step=0.1, group=grpZ)
+
+// ───────────────────────── Higher-timeframe helpers (completed bars only — no repaint)
+dirLines() =>
+    a9 = ta.ema(close, 9)
+    a21 = ta.ema(close, 21)
+    a50 = ta.ema(close, 50)
+    a9 > a21 and math.min(a9, a21) > a50 ? 1 : a9 < a21 and math.max(a9, a21) < a50 ? -1 : 0
+
+stPrev() =>
+    [s, d] = ta.supertrend(stMult, stLen)
+    dd = d < 0 ? 1 : -1
+    [dd[1], s[1]]
+
+bar15() =>
+    a = ta.atr(14)
+    [close[1], (close[1] - open[1]) / a[1], ta.highest(high, 9)[1], ta.lowest(low, 9)[1]]
+
+tk  = syminfo.tickerid
+dW  = request.security(tk, "W",   dirLines()[1], lookahead=barmerge.lookahead_on)
+dD  = request.security(tk, "D",   dirLines()[1], lookahead=barmerge.lookahead_on)
+d4  = request.security(tk, "240", dirLines()[1], lookahead=barmerge.lookahead_on)
+d2  = request.security(tk, "120", dirLines()[1], lookahead=barmerge.lookahead_on)
+d1h = request.security(tk, "60",  dirLines()[1], lookahead=barmerge.lookahead_on)
+pdh = request.security(tk, "D", high[1], lookahead=barmerge.lookahead_on)
+pdl = request.security(tk, "D", low[1],  lookahead=barmerge.lookahead_on)
+pwh = request.security(tk, "W", high[1], lookahead=barmerge.lookahead_on)
+pwl = request.security(tk, "W", low[1],  lookahead=barmerge.lookahead_on)
+[c15, bd15, hh15, ll15] = request.security(tk, "15", bar15(), lookahead=barmerge.lookahead_on)
+[stD, stLine] = request.security(tk, swTF, stPrev(), lookahead=barmerge.lookahead_on)
+
+new15 = ta.change(time("15")) != 0
+newSw = ta.change(time(swTF)) != 0
+
+// ───────────────────────── Chart-timeframe lines, swings, order blocks (background)
+e9   = ta.ema(close, 9)
+e21  = ta.ema(close, 21)
+e50  = ta.ema(close, 50)
+e100 = ta.ema(close, 100)
+e150 = ta.ema(close, 150)
+e200 = ta.ema(close, 200)
+stackDir = math.min(e9, e21) > math.max(e50, e100, e150, e200) ? 1 : math.max(e9, e21) < math.min(e50, e100, e150, e200) ? -1 : 0
+atrC = ta.atr(14)
+
+phC = ta.pivothigh(high, 2, 2)
+plC = ta.pivotlow(low, 2, 2)
+var float lastPH = na
+var float lastPL = na
+var bool phUsed = true
+var bool plUsed = true
+var float[] phArr = array.new_float()
+var float[] plArr = array.new_float()
+var float dnH = na
+var float dnL = na
+var float upH = na
+var float upL = na
+var float[] bullTop = array.new_float()
+var float[] bullBot = array.new_float()
+var float[] bearTop = array.new_float()
+var float[] bearBot = array.new_float()
+
+breakUp = not na(lastPH) and not phUsed and close > lastPH
+breakDn = not na(lastPL) and not plUsed and close < lastPL
+dispUp = (close - open) >= dispK * atrC or (close - open[2]) >= 1.5 * dispK * atrC
+dispDn = (open - close) >= dispK * atrC or (open[2] - close) >= 1.5 * dispK * atrC
+if breakUp
+    phUsed := true
+    if dispUp and not na(dnH)
+        array.push(bullTop, dnH)
+        array.push(bullBot, dnL)
+        if array.size(bullTop) > maxOB
+            array.shift(bullTop)
+            array.shift(bullBot)
+if breakDn
+    plUsed := true
+    if dispDn and not na(upH)
+        array.push(bearTop, upH)
+        array.push(bearBot, upL)
+        if array.size(bearTop) > maxOB
+            array.shift(bearTop)
+            array.shift(bearBot)
+if array.size(bullTop) > 0
+    for i = array.size(bullTop) - 1 to 0
+        if close < array.get(bullBot, i)
+            array.remove(bullTop, i)
+            array.remove(bullBot, i)
+if array.size(bearTop) > 0
+    for i = array.size(bearTop) - 1 to 0
+        if close > array.get(bearTop, i)
+            array.remove(bearTop, i)
+            array.remove(bearBot, i)
+if close < open
+    dnH := high
+    dnL := low
+if close > open
+    upH := high
+    upL := low
+if not na(phC)
+    lastPH := phC
+    phUsed := false
+    array.push(phArr, phC)
+    if array.size(phArr) > 20
+        array.shift(phArr)
+if not na(plC)
+    lastPL := plC
+    plUsed := false
+    array.push(plArr, plC)
+    if array.size(plArr) > 20
+        array.shift(plArr)
+lowN  = ta.lowest(low, touchN)
+highN = ta.highest(high, touchN)
+
+fromZone(dir) =>
+    bool hit = false
+    if dir > 0 and array.size(bullTop) > 0
+        for i = 0 to array.size(bullTop) - 1
+            if lowN <= array.get(bullTop, i) and close >= array.get(bullBot, i)
+                hit := true
+    if dir < 0 and array.size(bearTop) > 0
+        for i = 0 to array.size(bearTop) - 1
+            if highN >= array.get(bearBot, i) and close <= array.get(bearTop, i)
+                hit := true
+    hit
+
+zoneInWay(dir, entry, tp1) =>
+    bool hit = false
+    if dir > 0 and array.size(bearBot) > 0
+        for x in bearBot
+            if x > entry and x < tp1
+                hit := true
+    if dir < 0 and array.size(bullTop) > 0
+        for x in bullTop
+            if x < entry and x > tp1
+                hit := true
+    hit
+
+// ───────────────────────── Opening range
+inS    = not na(time(timeframe.period, sess, tz))
+startS = inS and not inS[1]
+endS   = not inS and inS[1]
+var float oH = na
+var float oL = na
+var float pH = na
+var float pL = na
+var bool live = false
+var bool boUp = false
+var bool boDn = false
+var bool flUp = false
+var bool flDn = false
+var int boDir = 0
+if startS
+    pH := oH
+    pL := oL
+    oH := high
+    oL := low
+    live := false
+    boUp := false
+    boDn := false
+    flUp := false
+    flDn := false
+    boDir := 0
+else if inS
+    oH := math.max(oH, high)
+    oL := math.min(oL, low)
+if endS
+    live := true
+mid  = (oH + oL) / 2
+ladH = inS ? pH : oH
+ladL = inS ? pL : oL
+
+int orbEv = 0
+string orbWhy = ""
+if live and new15 and not endS
+    if not boUp and c15 > oH
+        boUp := true
+        boDir := 1
+        if useBO
+            orbEv := 1
+            orbWhy := "ORB breakout"
+    else if not boDn and c15 < oL
+        boDn := true
+        boDir := -1
+        if useBO
+            orbEv := -1
+            orbWhy := "ORB breakout"
+    else if boDir == 1 and not flDn and c15 < mid
+        flDn := true
+        if useFL
+            orbEv := -1
+            orbWhy := "ORB failed breakout"
+    else if boDir == -1 and not flUp and c15 > mid
+        flUp := true
+        if useFL
+            orbEv := 1
+            orbWhy := "ORB failed breakout"
+
+// ───────────────────────── Swing state machine (stop and reverse)
+var int swing = 0
+var int lastSt = 0
+int ev = 0
+string why = ""
+if newSw and stD != 0 and stD != lastSt
+    lastSt := stD
+    ev := stD
+    why := "15m swing"
+if orbEv != 0
+    ev := orbEv
+    why := orbWhy
+flip = ev != 0 and ev != swing
+if ev != 0
+    swing := ev
+
+// ───────────────────────── Targets and grade (alert message only)
+tps(dir, entry, risk) =>
+    lv = array.new_float()
+    if dir > 0
+        for x in phArr
+            array.push(lv, x)
+        array.push(lv, pdh)
+        array.push(lv, pwh)
+    else
+        for x in plArr
+            array.push(lv, x)
+        array.push(lv, pdl)
+        array.push(lv, pwl)
+    R = ladH - ladL
+    if not na(R) and R > 0
+        array.push(lv, ladL)
+        array.push(lv, (ladH + ladL) / 2)
+        array.push(lv, ladH)
+        for k = 1 to 6
+            array.push(lv, ladH + k * R)
+            array.push(lv, ladL - k * R)
+    cand = array.new_float()
+    for x in lv
+        if not na(x) and dir * (x - entry) >= minRR * risk
+            array.push(cand, x)
+    array.sort(cand, dir > 0 ? order.ascending : order.descending)
+    n = array.size(cand)
+    t1 = n > 0 ? array.get(cand, 0) : entry + dir * risk * (minRR + 1)
+    t2 = n > 1 ? array.get(cand, 1) : t1 + dir * risk
+    t3 = n > 2 ? array.get(cand, 2) : t2 + dir * risk
+    [t1, t2, t3]
+
+grade(dir, entry, bodyAtr, inWay, fromZ) =>
+    side = na(mid) ? 0 : (entry > mid ? 1 : entry < mid ? -1 : 0)
+    // order blocks / demand zones are NOT scored: on Step Index they broke more often than chance (study 20 Nov 2026)
+    score = (d4 == dir ? 1 : 0) + (d2 == dir ? 1 : 0) + (dD == dir ? 1 : 0) + (dW == dir ? 1 : 0) + (d1h == dir ? 1 : 0) + (stackDir == dir ? 1 : 0) + (side == dir ? 1 : 0) + (dir * bodyAtr >= 0.5 ? 1 : 0)
+    g = d1h == -dir ? "X (against 1H)" : (d4 == dir and d2 == dir and score >= 6) ? "A+" : ((d4 == dir or d2 == dir) and score >= 4) ? "A" : "B"
+    g
+
+fmt(x) => str.tostring(x, format.mintick)
+dTxt(v) => v == 1 ? "UP" : v == -1 ? "DOWN" : "MIXED"
+
+// ───────────────────────── Draw B / S (original style) and alert with details
+if flip
+    isBuy = swing == 1
+    entry = c15
+    stop = isBuy ? (stLine < entry ? stLine : ll15 - 0.1) : (stLine > entry ? stLine : hh15 + 0.1)
+    risk = math.abs(entry - stop)
+    [t1, t2, t3] = tps(swing, entry, risk)
+    g = grade(swing, entry, bd15, zoneInWay(swing, entry, t1), fromZone(swing))
+    label.new(bar_index - 1, isBuy ? low[1] : high[1], isBuy ? "B" : "S", style=isBuy ? label.style_label_up : label.style_label_down, color=isBuy ? color.new(#4caf50, 0) : color.new(#f44336, 0), textcolor=color.white, size=size.small)
+    msg = "ORB+ " + (isBuy ? "BUY " : "SELL ") + syminfo.ticker + " · " + why + " · grade " + g + " · E " + fmt(entry) + " SL " + fmt(stop) + " TP " + fmt(t1) + " / " + fmt(t2) + " / " + fmt(t3) + " · 4H " + dTxt(d4) + " 2H " + dTxt(d2) + " 1H " + dTxt(d1h)
+    alert(msg, alert.freq_once_per_bar)
+
+alertcondition(flip and swing == 1, "ORB+ BUY", "ORB+ BUY on {{ticker}} at {{close}}")
+alertcondition(flip and swing == -1, "ORB+ SELL", "ORB+ SELL on {{ticker}} at {{close}}")
+
+// ───────────────────────── Opening range lines (original style: green high, red low)
+showR = live and not inS
+plot(showR ? oH : na, "ORB High", color.new(#4caf50, 0), 2, plot.style_circles)
+plot(showR ? oL : na, "ORB Low", color.new(#f44336, 0), 2, plot.style_circles)
