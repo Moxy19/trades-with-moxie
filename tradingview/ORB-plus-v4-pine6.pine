@@ -277,6 +277,8 @@ startTime(int dir) =>
     t
 
 // ═════════════════════════ Trend / pullback state machine
+loN = ta.lowest(low, pivLen * 2 + 1)
+hiN = ta.highest(high, pivLen * 2 + 1)
 var int   trend    = 0
 var int   legN     = 0
 var float impHi    = na
@@ -305,7 +307,7 @@ if conf
         trend   := 1
         legN    := 1
         impHi   := high
-        impLo   := ta.lowest(low, pivLen * 2 + 1)
+        impLo   := loN
         needLvl := na
         pbArmed := false
         brkLvl  := sh1
@@ -315,7 +317,7 @@ if conf
         trend   := -1
         legN    := 1
         impLo   := low
-        impHi   := ta.highest(high, pivLen * 2 + 1)
+        impHi   := hiN
         needLvl := na
         pbArmed := false
         brkLvl  := sl1
@@ -426,12 +428,18 @@ if spkDir != 0
 // opening-range breaks of 1H / 2H / 4H (when a range is first broken)
 brkUp(int b) => b == 2 and b[1] != 2
 brkDn(int b) => b == -2 and b[1] != -2
+u60 = brkUp(b60)
+d60 = brkDn(b60)
+u120 = brkUp(b120)
+d120 = brkDn(b120)
+u240 = brkUp(b240)
+d240 = brkDn(b240)
 if orbLbl and conf and chartSec <= 7200
-    if on60 and chartSec < 3600 and (brkUp(b60) or brkDn(b60))
+    if on60 and chartSec < 3600 and (u60 or d60)
         label.new(bar_index, b60 > 0 ? low : high, "1H ORB " + (b60 > 0 ? "▲" : "▼"), style=b60 > 0 ? label.style_label_up : label.style_label_down, color=color.new(c60, 20), textcolor=color.white, size=size.tiny)
-    if on120 and chartSec < 7200 and (brkUp(b120) or brkDn(b120))
+    if on120 and chartSec < 7200 and (u120 or d120)
         label.new(bar_index, b120 > 0 ? low : high, "2H ORB " + (b120 > 0 ? "▲" : "▼"), style=b120 > 0 ? label.style_label_up : label.style_label_down, color=color.new(c120, 20), textcolor=color.white, size=size.tiny)
-    if on240 and (brkUp(b240) or brkDn(b240))
+    if on240 and (u240 or d240)
         label.new(bar_index, b240 > 0 ? low : high, "4H ORB " + (b240 > 0 ? "▲" : "▼"), style=b240 > 0 ? label.style_label_up : label.style_label_down, color=color.new(c240, 20), textcolor=color.white, size=size.tiny)
 
 // alignment change marker
